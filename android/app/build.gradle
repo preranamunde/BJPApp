@@ -79,12 +79,17 @@ android {
 
     namespace "com.bjpapp"
     defaultConfig {
-        applicationId "com.bjpapp"
-        minSdkVersion rootProject.ext.minSdkVersion
-        targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "1.0"
+    applicationId "com.bjpapp"
+    minSdkVersion rootProject.ext.minSdkVersion
+    targetSdkVersion rootProject.ext.targetSdkVersion
+    versionCode 1
+    versionName "1.0"
+
+    ndk {
+        abiFilters "armeabi-v7a", "x86", "x86_64"
     }
+}
+
     signingConfigs {
         debug {
             storeFile file('debug.keystore')
@@ -117,3 +122,5 @@ dependencies {
         implementation jscFlavor
     }
 }
+
+apply from: "../../node_modules/react-native-vector-icons/fonts.gradle"

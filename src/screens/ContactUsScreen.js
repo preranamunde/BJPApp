@@ -11,26 +11,8 @@ const ContactUsScreen = () => {
     Linking.openURL(`mailto:${email}`);
   };
 
-  const handleSocialMedia = (platform, handle) => {
-    let url = '';
-    switch (platform) {
-      case 'facebook':
-        url = `https://facebook.com/${handle}`;
-        break;
-      case 'twitter':
-        url = `https://twitter.com/${handle}`;
-        break;
-      case 'instagram':
-        url = `https://instagram.com/${handle}`;
-        break;
-      case 'youtube':
-        url = `https://youtube.com/@${handle}`;
-        break;
-      case 'whatsapp':
-        url = `https://wa.me/${handle.replace(/[^0-9]/g, '')}`;
-        break;
-    }
-    if (url) Linking.openURL(url);
+  const handleSocialMedia = (url) => {
+    Linking.openURL(url);
   };
 
   return (
@@ -122,23 +104,23 @@ const ContactUsScreen = () => {
           
           <TouchableOpacity 
             style={styles.contactItem}
-            onPress={() => handleEmail('info@leaderparty.com')}
+            onPress={() => handleEmail('drsanjayjaiswal@gmail.com')}
           >
             <View style={styles.contactItemIcon}>
               <Icon name="mail-outline" size={18} color="#e16e2b" />
             </View>
-            <Text style={styles.contactItemText}>info@leaderparty.com</Text>
+            <Text style={styles.contactItemText}>drsanjayjaiswal@gmail.com</Text>
             <Icon name="arrow-forward-ios" size={16} color="#e16e2b" />
           </TouchableOpacity>
 
           <TouchableOpacity 
             style={styles.contactItem}
-            onPress={() => handleEmail('support@leaderparty.com')}
+            onPress={() => handleEmail('sanjayjaiswal@mpls.sansad.in')}
           >
             <View style={styles.contactItemIcon}>
               <Icon name="support" size={18} color="#e16e2b" />
             </View>
-            <Text style={styles.contactItemText}>support@leaderparty.com</Text>
+            <Text style={styles.contactItemText}>sanjayjaiswal@mpls.sansad.in</Text>
             <Icon name="arrow-forward-ios" size={16} color="#e16e2b" />
           </TouchableOpacity>
         </View>
@@ -153,16 +135,35 @@ const ContactUsScreen = () => {
           </View>
           
           {[
-            { icon: 'facebook', label: 'Facebook', handle: 'leaderparty', platform: 'facebook' },
-            { icon: 'alternate-email', label: 'Twitter', handle: 'leaderparty', platform: 'twitter' },
-            { icon: 'photo-camera', label: 'Instagram', handle: 'leaderparty', platform: 'instagram' },
-            { icon: 'ondemand-video', label: 'YouTube', handle: 'leaderparty', platform: 'youtube' },
-            { icon: 'chat', label: 'WhatsApp', handle: '+91 9876543210', platform: 'whatsapp' },
+            { 
+              icon: 'facebook', 
+              label: 'Facebook', 
+              handle: 'Jaiswalsanjaybjp', 
+              url: 'http://www.facebook.com/Jaiswalsanjaybjp/' 
+            },
+            { 
+              icon: 'alternate-email', 
+              label: 'X (Twitter)', 
+              handle: 'Sanjayjaiswalmp', 
+              url: 'http://www.x.com/Sanjayjaiswalmp' 
+            },
+            { 
+              icon: 'photo-camera', 
+              label: 'Instagram', 
+              handle: 'drsanjayjaiswalbjp', 
+              url: 'https://www.instagram.com/drsanjayjaiswalbjp/' 
+            },
+            { 
+              icon: 'chat', 
+              label: 'WhatsApp', 
+              handle: '+91 7702000723', 
+              url: 'https://wa.me/917702000723' 
+            },
           ].map((item, index) => (
             <TouchableOpacity
               key={index}
               style={styles.contactItem}
-              onPress={() => handleSocialMedia(item.platform, item.handle)}
+              onPress={() => handleSocialMedia(item.url)}
             >
               <View style={styles.contactItemIcon}>
                 <Icon name={item.icon} size={18} color="#e16e2b" />

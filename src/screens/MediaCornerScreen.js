@@ -6,39 +6,34 @@ import {
   TouchableOpacity,
   ScrollView,
   Dimensions,
+  Image,
 } from 'react-native';
+import Video from 'react-native-video';
 
 const { width } = Dimensions.get('window');
 
 const tabs = ['Press Meets', 'Past Events', 'Facebook', 'X', 'Instagram', 'Video'];
+
+const videoList = [
+  { id: '1', title: 'Intro Video', source: require('../assets/intro.mp4') },
+  { id: '2', title: 'Event Highlights', source: require('../assets/intro1.mp4') },
+  { id: '3', title: 'Speech Coverage', source: require('../assets/video3.mp4') },
+];
 
 const MediaCornerScreen = () => {
   const [activeTab, setActiveTab] = useState(tabs[0]);
 
   return (
     <View style={styles.container}>
-      {/* Top Horizontal Tabs */}
       <View style={styles.tabBarContainer}>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.tabRow}
-        >
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabRow}>
           {tabs.map((tab) => (
             <TouchableOpacity
               key={tab}
               onPress={() => setActiveTab(tab)}
-              style={[
-                styles.tabButton,
-                activeTab === tab && styles.activeTabButton,
-              ]}
+              style={[styles.tabButton, activeTab === tab && styles.activeTabButton]}
             >
-              <Text
-                style={[
-                  styles.tabText,
-                  activeTab === tab && styles.activeTabText,
-                ]}
-              >
+              <Text style={[styles.tabText, activeTab === tab && styles.activeTabText]}>
                 {tab}
               </Text>
               {activeTab === tab && <View style={styles.underline} />}
@@ -47,67 +42,154 @@ const MediaCornerScreen = () => {
         </ScrollView>
       </View>
 
-      {/* Content Area */}
       <View style={styles.contentArea}>
-        <Text style={styles.contentText}>{activeTab}</Text>
+        {activeTab === 'Video' ? (
+          <ScrollView contentContainerStyle={styles.videoListContainer}>
+            {videoList.map((video) => (
+              <View key={video.id} style={styles.videoItem}>
+                <Text style={styles.videoTitle}>{video.title}</Text>
+                <Video
+                  source={video.source}
+                  style={styles.videoPlayer}
+                  controls
+                  resizeMode="contain"
+                />
+              </View>
+            ))}
+          </ScrollView>
+        ) : activeTab === 'Facebook' ? (
+          <ScrollView contentContainerStyle={styles.postsContainer}>
+            <View style={styles.postItem}>
+              <Image source={require('../assets/image1.jpg')} style={styles.postImage} resizeMode="cover" />
+              <Text style={styles.postTitle}>संजय जायसवाल जी का संदेश</Text>
+              <Text style={styles.postDate}>15 जुलाई 2025</Text>
+              <Text style={styles.postText}>
+                बिहार के विकास को लेकर हमारी सरकार पूरी तरह से समर्पित है। आप सभी के आशीर्वाद और सहयोग की आवश्यकता है। धन्यवाद!
+              </Text>
+            </View>
+
+            <View style={styles.postItem}>
+              <Image source={require('../assets/facebook1.png')} style={styles.postImage} resizeMode="cover" />
+              <Text style={styles.postTitle}>पार्टी बैठक</Text>
+              <Text style={styles.postDate}>17 जुलाई 2025</Text>
+              <Text style={styles.postText}>
+                पार्टी कार्यकर्ताओं के साथ आज की बैठक सफल रही। सभी ने अपने सुझाव साझा किए और आने वाले कार्यक्रमों की रूपरेखा तय की गई।
+              </Text>
+            </View>
+
+            <View style={styles.postItem}>
+              <Image source={require('../assets/facebook2.png')} style={styles.postImage} resizeMode="cover" />
+              <Text style={styles.postTitle}>समाज सेवा</Text>
+              <Text style={styles.postDate}>18 जुलाई 2025</Text>
+              <Text style={styles.postText}>
+                समाज सेवा में निरंतर समर्पित। आप सभी का सहयोग और आशीर्वाद बना रहे। धन्यवाद!
+              </Text>
+            </View>
+          </ScrollView>
+        ) : activeTab === 'X' ? (
+          <ScrollView contentContainerStyle={styles.postsContainer}>
+            <View style={styles.postItem}>
+              <Image source={require('../assets/twitter2.png')} style={styles.postImage} resizeMode="contain" />
+              <Text style={styles.postTitle}>संजय जायसवाल जी की ट्विटर फोटो</Text>
+              <Text style={styles.postDate}>20 जुलाई 2025</Text>
+              <Text style={styles.postText}>
+                जनता के विश्वास और समर्थन के लिए हम हमेशा प्रतिबद्ध रहेंगे।
+                पटना में आयोजित कार्यक्रम में उपस्थित सभी कार्यकर्ताओं का आभार!
+              </Text>
+            </View>
+
+            <View style={styles.postItem}>
+              <Image source={require('../assets/twitter3.png')} style={styles.postImage} resizeMode="contain" />
+              <Text style={styles.postTitle}>संजय जायसवाल जी का ट्विटर पोस्ट 3</Text>
+              <Text style={styles.postDate}>21 जुलाई 2025</Text>
+              <Text style={styles.postText}>
+                जनता के बीच सीधे संवाद का सिलसिला जारी। हम सब मिलकर प्रदेश को नई ऊँचाइयों तक ले जाएंगे। जय हिंद!
+              </Text>
+            </View>
+          </ScrollView>
+        ) : activeTab === 'Press Meets' ? (
+          <ScrollView contentContainerStyle={styles.postsContainer}>
+            <View style={styles.postItem}>
+              <Image source={require('../assets/pastevents1.png')} style={styles.postImage} resizeMode="cover" />
+              <Text style={styles.postTitle}>प्रेस मीट - बिहार</Text>
+              <Text style={styles.postDate}>16 जुलाई 2025</Text>
+              <Text style={styles.postText}>
+                बिहार में विकास योजनाओं और आगामी कार्यक्रमों की जानकारी देने हेतु आयोजित प्रेस मीट की झलक।
+              </Text>
+            </View>
+            <View style={styles.postItem}>
+              <Image source={require('../assets/pressmeet1.png')} style={styles.postImage} resizeMode="cover" />
+              <Text style={styles.postTitle}>प्रेस मीट बैठक</Text>
+              <Text style={styles.postDate}>19 जुलाई 2025</Text>
+              <Text style={styles.postText}>प्रदेश कार्यालय में प्रेस मीट के दौरान महत्वपूर्ण योजनाओं पर चर्चा हुई।</Text>
+            </View>
+          </ScrollView>
+        ) : activeTab === 'Past Events' ? (
+          <ScrollView contentContainerStyle={styles.postsContainer}>
+
+            <View style={styles.postItem}>
+              <Image source={require('../assets/pastevents2.png')} style={styles.postImage} resizeMode="cover" />
+              <Text style={styles.postTitle}>संकल्प पत्र विमोचन कार्यक्रम</Text>
+              <Text style={styles.postDate}>17 जुलाई 2025</Text>
+              <Text style={styles.postText}>
+                प्रदेश कार्यालय में आयोजित संकल्प पत्र विमोचन कार्यक्रम में माननीय नेतागण द्वारा महत्वपूर्ण घोषणाएँ।
+              </Text>
+            </View>
+            <View style={styles.postItem}>
+              <Image source={require('../assets/pastevents3.png')} style={styles.postImage} resizeMode="cover" />
+              <Text style={styles.postTitle}>उद्घाटन समारोह</Text>
+              <Text style={styles.postDate}>18 जुलाई 2025</Text>
+              <Text style={styles.postText}>जनकल्याण हेतु नए केंद्र का उद्घाटन हुआ।</Text>
+            </View>
+          </ScrollView>
+
+
+
+        ) : activeTab === 'Instagram' ? (
+          <ScrollView contentContainerStyle={styles.postsContainer}>
+            <View style={styles.postItem}>
+              <Image source={require('../assets/instagram1.png')} style={styles.postImage} resizeMode="cover" />
+              <Text style={styles.postTitle}>जन संपर्क अभियान</Text>
+              <Text style={styles.postDate}>22 जुलाई 2025</Text>
+              <Text style={styles.postText}>आज पटना में विशाल जन संपर्क अभियान की शुरुआत। सभी कार्यकर्ताओं का आभार।</Text>
+            </View>
+            <View style={styles.postItem}>
+              <Image source={require('../assets/instagram2.png')} style={styles.postImage} resizeMode="cover" />
+              <Text style={styles.postTitle}>जन समर्थन यात्रा</Text>
+              <Text style={styles.postDate}>23 जुलाई 2025</Text>
+              <Text style={styles.postText}>आज के जन समर्थन यात्रा में जनता का भरपूर सहयोग मिला। सभी का धन्यवाद।</Text>
+            </View>
+
+          </ScrollView>
+        ) : (
+          <Text style={styles.contentText}>{activeTab}</Text>
+        )}
       </View>
     </View>
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#f8f9fa',
-  },
-  tabBarContainer: {
-    backgroundColor: '#f56c3aff',
-    paddingTop: 12,
-    paddingBottom: 10,
-    elevation: 4,
-  },
-  tabRow: {
-    flexDirection: 'row',
-    paddingHorizontal: 10,
-  },
-  tabButton: {
-    paddingVertical: 10,
-    paddingHorizontal: 10,
-    marginHorizontal: 6,
-    position: 'relative',
-  },
-  activeTabButton: {},
-  tabText: {
-    color: '#ffffff',
-    fontSize: 16,
-    fontWeight: '500',
-    opacity: 0.8,
-  },
-  activeTabText: {
-    color: '#ffffff',
-    fontWeight: 'bold',
-    opacity: 1,
-  },
-  underline: {
-    position: 'absolute',
-    bottom: 0,
-    left: 10,
-    right: 10,
-    height: 2,
-    backgroundColor: '#ffffff',
-    borderRadius: 1,
-  },
-  contentArea: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#f8f9fa',
-  },
-  contentText: {
-    fontSize: 20,
-    color: '#333',
-    fontWeight: '600',
-  },
+  container: { flex: 1, backgroundColor: '#f8f9fa' },
+  tabBarContainer: { backgroundColor: '#f56c3aff', paddingTop: 12, paddingBottom: 10, elevation: 4 },
+  tabRow: { flexDirection: 'row', paddingHorizontal: 10 },
+  tabButton: { paddingVertical: 10, paddingHorizontal: 10, marginHorizontal: 6, position: 'relative' },
+  tabText: { color: '#ffffff', fontSize: 16, fontWeight: '500', opacity: 0.8 },
+  activeTabText: { color: '#ffffff', fontWeight: 'bold', opacity: 1 },
+  underline: { position: 'absolute', bottom: 0, left: 10, right: 10, height: 2, backgroundColor: '#ffffff', borderRadius: 1 },
+  contentArea: { flex: 1, backgroundColor: '#f8f9fa' },
+  contentText: { fontSize: 20, color: '#333', fontWeight: '600', textAlign: 'center', marginTop: 20 },
+  videoListContainer: { paddingVertical: 20, alignItems: 'center' },
+  videoItem: { marginBottom: 20, alignItems: 'center' },
+  videoTitle: { fontSize: 16, fontWeight: '600', marginBottom: 10, color: '#333' },
+  videoPlayer: { width: width * 0.9, height: width * 0.6, backgroundColor: '#000' },
+  postsContainer: { padding: 20 },
+  postItem: { backgroundColor: '#fff', padding: 15, marginBottom: 15, borderRadius: 8, elevation: 2 },
+  postImage: { width: '100%', height: 300, borderRadius: 8, marginBottom: 10 },
+  postTitle: { fontSize: 18, fontWeight: 'bold', color: '#333', marginBottom: 5 },
+  postDate: { fontSize: 12, color: '#888', marginBottom: 10 },
+  postText: { fontSize: 14, color: '#333', lineHeight: 20 },
+  instagramContainer: { padding: 20, alignItems: 'center', justifyContent: 'center' },
 });
 
 export default MediaCornerScreen;

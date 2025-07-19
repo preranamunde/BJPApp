@@ -14,7 +14,7 @@ const KnowYourLeaderScreen = () => {
           <Image
             source={{ uri: 'https://tse2.mm.bing.net/th/id/OIP.7nJJBy9zWC6D4pVeQDTEqAHaHX?pid=Api&P=0&h=180' }}
             style={styles.profileImage}
-/>
+          />
         </View>
         <Text style={styles.name}>Dr. Sanjay Jaiswal</Text>
         <Text style={styles.degree}>MBBS, MD</Text>
@@ -191,18 +191,6 @@ const KnowYourLeaderScreen = () => {
         <View style={styles.cardContent}>
           <TouchableOpacity 
             style={styles.socialButton}
-            onPress={() => openLink('http://www.x.com/Sanjayjaiswalmp')}
-          >
-            <Text style={styles.socialIcon}>🐦</Text>
-            <View style={styles.socialInfo}>
-              <Text style={styles.socialPlatform}>Twitter/X</Text>
-              <Text style={styles.socialHandle}>@Sanjayjaiswalmp</Text>
-            </View>
-            <Text style={styles.socialArrow}>→</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity 
-            style={styles.socialButton}
             onPress={() => openLink('http://www.facebook.com/Jaiswalsanjaybjp/')}
           >
             <Text style={styles.socialIcon}>📘</Text>
@@ -215,12 +203,36 @@ const KnowYourLeaderScreen = () => {
 
           <TouchableOpacity 
             style={styles.socialButton}
+            onPress={() => openLink('http://www.x.com/Sanjayjaiswalmp')}
+          >
+            <Text style={styles.socialIcon}>🐦</Text>
+            <View style={styles.socialInfo}>
+              <Text style={styles.socialPlatform}>Twitter/X</Text>
+              <Text style={styles.socialHandle}>@Sanjayjaiswalmp</Text>
+            </View>
+            <Text style={styles.socialArrow}>→</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity 
+            style={styles.socialButton}
             onPress={() => openLink('https://www.instagram.com/drsanjayjaiswalbjp/')}
           >
             <Text style={styles.socialIcon}>📸</Text>
             <View style={styles.socialInfo}>
               <Text style={styles.socialPlatform}>Instagram</Text>
               <Text style={styles.socialHandle}>@drsanjayjaiswalbjp</Text>
+            </View>
+            <Text style={styles.socialArrow}>→</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity 
+            style={styles.socialButton}
+            onPress={() => openLink('https://wa.me/917702000723')}
+          >
+            <Text style={styles.socialIcon}>💬</Text>
+            <View style={styles.socialInfo}>
+              <Text style={styles.socialPlatform}>WhatsApp</Text>
+              <Text style={styles.socialHandle}>+91 7702000723</Text>
             </View>
             <Text style={styles.socialArrow}>→</Text>
           </TouchableOpacity>

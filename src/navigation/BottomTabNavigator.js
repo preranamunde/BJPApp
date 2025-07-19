@@ -52,35 +52,34 @@ const BottomTabNavigator = () => {
         headerShown: true,
         headerTitleAlign: 'left',
         headerStyle: {
-          paddingTop: 10, // ✅ Only padding from top for header height adjustment
           backgroundColor: '#e16e2b',
-          height: 80, // Ensures padding does not overlap content
+          height: 80,
         },
         headerTintColor: '#fff',
-  // ✅ Header title text color white
         headerLeft: () => <DrawerToggleButton />,
         tabBarLabelStyle: {
           fontSize: 10,
-          height: 16,
         },
-        tabBarIconStyle: {
-          marginTop: 4,
-          width: 30,
-          height: 30,
+        tabBarStyle: {
+          height: 115,
+          paddingBottom: 10,
+          paddingTop: 5,
         },
         tabBarItemStyle: {
-          paddingVertical: 4,
+          paddingVertical: 0,
+        },
+        tabBarIconStyle: {
+          marginTop: 0,
         },
       })}
     >
-     <Tab.Screen
-  name="Home"
-  component={HomeScreen}
-  options={{
-    headerShown: false, // Hide header on Home only
-  }}
-/>
-
+      <Tab.Screen
+        name="Home"
+        component={HomeScreen}
+        options={{
+          headerShown: false,
+        }}
+      />
       <Tab.Screen name="Samvad" component={SamvadScreen} />
       <Tab.Screen name="Media Corner" component={MediaCornerScreen} />
       <Tab.Screen name="Upcoming Events" component={UpcomingEventsScreen} />

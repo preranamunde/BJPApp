@@ -13,43 +13,38 @@ import {
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import FontSizeController from '../components/FontSizeController';
 import NotificationIcon from '../components/NotificationIcon';
+import { languageData } from '../components/languages';
 
 const HomeScreen = ({ navigation }) => {
   const [fontSize, setFontSize] = useState(16);
-  
-  const [selectedLanguage, setSelectedLanguage] = useState('English');
+  const [selectedLanguage, setSelectedLanguage] = useState('en');
   const [isLanguageModalVisible, setIsLanguageModalVisible] = useState(false);
   const [isListening, setIsListening] = useState(false);
 
+  const lang = languageData[selectedLanguage];
+
   const languages = [
     { code: 'en', name: 'English' },
-    { code: 'mr', name: 'मराठी' },
+    { code: 'hi', name: 'हिंदी' },
   ];
 
   const quickActions = [
-    { id: 1, title: 'Know Your Leader', icon: 'person', screen: 'KnowYourLeader' },
-    { id: 2, title: 'About Constituency', icon: 'location-on', screen: 'AboutConstituency' },
-    { id: 3, title: 'Party Updates', icon: 'update', action: () => Alert.alert('Party Updates', 'Latest updates coming soon!') },
-    { id: 4, title: 'Feedback', icon: 'feedback', action: () => Alert.alert('Feedback', 'Feedback form coming soon!') },
+    { id: 1, title: lang.knowLeader, icon: 'person', screen: 'KnowYourLeader' },
+    { id: 2, title: lang.aboutConstituency, icon: 'location-on', screen: 'AboutConstituency' },
+    { id: 3, title: lang.partyUpdates, icon: 'update', action: () => Alert.alert(lang.partyUpdates, 'Latest updates coming soon!') },
+    { id: 4, title: lang.feedback, icon: 'feedback', action: () => Alert.alert(lang.feedback, 'Feedback form coming soon!') },
   ];
 
-  const handleNotificationPress = () => {
-    Alert.alert('Notifications', 'You have 3 new notifications!');
-  };
-
   const handleLanguageSelect = (language) => {
-    setSelectedLanguage(language.name);
+    setSelectedLanguage(language.code);
     setIsLanguageModalVisible(false);
     Alert.alert('Language Changed', `Language changed to ${language.name}`);
   };
 
   const handleSpeechToText = () => {
-    if (isListening) {
-      setIsListening(false);
-      Alert.alert('Speech Recognition', 'Speech recognition stopped');
-    } else {
-      setIsListening(true);
-      Alert.alert('Speech Recognition', 'Listening... Speak now!');
+    setIsListening(!isListening);
+    Alert.alert('Speech Recognition', isListening ? 'Speech recognition stopped' : 'Listening... Speak now!');
+    if (!isListening) {
       setTimeout(() => {
         setIsListening(false);
         Alert.alert('Speech Recognition', 'Speech converted to text: "Hello, how are you?"');
@@ -70,7 +65,7 @@ const HomeScreen = ({ navigation }) => {
       style={styles.languageItem}
       onPress={() => handleLanguageSelect(item)}>
       <Text style={styles.languageText}>{item.name}</Text>
-      {selectedLanguage === item.name && (
+      {selectedLanguage === item.code && (
         <Icon name="check" size={20} color="#FF6B35" />
       )}
     </TouchableOpacity>
@@ -84,8 +79,7 @@ const HomeScreen = ({ navigation }) => {
           onPress={() => navigation.openDrawer()}>
           <Icon name="menu" size={35} color="#fff" />
         </TouchableOpacity>
-
-        <Text style={[styles.headerTitle, { fontSize:20 }]}>BJP App</Text>
+        <Text style={[styles.headerTitle, { fontSize: 20 }]}>{lang.appTitle}</Text>
 
         <View style={styles.rightHeaderSection}>
           <TouchableOpacity
@@ -97,20 +91,13 @@ const HomeScreen = ({ navigation }) => {
               color="#fff"
             />
           </TouchableOpacity>
-
           <TouchableOpacity
             style={styles.iconButton}
             onPress={() => setIsLanguageModalVisible(true)}>
-            <View style={styles.customLanguageIcon}>
-              <Text style={styles.englishLetter}>A</Text>
-              <View style={styles.marathiCircle}>
-                <Text style={styles.marathiLetter}>अ</Text>
-              </View>
-            </View>
+            <Icon name="translate" size={24} color="#fff" />
           </TouchableOpacity>
-
           <NotificationIcon
-            onPress={handleNotificationPress}
+            onPress={() => Alert.alert('Notifications', 'You have 3 new notifications!')}
             badgeCount={3}
             iconColor="#fff"
           />
@@ -121,14 +108,12 @@ const HomeScreen = ({ navigation }) => {
 
       <ScrollView style={styles.content}>
         <View style={styles.welcomeSection}>
-          <Text style={[styles.welcomeTitle, { fontSize: fontSize + 8 }]}>Welcome to BJP App</Text>
-          <Text style={[styles.welcomeSubtitle, { fontSize: fontSize }]}>
-            Stay connected with the latest updates and events
-          </Text>
+          <Text style={[styles.welcomeTitle, { fontSize: fontSize + 8 }]}>{lang.welcome}</Text>
+          <Text style={[styles.welcomeSubtitle, { fontSize: fontSize }]}>{lang.stayConnected}</Text>
         </View>
 
         <View style={styles.quickActionsSection}>
-          <Text style={[styles.sectionTitle, { fontSize: fontSize + 2 }]}>Quick Actions</Text>
+          <Text style={[styles.sectionTitle, { fontSize: fontSize + 2 }]}>{lang.quickActions}</Text>
           <View style={styles.quickActionsGrid}>
             {quickActions.map((item) => (
               <TouchableOpacity
@@ -144,24 +129,37 @@ const HomeScreen = ({ navigation }) => {
         </View>
 
         <View style={styles.newsSection}>
-          <Text style={[styles.sectionTitle, { fontSize: fontSize + 2 }]}>Latest News</Text>
+          <Text style={[styles.sectionTitle, { fontSize: fontSize + 2 }]}>{lang.latestNews}</Text>
           <View style={styles.newsCard}>
-            <Text style={[styles.newsTitle, { fontSize: fontSize }]}>Party Meeting Scheduled</Text>
-            <Text style={[styles.newsDate, { fontSize: fontSize - 2 }]}>Today, 2:00 PM</Text>
+            <Text style={[styles.newsTitle, { fontSize: fontSize }]}>{lang.partyMeeting}</Text>
+            <Text style={[styles.newsDate, { fontSize: fontSize - 2 }]}>{lang.today}</Text>
             <Text style={[styles.newsDescription, { fontSize: fontSize - 2 }]}>
-              Join us for the monthly party meeting to discuss upcoming initiatives.
+              {selectedLanguage === 'en'
+                ? "Join us for the monthly party meeting to discuss upcoming initiatives."
+                : "आगामी पहलों पर चर्चा के लिए मासिक पार्टी बैठक में शामिल हों।"}
             </Text>
           </View>
+
           <View style={styles.newsCard}>
-            <Text style={[styles.newsTitle, { fontSize: fontSize }]}>Community Service Drive</Text>
-            <Text style={[styles.newsDate, { fontSize: fontSize - 2 }]}>Tomorrow, 10:00 AM</Text>
+            <Text style={[styles.newsTitle, { fontSize: fontSize }]}>{lang.communityService}</Text>
+            <Text style={[styles.newsDate, { fontSize: fontSize - 2 }]}>{lang.tomorrow}</Text>
             <Text style={[styles.newsDescription, { fontSize: fontSize - 2 }]}>
-              Participate in our community service initiative in the local area.
+              {selectedLanguage === 'en'
+                ? "Participate in our community service initiative in the local area."
+                : "स्थानीय क्षेत्र में हमारी सामुदायिक सेवा पहल में भाग लें।"}
             </Text>
           </View>
         </View>
       </ScrollView>
 
+      {/* Floating Chat Icon */}
+      <TouchableOpacity
+        style={styles.chatButton}
+        onPress={() => navigation.navigate('LokSahayak')}>
+        <Icon name="chat" size={28} color="#fff" />
+      </TouchableOpacity>
+
+      {/* Language Modal */}
       <Modal
         visible={isLanguageModalVisible}
         transparent={true}
@@ -383,6 +381,23 @@ const styles = StyleSheet.create({
     color: '#FF6B35',
     fontSize: 16,
     fontWeight: 'bold',
+    
+  },
+  chatButton: {
+    position: 'absolute',
+    bottom: 10, // adjust this based on your bottom tab height
+    right: 10,
+    backgroundColor: '#e16e2b',
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    justifyContent: 'center',
+    alignItems: 'center',
+    elevation: 6,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
   },
 });
 

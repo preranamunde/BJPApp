@@ -1,0 +1,32 @@
+export const languageData = {
+  en: {
+    appTitle: "BJP App",
+    welcome: "Welcome to BJP App",
+    stayConnected: "Stay connected with the latest updates and events",
+    quickActions: "Quick Actions",
+    knowLeader: "Know Your Leader",
+    aboutConstituency: "About Constituency",
+    partyUpdates: "Party Updates",
+    feedback: "Feedback",
+    latestNews: "Latest News",
+    partyMeeting: "Party Meeting Scheduled",
+    today: "Today, 2:00 PM",
+    communityService: "Community Service Drive",
+    tomorrow: "Tomorrow, 10:00 AM",
+  },
+  hi: {
+    appTitle: "भाजपा ऐप",
+    welcome: "भाजपा ऐप में आपका स्वागत है",
+    stayConnected: "नवीनतम अपडेट और घटनाओं से जुड़े रहें",
+    quickActions: "त्वरित क्रियाएँ",
+    knowLeader: "अपने नेता को जानें",
+    aboutConstituency: "निर्वाचन क्षेत्र के बारे में",
+    partyUpdates: "पार्टी अपडेट्स",
+    feedback: "प्रतिक्रिया",
+    latestNews: "ताज़ा खबरें",
+    partyMeeting: "पार्टी बैठक निर्धारित",
+    today: "आज, 2:00 बजे",
+    communityService: "सामुदायिक सेवा अभियान",
+    tomorrow: "कल, 10:00 बजे",
+  }
+};

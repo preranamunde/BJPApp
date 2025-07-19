@@ -11,6 +11,8 @@ import {
 import { Image } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import FontAwesome from 'react-native-vector-icons/FontAwesome';
+import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
+
 
 const CustomDrawer = ({ navigation }) => {
   const [isLiteratureOpen, setIsLiteratureOpen] = useState(false);
@@ -44,7 +46,7 @@ const CustomDrawer = ({ navigation }) => {
           style={{ alignItems: 'center' }}
         >
           <Image
-            source={require('../assets/user.png')}
+            source={require('../assets/profile_user.png')}
             style={styles.profileImage}
           />
           <View style={styles.userNameContainer}>
@@ -173,7 +175,7 @@ const CustomDrawer = ({ navigation }) => {
           style={styles.iconButton}
           onPress={() => handleOpenURL('http://www.x.com/Sanjayjaiswalmp')}
         >
-          <FontAwesome name="twitter" size={24} color="#00acee" />
+          <MaterialCommunityIcons name="alpha-x-circle" size={24} color="#000" />
         </TouchableOpacity>
         <TouchableOpacity
           style={styles.iconButton}
@@ -181,6 +183,12 @@ const CustomDrawer = ({ navigation }) => {
         >
           <FontAwesome name="instagram" size={24} color="#C13584" />
         </TouchableOpacity>
+        <TouchableOpacity
+    style={styles.iconButton}
+    onPress={() => handleOpenURL('https://wa.me/917702000723')} // Replace with actual number
+  >
+    <FontAwesome name="whatsapp" size={24} color="#25D366" />
+  </TouchableOpacity>
       </View>
     </ScrollView>
   );

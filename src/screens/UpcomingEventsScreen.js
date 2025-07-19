@@ -1,26 +1,30 @@
 import React from 'react';
-import { View, StyleSheet, Dimensions } from 'react-native';
-import { WebView } from 'react-native-webview';
+import { View, StyleSheet, Dimensions, ScrollView, Image } from 'react-native';
+
+const { width } = Dimensions.get('window');
 
 const UpcomingEventsScreen = () => {
   return (
-    <View style={styles.container}>
-      <WebView
-        source={{ uri: 'https://www.bjp.org/en/events' }}
-        style={styles.webview}
-        startInLoadingState
-      />
-    </View>
+    <ScrollView contentContainerStyle={styles.container}>
+      <Image source={require('../assets/image1.jpg')} style={styles.image} />
+      <Image source={require('../assets/image2.jpg')} style={styles.image} />
+      <Image source={require('../assets/image3.jpg')} style={styles.image} />
+      <Image source={require('../assets/image4.jpg')} style={styles.image} />
+      <Image source={require('../assets/image5.jpg')} style={styles.image} />
+    </ScrollView>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
-    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 20,
   },
-  webview: {
-    flex: 1,
-    width: Dimensions.get('window').width,
+  image: {
+    width: width * 0.9,
+    height: 300,
+    marginBottom: 20,
+    borderRadius: 10,
   },
 });
 

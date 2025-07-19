@@ -5,7 +5,7 @@ import { WebView } from 'react-native-webview';
 const VisitMyGovScreen = () => {
   return (
     <View style={styles.container}>
-      <WebView source={{ uri: 'https://library.bjp.org/' }} />
+      <WebView source={{ uri: 'https://mygov.in/' }} />
     </View>
   );
 };

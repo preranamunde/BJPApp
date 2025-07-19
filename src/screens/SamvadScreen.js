@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -12,10 +12,23 @@ import {
 
 const { width } = Dimensions.get('window');
 
-const SamvadScreen = () => {
+const SamvadScreen = ({ route, navigation }) => {
   const [activeMainTab, setActiveMainTab] = useState(null);
   const [activeSubTab, setActiveSubTab] = useState(null);
   const [focusedField, setFocusedField] = useState(null);
+
+  // Handle navigation parameters
+  useEffect(() => {
+    if (route?.params) {
+      const { initialTab, initialSubTab } = route.params;
+      if (initialTab) {
+        setActiveMainTab(initialTab);
+      }
+      if (initialSubTab) {
+        setActiveSubTab(initialSubTab);
+      }
+    }
+  }, [route?.params]);
 
   // Separate form data for each tab
   const [formDataByTab, setFormDataByTab] = useState({
@@ -83,7 +96,8 @@ const SamvadScreen = () => {
   // Handle main tab click
   const handleMainTabClick = (tab) => {
     setActiveMainTab(tab);
-    setActiveSubTab(null);
+    // Default to ADD when main tab is selected
+    setActiveSubTab('ADD');
   };
 
   // Get current tab's form data
@@ -119,54 +133,149 @@ const SamvadScreen = () => {
   const getPurposeLabel = () => {
     switch (activeMainTab) {
       case 'APPEAL':
-        return 'DESCRIPTION';
+        return 'Description';
       case 'APPOINTMENT':
-        return 'PURPOSE OF MEETING';
+        return 'Purpose Of Meeting';
       case 'GRIEVANCE':
-        return 'DESCRIPTION';
+        return 'Description';
       case 'COMPLAINTS':
-        return 'DESCRIPTION';
+        return 'Description';
       default:
         return '';
     }
   };
 
+  const validateForm = () => {
+    const currentFormData = getCurrentFormData();
+    
+    if (!currentFormData.mobile || currentFormData.mobile.length !== 10) {
+      Alert.alert('Error', 'Please enter a valid 10-digit mobile number.');
+      return false;
+    }
+    
+    if (!currentFormData.name || currentFormData.name.trim().length < 2) {
+      Alert.alert('Error', 'Please enter a valid name.');
+      return false;
+    }
+    
+    if (!currentFormData.fatherHusbandName || currentFormData.fatherHusbandName.trim().length < 2) {
+      Alert.alert('Error', 'Please enter father/husband name.');
+      return false;
+    }
+    
+    if (!currentFormData.address || currentFormData.address.trim().length < 10) {
+      Alert.alert('Error', 'Please enter a complete address.');
+      return false;
+    }
+    
+    if (!currentFormData.pincode || currentFormData.pincode.length !== 6) {
+      Alert.alert('Error', 'Please enter a valid 6-digit pincode.');
+      return false;
+    }
+    
+    if (!currentFormData.postOffice || currentFormData.postOffice.trim().length < 2) {
+      Alert.alert('Error', 'Please enter post office name.');
+      return false;
+    }
+    
+    if (!currentFormData.taluka || currentFormData.taluka.trim().length < 2) {
+      Alert.alert('Error', 'Please enter taluka name.');
+      return false;
+    }
+    
+    if (!currentFormData.district || currentFormData.district.trim().length < 2) {
+      Alert.alert('Error', 'Please enter district name.');
+      return false;
+    }
+    
+    if (!currentFormData.state || currentFormData.state.trim().length < 2) {
+      Alert.alert('Error', 'Please enter state name.');
+      return false;
+    }
+    
+    if (!currentFormData.purpose || currentFormData.purpose.trim().length < 10) {
+      Alert.alert('Error', 'Please provide a detailed description (minimum 10 characters).');
+      return false;
+    }
+    
+    if (activeMainTab === 'APPOINTMENT' && (!currentFormData.requestedDate || currentFormData.requestedDate.trim().length < 8)) {
+      Alert.alert('Error', 'Please enter a valid requested date.');
+      return false;
+    }
+    
+    if (!currentFormData.declarationAccepted) {
+      Alert.alert('Error', 'Please accept the declaration to proceed.');
+      return false;
+    }
+    
+    return true;
+  };
+
   const handleSubmit = () => {
     if (!activeMainTab) return;
     
-    const currentFormData = getCurrentFormData();
-    if (!currentFormData.declarationAccepted) {
-      Alert.alert('Error', 'Please accept the declaration to proceed.');
+    if (!validateForm()) {
       return;
     }
     
+    const currentFormData = getCurrentFormData();
     console.log(`${activeMainTab} form submitted:`, currentFormData);
-    Alert.alert('Success', `${activeMainTab} form submitted successfully!`);
+    
+    Alert.alert(
+      'Success', 
+      `Your ${activeMainTab.toLowerCase()} has been submitted successfully! You will receive a confirmation shortly.`,
+      [
+        {
+          text: 'View Preview',
+          onPress: () => setActiveSubTab('PREVIEW')
+        },
+        {
+          text: 'OK',
+          style: 'default'
+        }
+      ]
+    );
   };
 
   const handleCancel = () => {
     if (!activeMainTab) return;
     
-    // Clear only the current tab's form data
-    setFormDataByTab(prev => ({
-      ...prev,
-      [activeMainTab]: {
-        mobile: '',
-        name: '',
-        fatherHusbandName: '',
-        address: '',
-        pincode: '',
-        postOffice: '',
-        taluka: '',
-        district: '',
-        state: '',
-        purpose: '',
-        requestedDate: '',
-        declarationAccepted: false,
-      }
-    }));
-    setFocusedField(null);
-    Alert.alert('Cancelled', `${activeMainTab} form has been cleared.`);
+    Alert.alert(
+      'Confirm',
+      'Are you sure you want to clear all the form data?',
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel'
+        },
+        {
+          text: 'Yes, Clear',
+          style: 'destructive',
+          onPress: () => {
+            // Clear only the current tab's form data
+            setFormDataByTab(prev => ({
+              ...prev,
+              [activeMainTab]: {
+                mobile: '',
+                name: '',
+                fatherHusbandName: '',
+                address: '',
+                pincode: '',
+                postOffice: '',
+                taluka: '',
+                district: '',
+                state: '',
+                purpose: '',
+                requestedDate: '',
+                declarationAccepted: false,
+              }
+            }));
+            setFocusedField(null);
+            Alert.alert('Cleared', `${activeMainTab} form has been cleared.`);
+          }
+        }
+      ]
+    );
   };
 
   const renderInputField = (
@@ -175,7 +284,8 @@ const SamvadScreen = () => {
     placeholder,
     keyboardType = 'default',
     multiline = false,
-    required = false
+    required = false,
+    note = null
   ) => {
     const currentFormData = getCurrentFormData();
     const isFocused = focusedField === field;
@@ -207,13 +317,19 @@ const SamvadScreen = () => {
             textAlignVertical={multiline ? "top" : "center"}
             onFocus={() => setFocusedField(field)}
             onBlur={() => setFocusedField(null)}
+            maxLength={field === 'mobile' ? 10 : field === 'pincode' ? 6 : undefined}
           />
         </View>
+        {note && (
+          <Text style={styles.fieldNote}>
+            {note}
+          </Text>
+        )}
       </View>
     );
   };
 
- const renderCheckbox = () => {
+  const renderCheckbox = () => {
   const currentFormData = getCurrentFormData();
   const isChecked = currentFormData.declarationAccepted;
 
@@ -229,78 +345,56 @@ const SamvadScreen = () => {
           </View>
         </TouchableOpacity>
 
-        <Text style={styles.declarationText}>
-          I hereby declare that the information provided above is true to the best of my knowledge and I'm aware that if any part of information submitted is found to be false, my application will be rejected.
-        </Text>
+        <TouchableOpacity 
+          style={styles.declarationTextContainer}
+          onPress={() => handleChange('declarationAccepted', !isChecked)}
+          activeOpacity={0.7}
+        >
+          <Text style={styles.declarationText}>
+            I hereby declare that the information provided above is true to the best of my knowledge and I'm aware that if any part of information submitted is found to be false, my application will be rejected.
+          </Text>
+        </TouchableOpacity>
       </View>
     </View>
   );
 };
 
+
   // Render welcome content when no main tab is selected
   const renderWelcomeContent = () => (
-    <ScrollView 
-      contentContainerStyle={styles.contentArea}
-      showsVerticalScrollIndicator={false}
-    >
-      <View style={styles.contentCard}>
-        <Text style={styles.welcomeTitle}>Welcome to Samvad</Text>
-        <Text style={styles.welcomeSubtitle}>
-          Please select a category from the tabs above to get started
-        </Text>
-        <View style={styles.categoryContainer}>
-          <View style={styles.categoryItem}>
-            <Text style={styles.categoryName}>APPEAL</Text>
-            <Text style={styles.categoryDescription}>Submit an appeal for review</Text>
-          </View>
-          <View style={styles.categoryItem}>
-            <Text style={styles.categoryName}>APPOINTMENT</Text>
-            <Text style={styles.categoryDescription}>Book a meeting appointment</Text>
-          </View>
-          <View style={styles.categoryItem}>
-            <Text style={styles.categoryName}>GRIEVANCE</Text>
-            <Text style={styles.categoryDescription}>Register your grievance</Text>
-          </View>
-          <View style={styles.categoryItem}>
-            <Text style={styles.categoryName}>COMPLAINTS</Text>
-            <Text style={styles.categoryDescription}>File a complaint</Text>
-          </View>
+  <ScrollView
+    contentContainerStyle={styles.contentArea}
+    showsVerticalScrollIndicator={false}
+  >
+    <View style={styles.contentCard}>
+      <Text style={styles.welcomeTitle}>Welcome to Samvad</Text>
+      <Text style={styles.welcomeSubtitle}>
+        Connect with your representative through our digital platform
+      </Text>
+      <View style={styles.categoryContainer}>
+        <View style={styles.categoryItem}>
+          <Text style={styles.categoryName}>🔔 APPEAL</Text>
+          <Text style={styles.categoryDescription}>Submit an appeal for review and resolution</Text>
+        </View>
+        
+        <View style={styles.categoryItem}>
+          <Text style={styles.categoryName}>📅 APPOINTMENT</Text>
+          <Text style={styles.categoryDescription}>Schedule a meeting with your representative</Text>
+        </View>
+        
+        <View style={styles.categoryItem}>
+          <Text style={styles.categoryName}>📋 GRIEVANCE</Text>
+          <Text style={styles.categoryDescription}>Register your grievance for prompt action</Text>
+        </View>
+        
+        <View style={styles.categoryItem}>
+          <Text style={styles.categoryName}>📝 COMPLAINTS</Text>
+          <Text style={styles.categoryDescription}>File a complaint and track its status</Text>
         </View>
       </View>
-    </ScrollView>
-  );
-
-  // Render content when main tab is selected but no sub tab is selected
-  const renderTabInstructionContent = () => (
-    <ScrollView 
-      contentContainerStyle={styles.contentArea}
-      showsVerticalScrollIndicator={false}
-    >
-      <View style={styles.contentCard}>
-        <Text style={styles.instructionTitle}>{getFormHeader()}</Text>
-        <Text style={styles.instructionSubtitle}>
-          Please select an option from the tabs above
-        </Text>
-        <View style={styles.instructionContainer}>
-          <View style={styles.instructionItem}>
-            <Text style={styles.instructionName}>ADD</Text>
-            <Text style={styles.instructionDescription}>
-              Fill out the form to {activeMainTab === 'APPEAL' ? 'raise an appeal' : 
-                                   activeMainTab === 'APPOINTMENT' ? 'book an appointment' :
-                                   activeMainTab === 'GRIEVANCE' ? 'register a grievance' : 
-                                   'file a complaint'}
-            </Text>
-          </View>
-          <View style={styles.instructionItem}>
-            <Text style={styles.instructionName}>PREVIEW</Text>
-            <Text style={styles.instructionDescription}>
-              Review your submitted information
-            </Text>
-          </View>
-        </View>
-      </View>
-    </ScrollView>
-  );
+    </View>
+  </ScrollView>
+);
 
   return (
     <View style={styles.container}>
@@ -364,8 +458,6 @@ const SamvadScreen = () => {
       {/* Content Area */}
       {!activeMainTab ? (
         renderWelcomeContent()
-      ) : !activeSubTab ? (
-        renderTabInstructionContent()
       ) : activeSubTab === 'ADD' ? (
         <ScrollView 
           contentContainerStyle={styles.contentArea} 
@@ -390,7 +482,8 @@ const SamvadScreen = () => {
               'DD/MM/YYYY',
               'default',
               false,
-              true
+              true,
+              '*Actual Date of Meeting may differ based on availability of Hon\'ble MP'
             )}
 
             {renderInputField(
@@ -425,7 +518,7 @@ const SamvadScreen = () => {
               'Address',
               'Enter your complete address',
               'default',
-              false,
+              true,
               true
             )}
 
@@ -478,7 +571,7 @@ const SamvadScreen = () => {
 
             <View style={styles.buttonContainer}>
               <TouchableOpacity style={styles.cancelButton} onPress={handleCancel}>
-                <Text style={styles.buttonText}>Cancel</Text>
+                <Text style={styles.buttonText}>Clear Form</Text>
               </TouchableOpacity>
               <TouchableOpacity style={styles.submitButton} onPress={handleSubmit}>
                 <Text style={styles.buttonText}>Submit</Text>
@@ -492,59 +585,106 @@ const SamvadScreen = () => {
           showsVerticalScrollIndicator={false}
         >
           <View style={styles.contentCard}>
-            <Text style={styles.contentText}>Preview Screen for {activeMainTab}</Text>
+            <Text style={styles.contentText}>Preview - {getFormHeader()}</Text>
             <View style={styles.previewContainer}>
-              <Text style={styles.previewHeader}>Form Data Preview:</Text>
-              <Text style={styles.previewText}>
-                <Text style={styles.previewLabel}>Mobile: </Text>
-                {getCurrentFormData().mobile || 'Not provided'}
-              </Text>
-              <Text style={styles.previewText}>
-                <Text style={styles.previewLabel}>Name: </Text>
-                {getCurrentFormData().name || 'Not provided'}
-              </Text>
-              <Text style={styles.previewText}>
-                <Text style={styles.previewLabel}>Father/Husband's Name: </Text>
-                {getCurrentFormData().fatherHusbandName || 'Not provided'}
-              </Text>
-              <Text style={styles.previewText}>
-                <Text style={styles.previewLabel}>Address: </Text>
-                {getCurrentFormData().address || 'Not provided'}
-              </Text>
-              <Text style={styles.previewText}>
-                <Text style={styles.previewLabel}>Pincode: </Text>
-                {getCurrentFormData().pincode || 'Not provided'}
-              </Text>
-              <Text style={styles.previewText}>
-                <Text style={styles.previewLabel}>Post Office: </Text>
-                {getCurrentFormData().postOffice || 'Not provided'}
-              </Text>
-              <Text style={styles.previewText}>
-                <Text style={styles.previewLabel}>Taluka: </Text>
-                {getCurrentFormData().taluka || 'Not provided'}
-              </Text>
-              <Text style={styles.previewText}>
-                <Text style={styles.previewLabel}>District: </Text>
-                {getCurrentFormData().district || 'Not provided'}
-              </Text>
-              <Text style={styles.previewText}>
-                <Text style={styles.previewLabel}>State: </Text>
-                {getCurrentFormData().state || 'Not provided'}
-              </Text>
-              <Text style={styles.previewText}>
-                <Text style={styles.previewLabel}>Purpose: </Text>
-                {getCurrentFormData().purpose || 'Not provided'}
-              </Text>
+              <Text style={styles.previewHeader}>Submitted Information:</Text>
+              
+              <View style={styles.previewRow}>
+                <Text style={styles.previewLabel}>Mobile Number:</Text>
+                <Text style={styles.previewValue}>{getCurrentFormData().mobile || 'Not provided'}</Text>
+              </View>
+              
+              <View style={styles.previewRow}>
+                <Text style={styles.previewLabel}>Name:</Text>
+                <Text style={styles.previewValue}>{getCurrentFormData().name || 'Not provided'}</Text>
+              </View>
+              
+              <View style={styles.previewRow}>
+                <Text style={styles.previewLabel}>Father/Husband's Name:</Text>
+                <Text style={styles.previewValue}>{getCurrentFormData().fatherHusbandName || 'Not provided'}</Text>
+              </View>
+              
+              <View style={styles.previewRow}>
+                <Text style={styles.previewLabel}>Address:</Text>
+                <Text style={styles.previewValue}>{getCurrentFormData().address || 'Not provided'}</Text>
+              </View>
+              
+              <View style={styles.previewRow}>
+                <Text style={styles.previewLabel}>Pincode:</Text>
+                <Text style={styles.previewValue}>{getCurrentFormData().pincode || 'Not provided'}</Text>
+              </View>
+              
+              <View style={styles.previewRow}>
+                <Text style={styles.previewLabel}>Post Office:</Text>
+                <Text style={styles.previewValue}>{getCurrentFormData().postOffice || 'Not provided'}</Text>
+              </View>
+              
+              <View style={styles.previewRow}>
+                <Text style={styles.previewLabel}>Taluka:</Text>
+                <Text style={styles.previewValue}>{getCurrentFormData().taluka || 'Not provided'}</Text>
+              </View>
+              
+              <View style={styles.previewRow}>
+                <Text style={styles.previewLabel}>District:</Text>
+                <Text style={styles.previewValue}>{getCurrentFormData().district || 'Not provided'}</Text>
+              </View>
+              
+              <View style={styles.previewRow}>
+                <Text style={styles.previewLabel}>State:</Text>
+                <Text style={styles.previewValue}>{getCurrentFormData().state || 'Not provided'}</Text>
+              </View>
+              
+              <View style={styles.previewRow}>
+                <Text style={styles.previewLabel}>{getPurposeLabel()}:</Text>
+                <Text style={styles.previewValue}>{getCurrentFormData().purpose || 'Not provided'}</Text>
+              </View>
+              
               {activeMainTab === 'APPOINTMENT' && (
-                <Text style={styles.previewText}>
-                  <Text style={styles.previewLabel}>Requested Date: </Text>
-                  {getCurrentFormData().requestedDate || 'Not provided'}
-                </Text>
+                <View style={styles.previewRow}>
+                  <Text style={styles.previewLabel}>Requested Date:</Text>
+                  <Text style={styles.previewValue}>{getCurrentFormData().requestedDate || 'Not provided'}</Text>
+                </View>
               )}
-              <Text style={styles.previewText}>
-                <Text style={styles.previewLabel}>Declaration Accepted: </Text>
-                {getCurrentFormData().declarationAccepted ? 'Yes' : 'No'}
-              </Text>
+              
+              <View style={styles.previewRow}>
+                <Text style={styles.previewLabel}>Declaration:</Text>
+                <Text style={[styles.previewValue, getCurrentFormData().declarationAccepted ? styles.accepted : styles.notAccepted]}>
+                  {getCurrentFormData().declarationAccepted ? 'Accepted ✓' : 'Not Accepted ✗'}
+                </Text>
+              </View>
+            </View>
+
+            <View style={styles.buttonContainer}>
+              <TouchableOpacity 
+                style={styles.cancelButton} 
+                onPress={() => setActiveSubTab('ADD')}
+              >
+                <Text style={styles.buttonText}>Edit Form</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={styles.submitButton} 
+                onPress={() => {
+                  Alert.alert(
+                    'Confirmed',
+                    `Your ${activeMainTab.toLowerCase()} has been successfully recorded in the system.`,
+                    [
+                      {
+                        text: 'New Form',
+                        onPress: () => {
+                          handleCancel();
+                          setActiveSubTab('ADD');
+                        }
+                      },
+                      {
+                        text: 'Done',
+                        onPress: () => navigation.goBack()
+                      }
+                    ]
+                  );
+                }}
+              >
+                <Text style={styles.buttonText}>Confirm</Text>
+              </TouchableOpacity>
             </View>
           </View>
         </ScrollView>
@@ -691,11 +831,16 @@ const styles = StyleSheet.create({
   },
   categoryItem: {
     backgroundColor: '#f8f9fa',
-    padding: 15,
+    padding: 18,
     marginBottom: 12,
-    borderRadius: 10,
+    borderRadius: 12,
     borderLeftWidth: 4,
     borderLeftColor: '#FF6B35',
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
   },
   categoryName: {
     fontSize: 16,
@@ -708,47 +853,8 @@ const styles = StyleSheet.create({
     color: '#666',
     lineHeight: 18,
   },
-
-  // Instruction screen styles
-  instructionTitle: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#FF6B35',
-    textAlign: 'center',
-    marginBottom: 15,
-  },
-  instructionSubtitle: {
-    fontSize: 16,
-    color: '#666',
-    textAlign: 'center',
-    marginBottom: 30,
-    lineHeight: 22,
-  },
-  instructionContainer: {
-    width: '100%',
-    marginTop: 10,
-  },
-  instructionItem: {
-    backgroundColor: '#f8f9fa',
-    padding: 15,
-    marginBottom: 12,
-    borderRadius: 10,
-    borderLeftWidth: 4,
-    borderLeftColor: '#FF6B35',
-  },
-  instructionName: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#333',
-    marginBottom: 5,
-  },
-  instructionDescription: {
-    fontSize: 14,
-    color: '#666',
-    lineHeight: 18,
-  },
   
-  // Input Styles (modified to remove row container)
+  // Input Styles
   inputContainer: {
     width: '100%',
     marginBottom: 16,
@@ -807,6 +913,13 @@ const styles = StyleSheet.create({
     color: '#e74c3c',
     fontWeight: 'bold',
   },
+  fieldNote: {
+    fontSize: 11,
+    color: '#666',
+    fontStyle: 'italic',
+    marginTop: 4,
+    lineHeight: 14,
+  },
   
   // Declaration with checkbox styles
   declarationContainer: {
@@ -814,26 +927,26 @@ const styles = StyleSheet.create({
     padding: 16,
     borderRadius: 10,
     marginVertical: 20,
-    borderLeftWidth: 9,
+    borderLeftWidth: 4,
     borderLeftColor: '#FF6B35',
   },
   checkboxContainer: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-            // Add this for better spacing in modern React Native versions
-  paddingRight: 10,
+    width: '100%',
   },
   checkbox: {
     width: 25,
-    height: 20,
+    height: 25, // Changed from 20 to 25 for better visibility
     borderWidth: 2,
     borderColor: '#ddd',
     borderRadius: 6,
-    marginRight: 5,
+    marginRight: 12,
     marginTop: 2,
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: '#fff',
+    flexShrink: 0, // Prevent checkbox from shrinking
   },
   checkboxChecked: {
     backgroundColor: '#FF6B35',
@@ -841,16 +954,19 @@ const styles = StyleSheet.create({
   },
   checkmark: {
     color: '#fff',
-    fontSize: 12,
+    fontSize: 14, // Slightly larger checkmark
     fontWeight: 'bold',
   },
+  declarationTextContainer: {
+    flex: 1,
+    paddingRight: 4,
+  },
   declarationText: {
-    fontSize: 12,
-    color: '#555',
+    fontSize: 13, // Slightly larger font
+    color: '#444', // Darker color for better visibility
     textAlign: 'justify',
-    lineHeight: 18,
+    lineHeight: 20, // Increased line height
     fontStyle: 'italic',
-    
   },
   
   buttonContainer: {

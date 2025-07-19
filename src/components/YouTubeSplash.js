@@ -1,29 +1,28 @@
 import React, { useEffect } from 'react';
 import { View, StyleSheet, Dimensions } from 'react-native';
-import YoutubePlayer from 'react-native-youtube-iframe';
+import Video from 'react-native-video';
 
 const { width } = Dimensions.get('window');
 
 const YouTubeSplash = ({ onComplete }) => {
   useEffect(() => {
     const timer = setTimeout(() => {
-      onComplete(); // Move to main app after 10 seconds
-    }, 10000); // 10 seconds
+      onComplete();
+    }, 10000);
 
     return () => clearTimeout(timer);
   }, []);
 
   return (
     <View style={styles.container}>
-      <YoutubePlayer
-  height={300}
-  width={width - 40}
-  play={true}
-  videoId={'y6nmpiEnL-o'}
-  volume={100}
-  forceAndroidAutoplay={true}
-/>
-
+      <Video
+        source={require('../assets/intro.mp4')} // Adjust path as needed
+        style={{ width: width, height: 300 }}
+        resizeMode="cover"
+        repeat={true}
+        muted={false}
+        paused={false}
+      />
     </View>
   );
 };
@@ -31,7 +30,7 @@ const YouTubeSplash = ({ onComplete }) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#000', // Black background
+    backgroundColor: '#000',
     justifyContent: 'center',
     alignItems: 'center',
   },

@@ -15,7 +15,7 @@ const StaticBannerSplash = ({ onComplete }) => {
   return (
     <View style={styles.container}>
       <Image
-        source={require('../assets/image.png')} // your image path
+        source={require('../assets/image0.png')} // your image path
         style={styles.banner}
         resizeMode="cover" // or "stretch" / "contain"
       />

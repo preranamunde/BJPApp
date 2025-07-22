@@ -1,7 +1,7 @@
 export const languageData = {
   en: {
-    appTitle: "BJP App",
-    welcome: "Welcome to BJP App",
+    appTitle: "SanjayJaiswal",
+    welcome: "Welcome to SanjayJaiswal App",
     stayConnected: "Stay connected with the latest updates and events",
     quickActions: "Quick Actions",
     knowLeader: "Know Your Leader",
@@ -15,8 +15,8 @@ export const languageData = {
     tomorrow: "Tomorrow, 10:00 AM",
   },
   hi: {
-    appTitle: "भाजपा ऐप",
-    welcome: "भाजपा ऐप में आपका स्वागत है",
+    appTitle: "संजय जायसवाल",
+    welcome: "संजय जायसवाल ऐप में आपका स्वागत है",
     stayConnected: "नवीनतम अपडेट और घटनाओं से जुड़े रहें",
     quickActions: "त्वरित क्रियाएँ",
     knowLeader: "अपने नेता को जानें",

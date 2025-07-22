@@ -11,16 +11,16 @@ import {
   ScrollView,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
-import FontSizeController from '../components/FontSizeController';
+
 import NotificationIcon from '../components/NotificationIcon';
 import { languageData } from '../components/languages';
 
 const HomeScreen = ({ navigation }) => {
-  const [fontSize, setFontSize] = useState(16);
   const [selectedLanguage, setSelectedLanguage] = useState('en');
   const [isLanguageModalVisible, setIsLanguageModalVisible] = useState(false);
   const [isListening, setIsListening] = useState(false);
 
+  const fontSize = 16;
   const lang = languageData[selectedLanguage];
 
   const languages = [
@@ -104,8 +104,6 @@ const HomeScreen = ({ navigation }) => {
         </View>
       </View>
 
-      <FontSizeController onFontSizeChange={setFontSize} />
-
       <ScrollView style={styles.content}>
         <View style={styles.welcomeSection}>
           <Text style={[styles.welcomeTitle, { fontSize: fontSize + 8 }]}>{lang.welcome}</Text>
@@ -152,14 +150,12 @@ const HomeScreen = ({ navigation }) => {
         </View>
       </ScrollView>
 
-      {/* Floating Chat Icon */}
       <TouchableOpacity
         style={styles.chatButton}
         onPress={() => navigation.navigate('LokSahayak')}>
         <Icon name="chat" size={28} color="#fff" />
       </TouchableOpacity>
 
-      {/* Language Modal */}
       <Modal
         visible={isLanguageModalVisible}
         transparent={true}
@@ -191,6 +187,7 @@ const HomeScreen = ({ navigation }) => {
 };
 
 const styles = StyleSheet.create({
+  // ... same styles as your original code ...
   container: {
     flex: 1,
     backgroundColor: '#fff',
@@ -205,14 +202,12 @@ const styles = StyleSheet.create({
   },
   menuButton: {
     padding: 5,
-   
   },
   headerTitle: {
     fontWeight: 'bold',
     color: '#fff',
     flex: 1,
     textAlign: 'left',
-   
   },
   rightHeaderSection: {
     flexDirection: 'row',
@@ -354,38 +349,9 @@ const styles = StyleSheet.create({
     marginLeft: 12,
     flex: 1,
   },
-
-  // Custom Language Icon (A + अ)
-  customLanguageIcon: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'transparent',
-    paddingTop: 4,
-  },
-  englishLetter: {
-    color: '#fff',
-    fontSize: 20,
-    fontWeight: 'bold',
-    marginRight: -4,
-  },
-  marathiCircle: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    width: 22,
-    height: 22,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingTop: 4,
-  },
-  marathiLetter: {
-    color: '#FF6B35',
-    fontSize: 16,
-    fontWeight: 'bold',
-    
-  },
   chatButton: {
     position: 'absolute',
-    bottom: 10, // adjust this based on your bottom tab height
+    bottom: 10,
     right: 10,
     backgroundColor: '#e16e2b',
     width: 60,

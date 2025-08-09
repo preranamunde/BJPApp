@@ -7,9 +7,11 @@ import {
   ScrollView,
   TextInput,
   Alert,
-  
   Dimensions,
+  BackHandler,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useFocusEffect } from '@react-navigation/native';
 
 const { width } = Dimensions.get('window');
 
@@ -17,16 +19,86 @@ const SamvadScreen = ({ route, navigation }) => {
   const [activeMainTab, setActiveMainTab] = useState(null);
   const [activeSubTab, setActiveSubTab] = useState(null);
   const [focusedField, setFocusedField] = useState(null);
+  const [isUserLoggedIn, setIsUserLoggedIn] = useState(false);
+  const [showRegistrationSuccess, setShowRegistrationSuccess] = useState(false);
+
+  // Check login status whenever screen comes into focus
+  useFocusEffect(
+    React.useCallback(() => {
+      checkLoginStatus();
+    }, [])
+  );
+
+  // Handle back button for logged in users
+  useEffect(() => {
+    if (isUserLoggedIn) {
+      const backAction = () => {
+        // Disable back button for logged in users
+        // App can only be closed intentionally
+        Alert.alert(
+          "Exit App", 
+          "Are you sure you want to exit?", 
+          [
+            {
+              text: "Cancel",
+              onPress: () => null,
+              style: "cancel"
+            },
+            { 
+              text: "YES", 
+              onPress: () => BackHandler.exitApp() 
+            }
+          ]
+        );
+        return true; // Prevent default back action
+      };
+
+      const backHandler = BackHandler.addEventListener("hardwareBackPress", backAction);
+      return () => backHandler.remove();
+    }
+  }, [isUserLoggedIn]);
+
+  const checkLoginStatus = async () => {
+    try {
+      const loginStatus = await AsyncStorage.getItem('isLoggedin');
+      const isLoggedIn = loginStatus === 'TRUE';
+      
+      // Set global variable
+      global.isUserLoggedin = isLoggedIn;
+      setIsUserLoggedIn(isLoggedIn);
+      
+      console.log('Login status:', isLoggedIn);
+    } catch (error) {
+      console.error('Error checking login status:', error);
+      // Default to false if there's an error
+      global.isUserLoggedin = false;
+      setIsUserLoggedIn(false);
+    }
+  };
 
   // Handle navigation parameters
   useEffect(() => {
     if (route?.params) {
-      const { initialTab, initialSubTab } = route.params;
+      const { initialTab, initialSubTab, registrationSuccess, fromRegistration } = route.params;
+      
       if (initialTab) {
         setActiveMainTab(initialTab);
       }
       if (initialSubTab) {
         setActiveSubTab(initialSubTab);
+      }
+      
+      // Handle registration success
+      if (registrationSuccess || fromRegistration) {
+        setShowRegistrationSuccess(true);
+        // Clear the parameter after showing for 4 seconds
+        setTimeout(() => {
+          setShowRegistrationSuccess(false);
+          navigation.setParams({ 
+            registrationSuccess: undefined, 
+            fromRegistration: undefined 
+          });
+        }, 4000);
       }
     }
   }, [route?.params]);
@@ -94,11 +166,27 @@ const SamvadScreen = ({ route, navigation }) => {
   const mainTabs = ['APPEAL', 'APPOINTMENT', 'GRIEVANCE', 'COMPLAINTS'];
   const subTabs = ['ADD', 'PREVIEW'];
 
-  // Handle main tab click
+  // Handle main tab click with login check
   const handleMainTabClick = (tab) => {
     setActiveMainTab(tab);
-    // Default to ADD when main tab is selected
-    setActiveSubTab('ADD');
+    
+    // Check if user is logged in
+    if (!isUserLoggedIn) {
+      // Show sub tabs but don't allow form access
+      setActiveSubTab('ADD');
+    } else {
+      // User is logged in, normal flow
+      setActiveSubTab('ADD');
+    }
+  };
+
+  // Handle sub tab click with login check
+  const handleSubTabClick = (subTab) => {
+    if (!isUserLoggedIn && subTab === 'ADD') {
+      // Don't change the sub tab, just show login message
+      return;
+    }
+    setActiveSubTab(subTab);
   };
 
   // Get current tab's form data
@@ -279,6 +367,59 @@ const SamvadScreen = ({ route, navigation }) => {
     );
   };
 
+  const handleLoginRedirect = () => {
+    navigation.navigate('Login');
+  };
+
+  // Render login required message
+  const renderLoginRequired = () => {
+    const justRegistered = route?.params?.fromRegistration;
+    
+    return (
+      <ScrollView contentContainerStyle={styles.contentArea} showsVerticalScrollIndicator={false}>
+        <View style={styles.contentCard}>
+          <View style={styles.loginRequiredContainer}>
+            {justRegistered && (
+              <View style={styles.successBanner}>
+                <Text style={styles.successText}>✅ Registration Successful!</Text>
+                <Text style={styles.successSubText}>Your account has been created successfully</Text>
+              </View>
+            )}
+            
+            <Text style={styles.loginRequiredTitle}>🔒 Login Required</Text>
+            <Text style={styles.loginRequiredMessage}>
+              {justRegistered 
+                ? "Great! Your account has been created successfully."
+                : "Oops! You are not logged in."
+              }
+            </Text>
+            <Text style={styles.loginRequiredSubMessage}>
+              Please login to access {activeMainTab?.toLowerCase()} services and book appointments.
+            </Text>
+            
+            <TouchableOpacity 
+              style={styles.loginButton} 
+              onPress={handleLoginRedirect}
+            >
+              <Text style={styles.loginButtonText}>
+                {justRegistered ? "Login to Continue" : "Click here to Login"}
+              </Text>
+            </TouchableOpacity>
+            
+            {!justRegistered && (
+              <View style={styles.registerContainer}>
+                <Text style={styles.registerText}>Don't have an account? </Text>
+                <TouchableOpacity onPress={() => navigation.navigate('Registration')}>
+                  <Text style={styles.registerLink}>Register here</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+          </View>
+        </View>
+      </ScrollView>
+    );
+  };
+
   const renderInputField = (
     field,
     label,
@@ -331,71 +472,78 @@ const SamvadScreen = ({ route, navigation }) => {
   };
 
   const renderCheckbox = () => {
-  const currentFormData = getCurrentFormData();
-  const isChecked = currentFormData.declarationAccepted;
+    const currentFormData = getCurrentFormData();
+    const isChecked = currentFormData.declarationAccepted;
 
-  return (
-    <View style={styles.declarationContainer}>
-      <View style={styles.checkboxContainer}>
-        <TouchableOpacity
-          onPress={() => handleChange('declarationAccepted', !isChecked)}
-          activeOpacity={0.7}
-        >
-          <View style={[styles.checkbox, isChecked && styles.checkboxChecked]}>
-            {isChecked && <Text style={styles.checkmark}>✓</Text>}
-          </View>
-        </TouchableOpacity>
+    return (
+      <View style={styles.declarationContainer}>
+        <View style={styles.checkboxContainer}>
+          <TouchableOpacity
+            onPress={() => handleChange('declarationAccepted', !isChecked)}
+            activeOpacity={0.7}
+          >
+            <View style={[styles.checkbox, isChecked && styles.checkboxChecked]}>
+              {isChecked && <Text style={styles.checkmark}>✓</Text>}
+            </View>
+          </TouchableOpacity>
 
-        <TouchableOpacity 
-          style={styles.declarationTextContainer}
-          onPress={() => handleChange('declarationAccepted', !isChecked)}
-          activeOpacity={0.7}
-        >
-          <Text style={styles.declarationText}>
-            I hereby declare that the information provided above is true to the best of my knowledge and I'm aware that if any part of information submitted is found to be false, my application will be rejected.
-          </Text>
-        </TouchableOpacity>
+          <TouchableOpacity 
+            style={styles.declarationTextContainer}
+            onPress={() => handleChange('declarationAccepted', !isChecked)}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.declarationText}>
+              I hereby declare that the information provided above is true to the best of my knowledge and I'm aware that if any part of information submitted is found to be false, my application will be rejected.
+            </Text>
+          </TouchableOpacity>
+        </View>
       </View>
-    </View>
-  );
-};
-
+    );
+  };
 
   // Render welcome content when no main tab is selected
   const renderWelcomeContent = () => (
-  <ScrollView
-    contentContainerStyle={styles.contentArea}
-    showsVerticalScrollIndicator={false}
-  >
-    <View style={styles.contentCard}>
-      <Text style={styles.welcomeTitle}>Welcome to Samvad</Text>
-      <Text style={styles.welcomeSubtitle}>
-        Connect with your representative through our digital platform
-      </Text>
-      <View style={styles.categoryContainer}>
-        <View style={styles.categoryItem}>
-          <Text style={styles.categoryName}>🔔 APPEAL</Text>
-          <Text style={styles.categoryDescription}>Submit an appeal for review and resolution</Text>
-        </View>
+    <ScrollView
+      contentContainerStyle={styles.contentArea}
+      showsVerticalScrollIndicator={false}
+    >
+      <View style={styles.contentCard}>
+        {/* Registration Success Banner */}
+        {showRegistrationSuccess && (
+          <View style={styles.successBanner}>
+            <Text style={styles.successText}>🎉 Welcome! Registration Successful!</Text>
+            <Text style={styles.successSubText}>You can now access all Samvad services</Text>
+          </View>
+        )}
         
-        <View style={styles.categoryItem}>
-          <Text style={styles.categoryName}>📅 APPOINTMENT</Text>
-          <Text style={styles.categoryDescription}>Schedule a meeting with your representative</Text>
-        </View>
-        
-        <View style={styles.categoryItem}>
-          <Text style={styles.categoryName}>📋 GRIEVANCE</Text>
-          <Text style={styles.categoryDescription}>Register your grievance for prompt action</Text>
-        </View>
-        
-        <View style={styles.categoryItem}>
-          <Text style={styles.categoryName}>📝 COMPLAINTS</Text>
-          <Text style={styles.categoryDescription}>File a complaint and track its status</Text>
+        <Text style={styles.welcomeTitle}>Welcome to Samvad</Text>
+        <Text style={styles.welcomeSubtitle}>
+          Connect with your representative through our digital platform
+        </Text>
+        <View style={styles.categoryContainer}>
+          <View style={styles.categoryItem}>
+            <Text style={styles.categoryName}>🔔 APPEAL</Text>
+            <Text style={styles.categoryDescription}>Submit an appeal for review and resolution</Text>
+          </View>
+          
+          <View style={styles.categoryItem}>
+            <Text style={styles.categoryName}>📅 APPOINTMENT</Text>
+            <Text style={styles.categoryDescription}>Schedule a meeting with your representative</Text>
+          </View>
+          
+          <View style={styles.categoryItem}>
+            <Text style={styles.categoryName}>📋 GRIEVANCE</Text>
+            <Text style={styles.categoryDescription}>Register your grievance for prompt action</Text>
+          </View>
+          
+          <View style={styles.categoryItem}>
+            <Text style={styles.categoryName}>📝 COMPLAINTS</Text>
+            <Text style={styles.categoryDescription}>File a complaint and track its status</Text>
+          </View>
         </View>
       </View>
-    </View>
-  </ScrollView>
-);
+    </ScrollView>
+  );
 
   return (
     <View style={styles.container}>
@@ -435,7 +583,7 @@ const SamvadScreen = ({ route, navigation }) => {
             {subTabs.map(tab => (
               <TouchableOpacity
                 key={tab}
-                onPress={() => setActiveSubTab(tab)}
+                onPress={() => handleSubTabClick(tab)}
                 style={[
                   styles.subTabButton,
                   activeSubTab === tab && styles.activeSubTabButton,
@@ -459,6 +607,8 @@ const SamvadScreen = ({ route, navigation }) => {
       {/* Content Area */}
       {!activeMainTab ? (
         renderWelcomeContent()
+      ) : !isUserLoggedIn && activeSubTab === 'ADD' ? (
+        renderLoginRequired()
       ) : activeSubTab === 'ADD' ? (
         <ScrollView 
           contentContainerStyle={styles.contentArea} 
@@ -811,6 +961,89 @@ const styles = StyleSheet.create({
     marginBottom: 25,
   },
   
+  // Success Banner Styles
+  successBanner: {
+    backgroundColor: '#d4edda',
+    borderColor: '#c3e6cb',
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 20,
+    width: '100%',
+    alignItems: 'center',
+  },
+  successText: {
+    color: '#155724',
+    fontSize: 18,
+    fontWeight: 'bold',
+    textAlign: 'center',
+    marginBottom: 4,
+  },
+  successSubText: {
+    color: '#155724',
+    fontSize: 14,
+    textAlign: 'center',
+  },
+  
+  // Login Required Styles
+  loginRequiredContainer: {
+    alignItems: 'center',
+    padding: 20,
+  },
+  loginRequiredTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#e74c3c',
+    marginBottom: 15,
+    textAlign: 'center',
+  },
+  loginRequiredMessage: {
+    fontSize: 18,
+    color: '#333',
+    marginBottom: 10,
+    textAlign: 'center',
+    fontWeight: '600',
+  },
+  loginRequiredSubMessage: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 30,
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+  loginButton: {
+    backgroundColor: '#e16e2b',
+    paddingHorizontal: 30,
+    paddingVertical: 15,
+    borderRadius: 25,
+    marginBottom: 20,
+    elevation: 3,
+    shadowColor: '#e16e2b',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+  },
+  loginButtonText: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: 'bold',
+    textAlign: 'center',
+  },
+  registerContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  registerText: {
+    fontSize: 14,
+    color: '#666',
+  },
+  registerLink: {
+    fontSize: 14,
+    color: '#e16e2b',
+    fontWeight: '600',
+    textDecorationLine: 'underline',
+  },
+  
   // Welcome screen styles
   welcomeTitle: {
     fontSize: 28,
@@ -938,7 +1171,7 @@ const styles = StyleSheet.create({
   },
   checkbox: {
     width: 25,
-    height: 25, // Changed from 20 to 25 for better visibility
+    height: 25,
     borderWidth: 2,
     borderColor: '#ddd',
     borderRadius: 6,
@@ -947,7 +1180,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: '#fff',
-    flexShrink: 0, // Prevent checkbox from shrinking
+    flexShrink: 0,
   },
   checkboxChecked: {
     backgroundColor: '#FF6B35',
@@ -955,7 +1188,7 @@ const styles = StyleSheet.create({
   },
   checkmark: {
     color: '#fff',
-    fontSize: 14, // Slightly larger checkmark
+    fontSize: 14,
     fontWeight: 'bold',
   },
   declarationTextContainer: {
@@ -963,10 +1196,10 @@ const styles = StyleSheet.create({
     paddingRight: 4,
   },
   declarationText: {
-    fontSize: 13, // Slightly larger font
-    color: '#444', // Darker color for better visibility
+    fontSize: 13,
+    color: '#444',
     textAlign: 'justify',
-    lineHeight: 20, // Increased line height
+    lineHeight: 20,
     fontStyle: 'italic',
   },
   
@@ -1020,15 +1253,29 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     fontSize: 16,
   },
-  previewText: {
-    fontSize: 14,
-    color: '#555',
-    marginBottom: 6,
-    lineHeight: 20,
+  previewRow: {
+    flexDirection: 'row',
+    marginBottom: 8,
+    flexWrap: 'wrap',
   },
   previewLabel: {
     fontWeight: '600',
     color: '#333',
+    minWidth: '40%',
+    fontSize: 14,
+  },
+  previewValue: {
+    color: '#555',
+    flex: 1,
+    fontSize: 14,
+  },
+  accepted: {
+    color: '#27ae60',
+    fontWeight: '600',
+  },
+  notAccepted: {
+    color: '#e74c3c',
+    fontWeight: '600',
   },
 });
 

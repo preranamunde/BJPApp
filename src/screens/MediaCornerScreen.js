@@ -9,6 +9,7 @@ import {
   Image,
 } from 'react-native';
 import Video from 'react-native-video';
+import WebView from 'react-native-webview';
 
 const { width } = Dimensions.get('window');
 
@@ -58,55 +59,21 @@ const MediaCornerScreen = () => {
             ))}
           </ScrollView>
         ) : activeTab === 'Facebook' ? (
-          <ScrollView contentContainerStyle={styles.postsContainer}>
-            <View style={styles.postItem}>
-              <Image source={require('../assets/image1.jpg')} style={styles.postImage} resizeMode="cover" />
-              <Text style={styles.postTitle}>संजय जायसवाल जी का संदेश</Text>
-              <Text style={styles.postDate}>15 जुलाई 2025</Text>
-              <Text style={styles.postText}>
-                बिहार के विकास को लेकर हमारी सरकार पूरी तरह से समर्पित है। आप सभी के आशीर्वाद और सहयोग की आवश्यकता है। धन्यवाद!
-              </Text>
-            </View>
-
-            <View style={styles.postItem}>
-              <Image source={require('../assets/facebook1.png')} style={styles.postImage} resizeMode="cover" />
-              <Text style={styles.postTitle}>पार्टी बैठक</Text>
-              <Text style={styles.postDate}>17 जुलाई 2025</Text>
-              <Text style={styles.postText}>
-                पार्टी कार्यकर्ताओं के साथ आज की बैठक सफल रही। सभी ने अपने सुझाव साझा किए और आने वाले कार्यक्रमों की रूपरेखा तय की गई।
-              </Text>
-            </View>
-
-            <View style={styles.postItem}>
-              <Image source={require('../assets/facebook2.png')} style={styles.postImage} resizeMode="cover" />
-              <Text style={styles.postTitle}>समाज सेवा</Text>
-              <Text style={styles.postDate}>18 जुलाई 2025</Text>
-              <Text style={styles.postText}>
-                समाज सेवा में निरंतर समर्पित। आप सभी का सहयोग और आशीर्वाद बना रहे। धन्यवाद!
-              </Text>
-            </View>
-          </ScrollView>
+           <WebView
+            source={{ uri: 'http://www.facebook.com/Jaiswalsanjaybjp/' }}
+            style={{ flex: 1 }}
+            startInLoadingState
+            javaScriptEnabled
+            domStorageEnabled
+          />
         ) : activeTab === 'X' ? (
-          <ScrollView contentContainerStyle={styles.postsContainer}>
-            <View style={styles.postItem}>
-              <Image source={require('../assets/twitter2.png')} style={styles.postImage} resizeMode="contain" />
-              <Text style={styles.postTitle}>संजय जायसवाल जी की ट्विटर फोटो</Text>
-              <Text style={styles.postDate}>20 जुलाई 2025</Text>
-              <Text style={styles.postText}>
-                जनता के विश्वास और समर्थन के लिए हम हमेशा प्रतिबद्ध रहेंगे।
-                पटना में आयोजित कार्यक्रम में उपस्थित सभी कार्यकर्ताओं का आभार!
-              </Text>
-            </View>
-
-            <View style={styles.postItem}>
-              <Image source={require('../assets/twitter3.png')} style={styles.postImage} resizeMode="contain" />
-              <Text style={styles.postTitle}>संजय जायसवाल जी का ट्विटर पोस्ट 3</Text>
-              <Text style={styles.postDate}>21 जुलाई 2025</Text>
-              <Text style={styles.postText}>
-                जनता के बीच सीधे संवाद का सिलसिला जारी। हम सब मिलकर प्रदेश को नई ऊँचाइयों तक ले जाएंगे। जय हिंद!
-              </Text>
-            </View>
-          </ScrollView>
+          <WebView
+            source={{ uri: 'http://www.x.com/Sanjayjaiswalmp' }}
+            style={{ flex: 1 }}
+            startInLoadingState
+            javaScriptEnabled
+            domStorageEnabled
+          />
         ) : activeTab === 'Press Meets' ? (
           <ScrollView contentContainerStyle={styles.postsContainer}>
             <View style={styles.postItem}>
@@ -146,21 +113,13 @@ const MediaCornerScreen = () => {
 
 
         ) : activeTab === 'Instagram' ? (
-          <ScrollView contentContainerStyle={styles.postsContainer}>
-            <View style={styles.postItem}>
-              <Image source={require('../assets/instagram1.png')} style={styles.postImage} resizeMode="cover" />
-              <Text style={styles.postTitle}>जन संपर्क अभियान</Text>
-              <Text style={styles.postDate}>22 जुलाई 2025</Text>
-              <Text style={styles.postText}>आज पटना में विशाल जन संपर्क अभियान की शुरुआत। सभी कार्यकर्ताओं का आभार।</Text>
-            </View>
-            <View style={styles.postItem}>
-              <Image source={require('../assets/instagram2.png')} style={styles.postImage} resizeMode="cover" />
-              <Text style={styles.postTitle}>जन समर्थन यात्रा</Text>
-              <Text style={styles.postDate}>23 जुलाई 2025</Text>
-              <Text style={styles.postText}>आज के जन समर्थन यात्रा में जनता का भरपूर सहयोग मिला। सभी का धन्यवाद।</Text>
-            </View>
-
-          </ScrollView>
+          <WebView
+              source={{ uri: 'https://www.instagram.com/drsanjayjaiswalbjp/' }}
+              style={{ flex: 1 }}
+              startInLoadingState
+              javaScriptEnabled
+              domStorageEnabled
+            />
         ) : (
           <Text style={styles.contentText}>{activeTab}</Text>
         )}

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -10,20 +10,71 @@ import {
   Alert,
   KeyboardAvoidingView,
   Platform,
+  ActivityIndicator,
+  PermissionsAndroid,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
-// import { launchImageLibrary, launchCamera } from 'react-native-image-picker';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+// Add these imports for image picker functionality
+import { launchImageLibrary, launchCamera } from 'react-native-image-picker';
 
-const RegistrationScreen = ({ navigation }) => {
+// API Configuration
+const API_BASE_URL = 'http://192.168.1.100:5000'; // Update with your server IP
+
+const apiCall = async (endpoint, method = 'POST', data = null) => {
+  try {
+    const config = {
+      method,
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    };
+
+    if (data) {
+      config.body = JSON.stringify(data);
+    }
+
+    const response = await fetch(`${API_BASE_URL}${endpoint}`, config);
+
+    // ✅ Check content-type before parsing
+    const contentType = response.headers.get('content-type');
+
+    if (!response.ok) {
+      let errorMessage = `HTTP error! status: ${response.status}`;
+      if (contentType && contentType.includes('application/json')) {
+        const errorData = await response.json();
+        errorMessage = errorData.message || errorMessage;
+      } else {
+        const text = await response.text();
+        console.error('Non-JSON error response:', text);
+      }
+      throw new Error(errorMessage);
+    }
+
+    // ✅ Only parse if JSON
+    if (contentType && contentType.includes('application/json')) {
+      return await response.json();
+    } else {
+      throw new Error('Expected JSON but received non-JSON response.');
+    }
+
+  } catch (error) {
+    console.error(`API Error (${endpoint}):`, error.message);
+    throw error;
+  }
+};
+
+const RegistrationScreen = ({ navigation, route }) => {
+  const [isEditMode, setIsEditMode] = useState(false);
   const [formData, setFormData] = useState({
-    photo: null,
-    mobileNo: '',
+    profile_image: null,
+    mobile: '',
     name: '',
+    email: '',
     address: '',
     pincode: '',
-    postOffice: '',
-    taluka: '',
-    district: '',
+    district: '', // Changed from 'city' to 'district'
+    city: '', // ✅ Added city field
     state: '',
     facebookId: '',
     instagramId: '',
@@ -33,42 +84,391 @@ const RegistrationScreen = ({ navigation }) => {
     declaration: false,
   });
 
+  // Email verification states
+  const [emailVerificationState, setEmailVerificationState] = useState('input');
+  const [emailOtp, setEmailOtp] = useState('');
+  const [isEmailVerified, setIsEmailVerified] = useState(false);
+  const [otpTimer, setOtpTimer] = useState(0);
+  const [verificationToken, setVerificationToken] = useState('');
+
+  // Pincode verification states
+  const [pincodeVerificationState, setPincodeVerificationState] = useState('input');
+  const [isPincodeVerified, setIsPincodeVerified] = useState(false);
+
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+
+  // Check if this is edit profile mode
+  useEffect(() => {
+    if (route?.params?.isEditMode) {
+      setIsEditMode(true);
+      loadUserProfile();
+    }
+  }, [route?.params]);
+
+  // OTP timer countdown
+  useEffect(() => {
+    let interval = null;
+    if (otpTimer > 0) {
+      interval = setInterval(() => {
+        setOtpTimer(timer => timer - 1);
+      }, 1000);
+    } else if (otpTimer === 0) {
+      clearInterval(interval);
+    }
+    return () => clearInterval(interval);
+  }, [otpTimer]);
+
+  const loadUserProfile = async () => {
+    try {
+      let profileData = route?.params?.userProfile;
+
+      if (!profileData) {
+        const userData = await AsyncStorage.getItem('userData');
+        if (userData) {
+          const parsedData = JSON.parse(userData);
+          const storedUser = await AsyncStorage.getItem(`user_${parsedData.mobile}`);
+          if (storedUser) {
+            profileData = JSON.parse(storedUser);
+          } else {
+            profileData = parsedData;
+          }
+        }
+      }
+
+      if (profileData) {
+        setFormData({
+          ...profileData,
+          facebookId: profileData.facebookId || '',
+          instagramId: profileData.instagramId || '',
+          xId: profileData.xId || '',
+          email: profileData.email || '',
+          district: profileData.district || '',
+          city: profileData.city || '', // ✅ Load city field
+          password: '',
+          confirmPassword: '',
+          declaration: true,
+        });
+
+        if (profileData.email && profileData.emailVerified) {
+          setIsEmailVerified(true);
+          setEmailVerificationState('verified');
+        }
+
+        if (profileData.pincode && profileData.pincodeVerified) {
+          setIsPincodeVerified(true);
+          setPincodeVerificationState('verified');
+        }
+      }
+    } catch (error) {
+      console.error('Error loading user profile:', error);
+      Alert.alert('Error', 'Failed to load profile data');
+    }
+  };
 
   const handleInputChange = (field, value) => {
     setFormData(prev => ({
       ...prev,
       [field]: value
     }));
+
+    // Reset email verification when email changes
+    if (field === 'email' && value !== formData.email) {
+      setEmailVerificationState('input');
+      setIsEmailVerified(false);
+      setEmailOtp('');
+      setVerificationToken('');
+    }
+
+    // Reset pincode verification when pincode changes
+    if (field === 'pincode' && value !== formData.pincode) {
+      setPincodeVerificationState('input');
+      setIsPincodeVerified(false);
+
+      // Clear district, city and state fields when pincode changes
+      if (value.length !== 6) {
+        setFormData(prev => ({
+          ...prev,
+          pincode: value,
+          district: '',
+          city: '', // ✅ Clear city field
+          state: '',
+        }));
+        return; // Return early to avoid double state update
+      }
+    }
   };
 
-  const handleImagePicker = () => {
+  // ✅ SIMPLIFIED PINCODE VERIFICATION FUNCTION
+  const handlePincodeVerification = async () => {
+    if (!formData.pincode || formData.pincode.length !== 6) {
+      Alert.alert('Error', 'Please enter a valid 6-digit pincode');
+      return;
+    }
+
+    setPincodeVerificationState('loading');
+
+    try {
+      const response = await apiCall(`/api/pincodes/${formData.pincode}`, 'GET');
+      console.log('API Response:', response);
+
+      const data = response?.[0];
+      const district = data?.district || '';
+      const city = data?.city || data?.taluka || ''; // ✅ Get city from API response
+      const state = data?.statename || '';
+
+      if (district && state) {
+        setFormData(prev => ({
+          ...prev,
+          district,
+          city, // ✅ Set city field
+          state,
+        }));
+
+        setIsPincodeVerified(true);
+        setPincodeVerificationState('verified');
+        // ✅ Do not show success alert
+      } else {
+        setPincodeVerificationState('error');
+        Alert.alert('Error', 'Enter a valid pincode.');
+      }
+
+    } catch (error) {
+      console.error('❌ Pincode Fetch Error:', error.message);
+      setPincodeVerificationState('error');
+      Alert.alert('Error', 'Something went wrong. Please try again.');
+    }
+  };
+
+  // API: Verify Email Format and Availability
+  const handleEmailVerification = async () => {
+    if (!formData.email || !validateEmail(formData.email)) {
+      Alert.alert('Error', 'Please enter a valid email address');
+      return;
+    }
+
+    setEmailVerificationState('loading');
+
+    try {
+      const response = await apiCall('/api/auth/verifyemail', 'POST', {
+        email: formData.email,
+      });
+
+      setEmailVerificationState('verify');
+      Alert.alert('Email Verified', 'You can now send OTP');
+
+    } catch (error) {
+      setEmailVerificationState('input');
+      Alert.alert('Error', error.message || 'Failed to verify email. Please try again.');
+    }
+  };
+
+  const validateEmail = (email) => {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+    return emailRegex.test(email);
+  };
+
+  // API: Send OTP to Email
+  const sendEmailOTP = async () => {
+    try {
+      setEmailVerificationState('loading');
+
+      const response = await apiCall('/api/auth/sendotp', 'POST', {
+        email: formData.email,
+      });
+
+      console.log('OTP Send API response:', response);
+      if (response?.message === 'OTP sent to email successfully') {
+        setVerificationToken('dummy-token');
+        setEmailVerificationState('otp');
+        setOtpTimer(300);
+        Alert.alert('OTP Sent', `Verification code has been sent to ${formData.email}.`);
+      } else {
+        throw new Error('Unexpected response');
+      }
+
+    } catch (error) {
+      console.log('OTP send error:', error);
+      setEmailVerificationState('verify');
+      Alert.alert('Error', 'Failed to send OTP. Please try again.');
+    }
+  };
+
+  // API: Verify Email OTP
+  const verifyEmailOTP = async () => {
+    if (!emailOtp || emailOtp.length !== 6) {
+      Alert.alert('Error', 'Please enter the 6-digit OTP');
+      return;
+    }
+
+    try {
+      setEmailVerificationState('loading');
+
+      const response = await apiCall('/api/auth/verifyemailotp', 'POST', {
+        email: formData.email,
+        otp: emailOtp,
+        verificationToken: verificationToken,
+      });
+
+      console.log('Verification response:', response);
+
+      if (response.message === 'Email verified and greeted!') {
+        setIsEmailVerified(true);
+        setEmailVerificationState('verified');
+        Alert.alert('Success', 'Email verified successfully!');
+        setEmailOtp('');
+        setVerificationToken('');
+      } else {
+        setEmailVerificationState('otp');
+        Alert.alert('Error', 'OTP verification failed. Please try again.');
+      }
+
+    } catch (error) {
+      console.log('Verification error:', error);
+      setEmailVerificationState('otp');
+      Alert.alert('Error', 'Failed to verify OTP. Please try again.');
+    }
+  };
+
+  const resendEmailOTP = () => {
     Alert.alert(
-      "Select Photo",
-      "Image picker functionality will be implemented after proper library installation",
+      'Resend OTP',
+      'Do you want to resend the verification code?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Resend', onPress: sendEmailOTP }
+      ]
+    );
+  };
+
+  // ✅ REQUEST CAMERA PERMISSIONS
+  const requestCameraPermission = async () => {
+    if (Platform.OS === 'android') {
+      try {
+        const granted = await PermissionsAndroid.request(
+          PermissionsAndroid.PERMISSIONS.CAMERA,
+          {
+            title: 'Camera Permission',
+            message: 'This app needs access to camera to take photos',
+            buttonNeutral: 'Ask Me Later',
+            buttonNegative: 'Cancel',
+            buttonPositive: 'OK',
+          },
+        );
+        return granted === PermissionsAndroid.RESULTS.GRANTED;
+      } catch (err) {
+        console.warn(err);
+        return false;
+      }
+    }
+    return true;
+  };
+
+  // ✅ FIXED IMAGE PICKER FUNCTION
+  const handleImagePicker = async () => {
+    Alert.alert(
+      isEditMode ? "Update Photo" : "Select Photo",
+      "Choose an option",
       [
         {
-          text: "OK",
-          onPress: () => {
-            // For now, just set a placeholder
-            setFormData(prev => ({
-              ...prev,
-              photo: 'placeholder'
-            }));
-          }
+          text: "Cancel",
+          style: "cancel"
+        },
+        {
+          text: "Camera",
+          onPress: () => handleImageSelection("camera")
+        },
+        {
+          text: "Gallery",
+          onPress: () => handleImageSelection("gallery")
         }
       ]
     );
   };
+
+  // ✅ FIXED IMAGE SELECTION WITH PROPER LIBRARY USAGE
+
+
+  // ✅ FIXED IMAGE SELECTION WITH PROPER URI HANDLING
+  const handleImageSelection = async (source) => {
+    try {
+      const options = {
+        mediaType: 'photo',
+        includeBase64: false,
+        maxHeight: 800,
+        maxWidth: 800,
+        quality: 0.8,
+      };
+
+      let result;
+
+      if (source === 'camera') {
+        const hasPermission = await requestCameraPermission();
+        if (!hasPermission) {
+          Alert.alert('Permission Denied', 'Camera permission is required to take photos');
+          return;
+        }
+        result = await new Promise((resolve, reject) => {
+          launchCamera(options, (response) => {
+            if (response.didCancel || response.errorMessage) {
+              reject(new Error(response.errorMessage || 'Camera cancelled'));
+            } else {
+              resolve(response);
+            }
+          });
+        });
+      } else {
+        result = await new Promise((resolve, reject) => {
+          launchImageLibrary(options, (response) => {
+            if (response.didCancel || response.errorMessage) {
+              reject(new Error(response.errorMessage || 'Gallery cancelled'));
+            } else {
+              resolve(response);
+            }
+          });
+        });
+      }
+
+      if (result && result.assets && result.assets.length > 0) {
+        const imageAsset = result.assets[0];
+
+        console.log('📸 Selected image:', imageAsset);
+
+        // ✅ Store the complete image asset for later use
+        setFormData((prev) => ({
+          ...prev,
+          profile_image: imageAsset,  // Store the full asset object
+        }));
+      }
+
+    } catch (error) {
+      console.error('Error in image selection:', error);
+      Alert.alert('Error', 'Failed to select image. Please try again.');
+    }
+  };
+
+ 
+
+
+
+
+
 
   const validateForm = () => {
     if (!formData.name.trim()) {
       Alert.alert('Error', 'Please enter your name');
       return false;
     }
-    if (!formData.mobileNo.trim() || formData.mobileNo.length !== 10) {
+    if (!formData.mobile.trim() || formData.mobile.length !== 10) {
       Alert.alert('Error', 'Please enter a valid 10-digit mobile number');
+      return false;
+    }
+    if (!formData.email.trim() || !validateEmail(formData.email)) {
+      Alert.alert('Error', 'Please enter a valid email address');
+      return false;
+    }
+    if (!isEmailVerified) {
+      Alert.alert('Error', 'Please verify your email address');
       return false;
     }
     if (!formData.address.trim()) {
@@ -79,14 +479,30 @@ const RegistrationScreen = ({ navigation }) => {
       Alert.alert('Error', 'Please enter a valid 6-digit pincode');
       return false;
     }
-    if (!formData.password.trim() || formData.password.length < 6) {
-      Alert.alert('Error', 'Password must be at least 6 characters long');
+    if (!formData.district.trim()) {
+      Alert.alert('Error', 'Please enter your district');
       return false;
     }
-    if (formData.password !== formData.confirmPassword) {
-      Alert.alert('Error', 'Passwords do not match');
+    if (!formData.city.trim()) { // ✅ Add city validation
+      Alert.alert('Error', 'Please enter your city');
       return false;
     }
+    if (!formData.state.trim()) {
+      Alert.alert('Error', 'Please enter your state');
+      return false;
+    }
+
+    if (!isEditMode) {
+      if (!formData.password.trim() || formData.password.length < 6) {
+        Alert.alert('Error', 'Password must be at least 6 characters long');
+        return false;
+      }
+      if (formData.password !== formData.confirmPassword) {
+        Alert.alert('Error', 'Passwords do not match');
+        return false;
+      }
+    }
+
     if (!formData.declaration) {
       Alert.alert('Error', 'Please accept the declaration');
       return false;
@@ -94,22 +510,78 @@ const RegistrationScreen = ({ navigation }) => {
     return true;
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (validateForm()) {
-      // Here you would typically send the data to your backend
-      Alert.alert('Success', 'Registration completed successfully!', [
-        {
-          text: 'OK',
-          onPress: () => navigation.goBack()
+      try {
+        if (isEditMode) {
+          // existing edit code...
+        } else {
+          const formDataToSend = new FormData();
+
+          formDataToSend.append('name', formData.name);
+          formDataToSend.append('email', formData.email);
+          formDataToSend.append('mobile', formData.mobile);
+          formDataToSend.append('password', formData.password);
+          formDataToSend.append('address', formData.address);
+          formDataToSend.append('district', formData.district);
+          formDataToSend.append('city', formData.city);
+          formDataToSend.append('state', formData.state);
+          formDataToSend.append('pincode', formData.pincode);
+
+          if (formData.profile_image) {
+            formDataToSend.append('profile_image', {
+              uri: formData.profile_image.uri,
+              type: formData.profile_image.type || 'image/jpeg',
+              name: formData.profile_image.fileName || `profile-${Date.now()}.jpg`,
+            });
+          }
+
+          const response = await fetch('http://192.168.1.100:5000/api/auth/register', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'multipart/form-data',
+            },
+            body: formDataToSend,
+          });
+
+          const result = await response.json();
+          console.log('Response:', result);
+
+          if (result && result.message) {
+            Alert.alert(
+              'Success!',
+              'Your account has been created successfully!',
+              [
+                {
+                  text: 'Continue to Login',
+                  onPress: () => navigation.navigate('Login', {
+                    message: 'Registration completed successfully! Please login to continue.',
+                    registrationSuccess: true
+                  })
+                }
+              ]
+            );
+          } else {
+            throw new Error('Registration failed');
+          }
         }
-      ]);
+      } catch (error) {
+        console.error('Error:', error);
+        Alert.alert('Error', error.message || 'Something went wrong');
+      }
     }
   };
 
+
   const handleCancel = () => {
+    const action = isEditMode ? 'Cancel Profile Update' : 'Cancel Registration';
+    const message = isEditMode
+      ? 'Are you sure you want to cancel? Changes will not be saved.'
+      : 'Are you sure you want to cancel? All entered data will be lost.';
+
     Alert.alert(
-      'Cancel Registration',
-      'Are you sure you want to cancel? All entered data will be lost.',
+      action,
+      message,
       [
         {
           text: 'No',
@@ -123,15 +595,234 @@ const RegistrationScreen = ({ navigation }) => {
     );
   };
 
+  const handleBackPress = () => {
+    handleCancel();
+  };
+
+  const renderProfileImage = () => {
+    if (formData.profile_image && formData.profile_image !== 'placeholder') {
+      // Construct the correct URL for your static files
+      const imageUrl = `${API_BASE_URL}/uploads/profile_images/${formData.profile_image}`;
+
+      console.log('📸 Loading image from:', imageUrl);
+
+      return (
+        <View style={styles.photoSelectedContainer}>
+          <Image
+            source={{ uri: imageUrl }}
+            style={styles.photo}
+            onError={(error) => {
+              console.log('❌ Image load error for:', imageUrl);
+              console.log('Error details:', error.nativeEvent);
+              // Optionally show a fallback or placeholder
+            }}
+            onLoad={() => {
+              console.log('✅ Image loaded successfully:', imageUrl);
+            }}
+            onLoadStart={() => {
+              console.log('🔄 Started loading image:', imageUrl);
+            }}
+          />
+          <View style={styles.photoOverlay}>
+            <Icon name="check-circle" size={16} color="#4CAF50" />
+            <Text style={[styles.photoText, { color: '#fff', fontSize: 10 }]}>
+              {isEditMode ? 'Updated' : 'Uploaded'}
+            </Text>
+          </View>
+        </View>
+      );
+    } else {
+      return (
+        <View style={styles.photoPlaceholder}>
+          <Icon name="camera-alt" size={40} color="#e16e2b" />
+          <Text style={styles.photoText}>Upload / Camera</Text>
+        </View>
+      );
+    }
+  };
+  const renderEmailVerificationSection = () => {
+    return (
+      <View style={styles.emailVerificationContainer}>
+        <View style={styles.emailInputContainer}>
+          <TextInput
+            style={[
+              styles.emailInput,
+              isEmailVerified && styles.verifiedInput
+            ]}
+            value={formData.email}
+            onChangeText={(text) => handleInputChange('email', text)}
+            placeholder="Enter your email address"
+            keyboardType="email-address"
+            autoCapitalize="none"
+            editable={!isEmailVerified}
+          />
+
+          {emailVerificationState === 'input' && (
+            <TouchableOpacity
+              style={styles.verifyIconButton}
+              onPress={handleEmailVerification}
+            >
+              <Icon name="mail-outline" size={24} color="#e16e2b" />
+            </TouchableOpacity>
+          )}
+
+          {emailVerificationState === 'loading' && (
+            <View style={styles.loadingIconButton}>
+              <ActivityIndicator size="small" color="#e16e2b" />
+            </View>
+          )}
+
+          {emailVerificationState === 'verify' && (
+            <TouchableOpacity
+              style={styles.sendOtpIconButton}
+              onPress={sendEmailOTP}
+            >
+              <Icon name="send" size={24} color="#2196F3" />
+            </TouchableOpacity>
+          )}
+
+          {isEmailVerified && (
+            <View style={styles.verifiedIconButton}>
+              <Icon name="verified" size={24} color="#4CAF50" />
+            </View>
+          )}
+        </View>
+
+        {emailVerificationState === 'otp' && (
+          <View style={styles.otpContainer}>
+            <Text style={styles.otpLabel}>Enter verification code sent to your email</Text>
+            <View style={styles.otpInputContainer}>
+              <TextInput
+                style={styles.otpInput}
+                value={emailOtp}
+                onChangeText={setEmailOtp}
+                placeholder="Enter 6-digit OTP"
+                keyboardType="numeric"
+                maxLength={6}
+              />
+              <TouchableOpacity
+                style={styles.verifyOtpButton}
+                onPress={verifyEmailOTP}
+                disabled={emailVerificationState === 'loading'}
+              >
+                {emailVerificationState === 'loading' ? (
+                  <ActivityIndicator color="#fff" size="small" />
+                ) : (
+                  <Icon name="check-circle" size={24} color="#fff" />
+                )}
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.otpFooter}>
+              {otpTimer > 0 ? (
+                <Text style={styles.timerText}>
+                  Resend OTP in {Math.floor(otpTimer / 60)}:{(otpTimer % 60).toString().padStart(2, '0')}
+                </Text>
+              ) : (
+                <TouchableOpacity onPress={resendEmailOTP} style={styles.resendButton}>
+                  <Icon name="refresh" size={16} color="#2196F3" />
+                  <Text style={styles.resendText}>Resend OTP</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          </View>
+        )}
+      </View>
+    );
+  };
+
+  // ✅ SIMPLIFIED PINCODE VERIFICATION UI SECTION
+  const renderPincodeVerificationSection = () => {
+    return (
+      <View style={styles.pincodeVerificationContainer}>
+        <View style={styles.pincodeInputContainer}>
+          <TextInput
+            style={[
+              styles.pincodeInput,
+              isPincodeVerified && styles.verifiedInput,
+              pincodeVerificationState === 'error' && styles.errorInput
+            ]}
+            value={formData.pincode}
+            onChangeText={(text) => handleInputChange('pincode', text)}
+            placeholder="Enter 6-digit pincode"
+            keyboardType="numeric"
+            maxLength={6}
+            editable={!isPincodeVerified}
+          />
+
+          {pincodeVerificationState === 'input' && formData.pincode.length === 6 && (
+            <TouchableOpacity
+              style={styles.verifyIconButton}
+              onPress={handlePincodeVerification}
+            >
+              <Icon name="verified-user" size={24} color="#e16e2b" />
+            </TouchableOpacity>
+          )}
+
+          {pincodeVerificationState === 'loading' && (
+            <View style={styles.loadingIconButton}>
+              <ActivityIndicator size="small" color="#e16e2b" />
+            </View>
+          )}
+
+          {pincodeVerificationState === 'verified' && (
+            <View style={styles.verifiedIconButton}>
+              <Icon name="verified" size={24} color="#4CAF50" />
+            </View>
+          )}
+
+          {pincodeVerificationState === 'error' && (
+            <TouchableOpacity
+              style={styles.errorIconButton}
+              onPress={handlePincodeVerification}
+            >
+              <Icon name="error" size={24} color="#f44336" />
+            </TouchableOpacity>
+          )}
+        </View>
+
+        {pincodeVerificationState === 'error' && (
+          <Text style={styles.errorText}>
+            Pincode verification failed. You can enter district, city and state manually below.
+          </Text>
+        )}
+
+        {isPincodeVerified && (
+          <Text style={styles.successText}>
+            ✓ Pincode verified - District, City & State auto-filled
+          </Text>
+        )}
+
+        {formData.pincode.length === 6 && pincodeVerificationState === 'input' && (
+          <Text style={styles.helperText}>
+            Tap the verify icon to auto-fill district, city & state, or enter manually below
+          </Text>
+        )}
+      </View>
+    );
+  };
+
   return (
-    <KeyboardAvoidingView 
+    <KeyboardAvoidingView
       style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
       <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
         <View style={styles.header}>
-          <Text style={styles.title}>User Registration</Text>
-          <Text style={styles.subtitle}>Create Your Profile</Text>
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={handleBackPress}
+          >
+            <Icon name="arrow-back" size={24} color="#fff" />
+          </TouchableOpacity>
+          <View style={styles.headerContent}>
+            <Text style={styles.title}>
+              {isEditMode ? 'Edit Profile' : 'User Registration'}
+            </Text>
+            <Text style={styles.subtitle}>
+              {isEditMode ? 'Update Your Information' : 'Create Your Profile'}
+            </Text>
+          </View>
         </View>
 
         <View style={styles.formContainer}>
@@ -139,19 +830,7 @@ const RegistrationScreen = ({ navigation }) => {
           <View style={styles.photoSection}>
             <Text style={styles.label}>PHOTO *</Text>
             <TouchableOpacity style={styles.photoContainer} onPress={handleImagePicker}>
-              {formData.photo === 'placeholder' ? (
-                <View style={styles.photoSelectedPlaceholder}>
-                  <Icon name="person" size={40} color="#e16e2b" />
-                  <Text style={styles.photoText}>Photo Selected</Text>
-                </View>
-              ) : formData.photo ? (
-                <Image source={{ uri: formData.photo }} style={styles.photo} />
-              ) : (
-                <View style={styles.photoPlaceholder}>
-                  <Icon name="camera-alt" size={40} color="#e16e2b" />
-                  <Text style={styles.photoText}>Upload / Camera</Text>
-                </View>
-              )}
+              {renderProfileImage()}
             </TouchableOpacity>
           </View>
 
@@ -159,13 +838,19 @@ const RegistrationScreen = ({ navigation }) => {
           <View style={styles.inputGroup}>
             <Text style={styles.label}>MOBILE NO. *</Text>
             <TextInput
-              style={styles.input}
-              value={formData.mobileNo}
-              onChangeText={(text) => handleInputChange('mobileNo', text)}
+              style={[styles.input, isEditMode && styles.disabledInput]}
+              value={formData.mobile}
+              onChangeText={(text) => handleInputChange('mobile', text)}
               placeholder="Enter 10-digit mobile number"
               keyboardType="phone-pad"
               maxLength={10}
+              editable={!isEditMode}
             />
+            {isEditMode && (
+              <Text style={styles.helperText}>
+                Mobile number cannot be changed as it's your identity
+              </Text>
+            )}
           </View>
 
           <View style={styles.inputGroup}>
@@ -176,6 +861,11 @@ const RegistrationScreen = ({ navigation }) => {
               onChangeText={(text) => handleInputChange('name', text)}
               placeholder="Enter your full name"
             />
+          </View>
+
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>EMAIL ADDRESS *</Text>
+            {renderEmailVerificationSection()}
           </View>
 
           <View style={styles.inputGroup}>
@@ -192,54 +882,65 @@ const RegistrationScreen = ({ navigation }) => {
 
           <View style={styles.inputGroup}>
             <Text style={styles.label}>PINCODE *</Text>
-            <TextInput
-              style={styles.input}
-              value={formData.pincode}
-              onChangeText={(text) => handleInputChange('pincode', text)}
-              placeholder="Enter 6-digit pincode"
-              keyboardType="numeric"
-              maxLength={6}
-            />
+            {renderPincodeVerificationSection()}
           </View>
 
           <View style={styles.inputGroup}>
-            <Text style={styles.label}>POST OFFICE</Text>
+            <Text style={styles.label}>DISTRICT *</Text>
             <TextInput
-              style={styles.input}
-              value={formData.postOffice}
-              onChangeText={(text) => handleInputChange('postOffice', text)}
-              placeholder="Enter post office name"
-            />
-          </View>
-
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>TALUKA</Text>
-            <TextInput
-              style={styles.input}
-              value={formData.taluka}
-              onChangeText={(text) => handleInputChange('taluka', text)}
-              placeholder="Enter taluka name"
-            />
-          </View>
-
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>DISTRICT</Text>
-            <TextInput
-              style={styles.input}
+              style={[
+                styles.input,
+                isPincodeVerified && styles.autoFilledInput
+              ]}
               value={formData.district}
               onChangeText={(text) => handleInputChange('district', text)}
-              placeholder="Enter district name"
+              placeholder={isPincodeVerified ? "Auto-filled from pincode verification" : "Enter your district"}
+              editable={true} // Always allow manual input
             />
+            {isPincodeVerified && (
+              <Text style={styles.helperText}>
+                Auto-filled from pincode. You can edit if needed.
+              </Text>
+            )}
+          </View>
+
+          {/* ✅ ADDED CITY FIELD */}
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>CITY *</Text>
+            <TextInput
+              style={[
+                styles.input,
+                isPincodeVerified && styles.autoFilledInput
+              ]}
+              value={formData.city}
+              onChangeText={(text) => handleInputChange('city', text)}
+              placeholder={isPincodeVerified ? "Auto-filled from pincode verification" : "Enter your city"}
+              editable={true} // Always allow manual input
+            />
+            {isPincodeVerified && (
+              <Text style={styles.helperText}>
+                Auto-filled from pincode. You can edit if needed.
+              </Text>
+            )}
           </View>
 
           <View style={styles.inputGroup}>
-            <Text style={styles.label}>STATE</Text>
+            <Text style={styles.label}>STATE *</Text>
             <TextInput
-              style={styles.input}
+              style={[
+                styles.input,
+                isPincodeVerified && styles.autoFilledInput
+              ]}
               value={formData.state}
               onChangeText={(text) => handleInputChange('state', text)}
-              placeholder="Enter state name"
+              placeholder={isPincodeVerified ? "Auto-filled from pincode verification" : "Enter your state"}
+              editable={true} // Always allow manual input
             />
+            {isPincodeVerified && (
+              <Text style={styles.helperText}>
+                Auto-filled from pincode. You can edit if needed.
+              </Text>
+            )}
           </View>
 
           <View style={styles.inputGroup}>
@@ -272,51 +973,56 @@ const RegistrationScreen = ({ navigation }) => {
             />
           </View>
 
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>PASSWORD *</Text>
-            <View style={styles.passwordContainer}>
-              <TextInput
-                style={styles.passwordInput}
-                value={formData.password}
-                onChangeText={(text) => handleInputChange('password', text)}
-                placeholder="Enter password (min 6 characters)"
-                secureTextEntry={!showPassword}
-              />
-              <TouchableOpacity
-                style={styles.eyeIcon}
-                onPress={() => setShowPassword(!showPassword)}
-              >
-                <Icon
-                  name={showPassword ? 'visibility' : 'visibility-off'}
-                  size={24}
-                  color="#666"
-                />
-              </TouchableOpacity>
-            </View>
-          </View>
+          {/* Password fields only for registration mode */}
+          {!isEditMode && (
+            <>
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>PASSWORD *</Text>
+                <View style={styles.passwordContainer}>
+                  <TextInput
+                    style={styles.passwordInput}
+                    value={formData.password}
+                    onChangeText={(text) => handleInputChange('password', text)}
+                    placeholder="Enter password (min 6 characters)"
+                    secureTextEntry={!showPassword}
+                  />
+                  <TouchableOpacity
+                    style={styles.eyeIcon}
+                    onPress={() => setShowPassword(!showPassword)}
+                  >
+                    <Icon
+                      name={showPassword ? 'visibility' : 'visibility-off'}
+                      size={24}
+                      color="#666"
+                    />
+                  </TouchableOpacity>
+                </View>
+              </View>
 
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>CONFIRM PASSWORD *</Text>
-            <View style={styles.passwordContainer}>
-              <TextInput
-                style={styles.passwordInput}
-                value={formData.confirmPassword}
-                onChangeText={(text) => handleInputChange('confirmPassword', text)}
-                placeholder="Confirm your password"
-                secureTextEntry={!showConfirmPassword}
-              />
-              <TouchableOpacity
-                style={styles.eyeIcon}
-                onPress={() => setShowConfirmPassword(!showConfirmPassword)}
-              >
-                <Icon
-                  name={showConfirmPassword ? 'visibility' : 'visibility-off'}
-                  size={24}
-                  color="#666"
-                />
-              </TouchableOpacity>
-            </View>
-          </View>
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>CONFIRM PASSWORD *</Text>
+                <View style={styles.passwordContainer}>
+                  <TextInput
+                    style={styles.passwordInput}
+                    value={formData.confirmPassword}
+                    onChangeText={(text) => handleInputChange('confirmPassword', text)}
+                    placeholder="Confirm your password"
+                    secureTextEntry={!showConfirmPassword}
+                  />
+                  <TouchableOpacity
+                    style={styles.eyeIcon}
+                    onPress={() => setShowConfirmPassword(!showConfirmPassword)}
+                  >
+                    <Icon
+                      name={showConfirmPassword ? 'visibility' : 'visibility-off'}
+                      size={24}
+                      color="#666"
+                    />
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </>
+          )}
 
           {/* Declaration */}
           <View style={styles.declarationContainer}>
@@ -340,7 +1046,9 @@ const RegistrationScreen = ({ navigation }) => {
               <Text style={styles.cancelButtonText}>Cancel</Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.submitButton} onPress={handleSubmit}>
-              <Text style={styles.submitButtonText}>Submit</Text>
+              <Text style={styles.submitButtonText}>
+                {isEditMode ? 'Save Changes' : 'Submit'}
+              </Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -361,7 +1069,17 @@ const styles = StyleSheet.create({
     backgroundColor: '#e16e2b',
     padding: 20,
     paddingTop: 40,
+    flexDirection: 'row',
     alignItems: 'center',
+  },
+  backButton: {
+    marginRight: 15,
+    padding: 5,
+  },
+  headerContent: {
+    flex: 1,
+    alignItems: 'center',
+    marginRight: 44,
   },
   title: {
     fontSize: 24,
@@ -391,13 +1109,27 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     marginTop: 10,
+    backgroundColor: '#fff',
   },
   photo: {
     width: 116,
     height: 116,
     borderRadius: 58,
   },
-  photoSelectedPlaceholder: {
+  photoSelectedContainer: {
+    width: 116,
+    height: 116,
+    borderRadius: 58,
+    overflow: 'hidden',
+    position: 'relative',
+  },
+  photoOverlay: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    paddingVertical: 4,
     alignItems: 'center',
   },
   photoPlaceholder: {
@@ -408,6 +1140,12 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#e16e2b',
     fontWeight: '600',
+  },
+  photoIdText: {
+    marginTop: 2,
+    fontSize: 10,
+    color: '#999',
+    fontStyle: 'italic',
   },
   inputGroup: {
     marginBottom: 20,
@@ -427,9 +1165,209 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#333',
   },
+  disabledInput: {
+    backgroundColor: '#f5f5f5',
+    color: '#999',
+  },
+  autoFilledInput: {
+    backgroundColor: '#f8f9fa',
+    color: '#666',
+    borderColor: '#e9ecef',
+  },
+  helperText: {
+    fontSize: 12,
+    color: '#666',
+    marginTop: 5,
+    fontStyle: 'italic',
+  },
+  errorText: {
+    fontSize: 12,
+    color: '#f44336',
+    marginTop: 5,
+    fontStyle: 'italic',
+  },
+  successText: {
+    fontSize: 12,
+    color: '#4CAF50',
+    marginTop: 5,
+    fontStyle: 'italic',
+  },
   multilineInput: {
     height: 80,
     textAlignVertical: 'top',
+  },
+  // Email verification styles
+  emailVerificationContainer: {
+    marginTop: 5,
+  },
+  emailInputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  emailInput: {
+    flex: 1,
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#ddd',
+    borderRadius: 8,
+    padding: 15,
+    fontSize: 16,
+    color: '#333',
+    marginRight: 10,
+  },
+  verifiedInput: {
+    borderColor: '#4CAF50',
+    backgroundColor: '#f8fff8',
+  },
+  errorInput: {
+    borderColor: '#f44336',
+    backgroundColor: '#fff5f5',
+  },
+  verifyIconButton: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: '#fff',
+    borderWidth: 2,
+    borderColor: '#e16e2b',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingIconButton: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: '#fff',
+    borderWidth: 2,
+    borderColor: '#ddd',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  sendOtpIconButton: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: '#fff',
+    borderWidth: 2,
+    borderColor: '#2196F3',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  verifiedIconButton: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: '#e8f5e8',
+    borderWidth: 2,
+    borderColor: '#4CAF50',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  errorIconButton: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: '#fff',
+    borderWidth: 2,
+    borderColor: '#f44336',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  disabledIconButton: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: '#f5f5f5',
+    borderWidth: 2,
+    borderColor: '#ddd',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  otpContainer: {
+    marginTop: 15,
+    padding: 20,
+    backgroundColor: '#f8f9fa',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#e9ecef',
+  },
+  otpLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 15,
+    textAlign: 'center',
+  },
+  otpInputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  otpInput: {
+    flex: 1,
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#ddd',
+    borderRadius: 8,
+    padding: 15,
+    fontSize: 18,
+    color: '#333',
+    marginRight: 15,
+    textAlign: 'center',
+    letterSpacing: 4,
+    fontWeight: '600',
+  },
+  verifyOtpButton: {
+    backgroundColor: '#4CAF50',
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  otpFooter: {
+    marginTop: 15,
+    alignItems: 'center',
+  },
+  timerText: {
+    fontSize: 12,
+    color: '#666',
+    fontWeight: '500',
+  },
+  resendButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    backgroundColor: '#e3f2fd',
+    borderRadius: 20,
+  },
+  resendText: {
+    fontSize: 12,
+    color: '#2196F3',
+    fontWeight: '600',
+    marginLeft: 5,
+  },
+  // Pincode verification styles
+  pincodeVerificationContainer: {
+    marginTop: 5,
+  },
+  pincodeInputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  pincodeInput: {
+    flex: 1,
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#ddd',
+    borderRadius: 8,
+    padding: 15,
+    fontSize: 16,
+    color: '#333',
+    marginRight: 10,
+    textAlign: 'center',
+    letterSpacing: 2,
+    fontWeight: '600',
   },
   passwordContainer: {
     flexDirection: 'row',
@@ -449,19 +1387,24 @@ const styles = StyleSheet.create({
     padding: 15,
   },
   declarationContainer: {
-    marginVertical: 20,
+    marginVertical: 25,
+    backgroundColor: '#fff',
+    padding: 20,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#e9ecef',
   },
   checkboxContainer: {
     flexDirection: 'row',
     alignItems: 'flex-start',
   },
   checkbox: {
-    width: 20,
-    height: 20,
+    width: 22,
+    height: 22,
     borderWidth: 2,
     borderColor: '#e16e2b',
-    borderRadius: 4,
-    marginRight: 12,
+    borderRadius: 6,
+    marginRight: 15,
     marginTop: 2,
     justifyContent: 'center',
     alignItems: 'center',
@@ -473,7 +1416,7 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 14,
     color: '#333',
-    lineHeight: 20,
+    lineHeight: 22,
   },
   declarationTitle: {
     fontWeight: 'bold',
@@ -490,8 +1433,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     borderWidth: 2,
     borderColor: '#e16e2b',
-    borderRadius: 8,
-    padding: 15,
+    borderRadius: 12,
+    padding: 18,
     marginRight: 10,
     alignItems: 'center',
   },
@@ -503,8 +1446,8 @@ const styles = StyleSheet.create({
   submitButton: {
     flex: 1,
     backgroundColor: '#e16e2b',
-    borderRadius: 8,
-    padding: 15,
+    borderRadius: 12,
+    padding: 18,
     marginLeft: 10,
     alignItems: 'center',
   },

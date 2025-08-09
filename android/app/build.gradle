@@ -20,10 +20,10 @@ android {
         }
     }
 
-    namespace "com.bjpapp"
+    namespace "com.nutantek.sanjayjaiswal"
 
     defaultConfig {
-        applicationId "com.bjpapp"
+        applicationId "com.nutantek.sanjayjaiswal"
     minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1

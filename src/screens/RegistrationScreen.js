@@ -17,9 +17,10 @@ import Icon from 'react-native-vector-icons/MaterialIcons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 // Add these imports for image picker functionality
 import { launchImageLibrary, launchCamera } from 'react-native-image-picker';
+import AuthService from '../utils/AuthService';
 
 // API Configuration
-const API_BASE_URL = 'http://192.168.1.100:5000'; // Update with your server IP
+const API_BASE_URL = 'http://192.168.1.107:5000'; // Update with your server IP
 
 const apiCall = async (endpoint, method = 'POST', data = null) => {
   try {
@@ -66,6 +67,8 @@ const apiCall = async (endpoint, method = 'POST', data = null) => {
 
 const RegistrationScreen = ({ navigation, route }) => {
   const [isEditMode, setIsEditMode] = useState(false);
+  const [originalData, setOriginalData] = useState({}); // Store original data for comparison
+  const [isProfileImageChanged, setIsProfileImageChanged] = useState(false); // Track if profile image changed
   const [formData, setFormData] = useState({
     profile_image: null,
     mobile: '',
@@ -137,7 +140,7 @@ const RegistrationScreen = ({ navigation, route }) => {
       }
 
       if (profileData) {
-        setFormData({
+        const loadedData = {
           ...profileData,
           facebookId: profileData.facebookId || '',
           instagramId: profileData.instagramId || '',
@@ -148,9 +151,13 @@ const RegistrationScreen = ({ navigation, route }) => {
           password: '',
           confirmPassword: '',
           declaration: true,
-        });
+        };
 
-        if (profileData.email && profileData.emailVerified) {
+        setFormData(loadedData);
+        setOriginalData(loadedData); // Store original data for comparison
+
+        // In edit mode, email is always verified (cannot be changed)
+        if (profileData.email) {
           setIsEmailVerified(true);
           setEmailVerificationState('verified');
         }
@@ -172,8 +179,8 @@ const RegistrationScreen = ({ navigation, route }) => {
       [field]: value
     }));
 
-    // Reset email verification when email changes
-    if (field === 'email' && value !== formData.email) {
+    // Reset email verification when email changes (only in registration mode)
+    if (field === 'email' && value !== formData.email && !isEditMode) {
       setEmailVerificationState('input');
       setIsEmailVerified(false);
       setEmailOtp('');
@@ -240,8 +247,10 @@ const RegistrationScreen = ({ navigation, route }) => {
     }
   };
 
-  // API: Verify Email Format and Availability
+  // API: Verify Email Format and Availability (disabled in edit mode)
   const handleEmailVerification = async () => {
+    if (isEditMode) return; // Disabled in edit mode
+
     if (!formData.email || !validateEmail(formData.email)) {
       Alert.alert('Error', 'Please enter a valid email address');
       return;
@@ -268,8 +277,10 @@ const RegistrationScreen = ({ navigation, route }) => {
     return emailRegex.test(email);
   };
 
-  // API: Send OTP to Email
+  // API: Send OTP to Email (disabled in edit mode)
   const sendEmailOTP = async () => {
+    if (isEditMode) return; // Disabled in edit mode
+
     try {
       setEmailVerificationState('loading');
 
@@ -294,8 +305,10 @@ const RegistrationScreen = ({ navigation, route }) => {
     }
   };
 
-  // API: Verify Email OTP
+  // API: Verify Email OTP (disabled in edit mode)
   const verifyEmailOTP = async () => {
+    if (isEditMode) return; // Disabled in edit mode
+
     if (!emailOtp || emailOtp.length !== 6) {
       Alert.alert('Error', 'Please enter the 6-digit OTP');
       return;
@@ -331,6 +344,8 @@ const RegistrationScreen = ({ navigation, route }) => {
   };
 
   const resendEmailOTP = () => {
+    if (isEditMode) return; // Disabled in edit mode
+
     Alert.alert(
       'Resend OTP',
       'Do you want to resend the verification code?',
@@ -386,9 +401,6 @@ const RegistrationScreen = ({ navigation, route }) => {
     );
   };
 
-  // ✅ FIXED IMAGE SELECTION WITH PROPER LIBRARY USAGE
-
-
   // ✅ FIXED IMAGE SELECTION WITH PROPER URI HANDLING
   const handleImageSelection = async (source) => {
     try {
@@ -439,6 +451,11 @@ const RegistrationScreen = ({ navigation, route }) => {
           ...prev,
           profile_image: imageAsset,  // Store the full asset object
         }));
+
+        // Mark that profile image has been changed in edit mode
+        if (isEditMode) {
+          setIsProfileImageChanged(true);
+        }
       }
 
     } catch (error) {
@@ -446,13 +463,6 @@ const RegistrationScreen = ({ navigation, route }) => {
       Alert.alert('Error', 'Failed to select image. Please try again.');
     }
   };
-
- 
-
-
-
-
-
 
   const validateForm = () => {
     if (!formData.name.trim()) {
@@ -510,12 +520,125 @@ const RegistrationScreen = ({ navigation, route }) => {
     return true;
   };
 
+  // ✅ NEW EDIT PROFILE HANDLER WITH PROPER API CALLS
+// ✅ UPDATED EDIT PROFILE HANDLER WITH PROPER TOKEN MANAGEMENT
+// ✅ SIMPLIFIED EDIT PROFILE HANDLER USING AUTHSERVICE
+const handleEditProfile = async () => {
+  try {
+    const userData = await AsyncStorage.getItem('userData');
+    if (!userData) {
+      Alert.alert('Error', 'User session not found. Please login again.');
+      return;
+    }
+
+    const parsedUserData = JSON.parse(userData);
+    const userId = parsedUserData.id || parsedUserData.userId;
+
+    if (isProfileImageChanged && formData.profile_image) {
+      // POST with FormData (when image is updated)
+      console.log('🔄 Updating profile with image...');
+      
+      const formDataToSend = new FormData();
+      formDataToSend.append('userId', userId);
+      formDataToSend.append('name', formData.name);
+      formDataToSend.append('mobile', formData.mobile);
+      formDataToSend.append('email', formData.email);
+      formDataToSend.append('address', formData.address);
+      formDataToSend.append('district', formData.district);
+      formDataToSend.append('city', formData.city);
+      formDataToSend.append('state', formData.state);
+      formDataToSend.append('pincode', formData.pincode);
+      formDataToSend.append('facebookId', formData.facebookId || '');
+      formDataToSend.append('instagramId', formData.instagramId || '');
+      formDataToSend.append('xId', formData.xId || '');
+
+      if (formData.profile_image && typeof formData.profile_image === 'object') {
+        formDataToSend.append('profile_image', {
+          uri: formData.profile_image.uri,
+          type: formData.profile_image.type || 'image/jpeg',
+          name: formData.profile_image.fileName || `profile-${Date.now()}.jpg`,
+        });
+      }
+
+      // Use AuthService for the request
+      const result = await AuthService.updateProfile(formDataToSend, true);
+      
+      if (result.success) {
+        Alert.alert('Success!', 'Profile updated successfully!', [
+          {
+            text: 'OK',
+            onPress: () => navigation.goBack(),
+          },
+        ]);
+      } else {
+        throw new Error(result.message || 'Failed to update profile');
+      }
+    } else {
+      // PUT with JSON (when no image is updated)
+      console.log('🔄 Updating profile without image...');
+      
+      const updateData = {
+        userId,
+        name: formData.name,
+        mobile: formData.mobile,
+        email: formData.email,
+        address: formData.address,
+        district: formData.district,
+        city: formData.city,
+        state: formData.state,
+        pincode: formData.pincode,
+        facebookId: formData.facebookId || '',
+        instagramId: formData.instagramId || '',
+        xId: formData.xId || '',
+      };
+
+      // Use AuthService for the request
+      const result = await AuthService.updateProfile(updateData, false);
+      
+      if (result.success) {
+        Alert.alert('Success!', 'Profile updated successfully!', [
+          {
+            text: 'OK',
+            onPress: () => navigation.goBack(),
+          },
+        ]);
+      } else {
+        throw new Error(result.message || 'Failed to update profile');
+      }
+    }
+  } catch (error) {
+    console.error('❌ Edit Profile Error:', error);
+    
+    if (error.message.includes('Session expired') || error.message.includes('Authentication failed')) {
+      // Handle session expiration
+      Alert.alert('Session Expired', 'Your session has expired. Please login again.', [
+        {
+          text: 'OK',
+          onPress: () => {
+            navigation.reset({
+              index: 0,
+              routes: [{ name: 'Login' }],
+            });
+          }
+        }
+      ]);
+    } else if (error.message.includes('Network request failed') || error.name === 'TypeError') {
+      Alert.alert('Network Error', 'Unable to connect to server. Please check your internet connection and try again.');
+    } else {
+      Alert.alert('Error', error.message || 'Failed to update profile. Please try again.');
+    }
+  }
+};
+
+
+
   const handleSubmit = async () => {
     if (validateForm()) {
       try {
         if (isEditMode) {
-          // existing edit code...
+          await handleEditProfile();
         } else {
+          // Registration logic (unchanged)
           const formDataToSend = new FormData();
 
           formDataToSend.append('name', formData.name);
@@ -536,7 +659,7 @@ const RegistrationScreen = ({ navigation, route }) => {
             });
           }
 
-          const response = await fetch('http://192.168.1.100:5000/api/auth/register', {
+          const response = await fetch('http://192.168.1.107:5000/api/auth/register', {
             method: 'POST',
             headers: {
               'Content-Type': 'multipart/form-data',
@@ -572,7 +695,6 @@ const RegistrationScreen = ({ navigation, route }) => {
     }
   };
 
-
   const handleCancel = () => {
     const action = isEditMode ? 'Cancel Profile Update' : 'Cancel Registration';
     const message = isEditMode
@@ -600,46 +722,48 @@ const RegistrationScreen = ({ navigation, route }) => {
   };
 
   const renderProfileImage = () => {
-    if (formData.profile_image && formData.profile_image !== 'placeholder') {
-      // Construct the correct URL for your static files
-      const imageUrl = `${API_BASE_URL}/uploads/profile_images/${formData.profile_image}`;
+    if (formData.profile_image) {
+      let imageSource;
+      
+      // Check if it's a new image (object with uri) or existing image (string filename)
+      if (typeof formData.profile_image === 'object' && formData.profile_image.uri) {
+        imageSource = { uri: formData.profile_image.uri };
+      } else if (typeof formData.profile_image === 'string' && formData.profile_image !== 'placeholder') {
+        imageSource = { uri: `${API_BASE_URL}/uploads/profile_images/${formData.profile_image}` };
+      }
 
-      console.log('📸 Loading image from:', imageUrl);
-
-      return (
-        <View style={styles.photoSelectedContainer}>
-          <Image
-            source={{ uri: imageUrl }}
-            style={styles.photo}
-            onError={(error) => {
-              console.log('❌ Image load error for:', imageUrl);
-              console.log('Error details:', error.nativeEvent);
-              // Optionally show a fallback or placeholder
-            }}
-            onLoad={() => {
-              console.log('✅ Image loaded successfully:', imageUrl);
-            }}
-            onLoadStart={() => {
-              console.log('🔄 Started loading image:', imageUrl);
-            }}
-          />
-          <View style={styles.photoOverlay}>
-            <Icon name="check-circle" size={16} color="#4CAF50" />
-            <Text style={[styles.photoText, { color: '#fff', fontSize: 10 }]}>
-              {isEditMode ? 'Updated' : 'Uploaded'}
-            </Text>
+      if (imageSource) {
+        return (
+          <View style={styles.photoSelectedContainer}>
+            <Image
+              source={imageSource}
+              style={styles.photo}
+              onError={(error) => {
+                console.log('❌ Image load error:', error.nativeEvent);
+              }}
+              onLoad={() => {
+                console.log('✅ Image loaded successfully');
+              }}
+            />
+            <View style={styles.photoOverlay}>
+              <Icon name="check-circle" size={16} color="#4CAF50" />
+              <Text style={[styles.photoText, { color: '#fff', fontSize: 10 }]}>
+                {isEditMode ? (isProfileImageChanged ? 'Updated' : 'Current') : 'Uploaded'}
+              </Text>
+            </View>
           </View>
-        </View>
-      );
-    } else {
-      return (
-        <View style={styles.photoPlaceholder}>
-          <Icon name="camera-alt" size={40} color="#e16e2b" />
-          <Text style={styles.photoText}>Upload / Camera</Text>
-        </View>
-      );
+        );
+      }
     }
+
+    return (
+      <View style={styles.photoPlaceholder}>
+        <Icon name="camera-alt" size={40} color="#e16e2b" />
+        <Text style={styles.photoText}>Upload / Camera</Text>
+      </View>
+    );
   };
+
   const renderEmailVerificationSection = () => {
     return (
       <View style={styles.emailVerificationContainer}>
@@ -647,48 +771,66 @@ const RegistrationScreen = ({ navigation, route }) => {
           <TextInput
             style={[
               styles.emailInput,
-              isEmailVerified && styles.verifiedInput
+              isEmailVerified && styles.verifiedInput,
+              isEditMode && styles.disabledInput // Disabled style in edit mode
             ]}
             value={formData.email}
             onChangeText={(text) => handleInputChange('email', text)}
             placeholder="Enter your email address"
             keyboardType="email-address"
             autoCapitalize="none"
-            editable={!isEmailVerified}
+            editable={!isEditMode} // Disabled in edit mode
           />
 
-          {emailVerificationState === 'input' && (
-            <TouchableOpacity
-              style={styles.verifyIconButton}
-              onPress={handleEmailVerification}
-            >
-              <Icon name="mail-outline" size={24} color="#e16e2b" />
-            </TouchableOpacity>
-          )}
-
-          {emailVerificationState === 'loading' && (
-            <View style={styles.loadingIconButton}>
-              <ActivityIndicator size="small" color="#e16e2b" />
-            </View>
-          )}
-
-          {emailVerificationState === 'verify' && (
-            <TouchableOpacity
-              style={styles.sendOtpIconButton}
-              onPress={sendEmailOTP}
-            >
-              <Icon name="send" size={24} color="#2196F3" />
-            </TouchableOpacity>
-          )}
-
-          {isEmailVerified && (
+          {/* Always show verified icon in edit mode */}
+          {isEditMode ? (
             <View style={styles.verifiedIconButton}>
               <Icon name="verified" size={24} color="#4CAF50" />
             </View>
+          ) : (
+            <>
+              {emailVerificationState === 'input' && (
+                <TouchableOpacity
+                  style={styles.verifyIconButton}
+                  onPress={handleEmailVerification}
+                >
+                  <Icon name="mail-outline" size={24} color="#e16e2b" />
+                </TouchableOpacity>
+              )}
+
+              {emailVerificationState === 'loading' && (
+                <View style={styles.loadingIconButton}>
+                  <ActivityIndicator size="small" color="#e16e2b" />
+                </View>
+              )}
+
+              {emailVerificationState === 'verify' && (
+                <TouchableOpacity
+                  style={styles.sendOtpIconButton}
+                  onPress={sendEmailOTP}
+                >
+                  <Icon name="send" size={24} color="#2196F3" />
+                </TouchableOpacity>
+              )}
+
+              {isEmailVerified && (
+                <View style={styles.verifiedIconButton}>
+                  <Icon name="verified" size={24} color="#4CAF50" />
+                </View>
+              )}
+            </>
           )}
         </View>
 
-        {emailVerificationState === 'otp' && (
+        {/* Show helper text in edit mode */}
+        {isEditMode && (
+          <Text style={styles.helperText}>
+            Email address cannot be changed in edit mode
+          </Text>
+        )}
+
+        {/* OTP section only shown in registration mode */}
+        {!isEditMode && emailVerificationState === 'otp' && (
           <View style={styles.otpContainer}>
             <Text style={styles.otpLabel}>Enter verification code sent to your email</Text>
             <View style={styles.otpInputContainer}>
@@ -832,6 +974,11 @@ const RegistrationScreen = ({ navigation, route }) => {
             <TouchableOpacity style={styles.photoContainer} onPress={handleImagePicker}>
               {renderProfileImage()}
             </TouchableOpacity>
+            {isEditMode && isProfileImageChanged && (
+              <Text style={styles.successText}>
+                ✓ Profile image updated - will be saved when you submit
+              </Text>
+            )}
           </View>
 
           {/* Form Fields */}

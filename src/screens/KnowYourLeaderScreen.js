@@ -12,9 +12,12 @@ import {
   RefreshControl,
   Dimensions
 } from 'react-native';
-import ApiService from '../../ApiService';
 
 const { width } = Dimensions.get('window');
+
+// API Configuration
+const API_BASE_URL = 'http://192.168.1.107:5000';
+const DEFAULT_MEMBER_ID = '7702000725'; // You can make this dynamic
 
 const KnowYourLeaderScreen = () => {
   // Tab state
@@ -41,56 +44,166 @@ const KnowYourLeaderScreen = () => {
     loadInitialData();
   }, []);
 
+  // Generic API call helper
+  const makeApiCall = async (endpoint, method = 'GET', body = null) => {
+    try {
+      const config = {
+        method: method,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      };
+
+      if (body && method !== 'GET') {
+        config.body = JSON.stringify(body);
+      }
+
+      const response = await fetch(`${API_BASE_URL}/${endpoint}`, config);
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      return { success: true, data };
+    } catch (error) {
+      console.error(`API Error (${endpoint}):`, error);
+      return { success: false, error: error.message };
+    }
+  };
+
+  // Individual API calls
+  const fetchMemberCoordinates = async (memberId = DEFAULT_MEMBER_ID) => {
+    return await makeApiCall(`api/coordinates/${memberId}`, 'GET');
+  };
+
+  const fetchSocialMedia = async (memberId = DEFAULT_MEMBER_ID) => {
+    return await makeApiCall(`api/socialmedia/${memberId}`, 'GET');
+  };
+
+  const fetchPersonalDetails = async (memberId = DEFAULT_MEMBER_ID) => {
+    return await makeApiCall(`api/personaldetails/${memberId}`, 'GET');
+  };
+
+  const fetchEducationalDetails = async (memberId = DEFAULT_MEMBER_ID) => {
+    return await makeApiCall(`api/edudata/${memberId}`, 'GET');
+  };
+
+  const fetchPermanentAddress = async (memberId = DEFAULT_MEMBER_ID) => {
+    return await makeApiCall(`api/permaddress/${memberId}`, 'GET');
+  };
+
+  const fetchPresentAddress = async (memberId = DEFAULT_MEMBER_ID) => {
+    return await makeApiCall(`api/preaddress/${memberId}`, 'GET');
+  };
+
+  // Timeline API - Now available!
+  const fetchTimeline = async (memberId = DEFAULT_MEMBER_ID) => {
+    return await makeApiCall(`api/leadertimeline/${memberId}`, 'GET');
+  };
+
   const loadInitialData = async () => {
     setLoading(true);
     await loadProfileData();
-    await loadTimelineData();
+    await loadTimelineData(); // Timeline API is now available
     setLoading(false);
   };
 
   const loadProfileData = async () => {
     try {
-      const result = await ApiService.fetchAllProfileData();
-      
-      if (result.success) {
-        setMemberData(result.data.memberCoordinates?.leader_coordinates || null);
-        setSocialMediaData(result.data.socialMedia?.social_media || null);
-        setPersonalData(result.data.personalDetails?.personal_details || null);
-        setEducationData(result.data.educationalDetails?.edu_qual || null);
-        setAddressData(result.data.addresses?.addresses || null);
-        setErrors(result.errors || {});
-        
-        console.log('Profile data loaded successfully');
+      const memberId = DEFAULT_MEMBER_ID; // You can make this dynamic
+
+      // Fetch all profile data concurrently
+      const [
+        memberCoordinates,
+        socialMedia,
+        personalDetails,
+        educationalDetails,
+        permanentAddress,
+        presentAddress
+      ] = await Promise.all([
+        fetchMemberCoordinates(memberId),
+        fetchSocialMedia(memberId),
+        fetchPersonalDetails(memberId),
+        fetchEducationalDetails(memberId),
+        fetchPermanentAddress(memberId),
+        fetchPresentAddress(memberId)
+      ]);
+
+      // Set member data
+      if (memberCoordinates.success && memberCoordinates.data.leader_coordinates) {
+        setMemberData(memberCoordinates.data.leader_coordinates);
       } else {
-        console.error('Failed to load profile data:', result);
-        Alert.alert('Error', 'Failed to load profile data. Please try again.');
+        console.error('Failed to load member coordinates:', memberCoordinates.error);
       }
+
+      // Set social media data
+      if (socialMedia.success && socialMedia.data.social_media) {
+        setSocialMediaData(socialMedia.data.social_media);
+      } else {
+        console.error('Failed to load social media:', socialMedia.error);
+      }
+
+      // Set personal data
+      if (personalDetails.success && personalDetails.data.personal_details) {
+        setPersonalData(personalDetails.data.personal_details);
+      } else {
+        console.error('Failed to load personal details:', personalDetails.error);
+      }
+
+      // Set education data - Fix: The API returns "leader_edu_data" not "edu_qual"
+      if (educationalDetails.success && educationalDetails.data.leader_edu_data) {
+        setEducationData(educationalDetails.data.leader_edu_data.edu_qual);
+      } else {
+        console.error('Failed to load educational details:', educationalDetails.error);
+      }
+
+      // Combine address data - Fix: API returns "perm_address" and "present_address"
+      const addresses = {
+        permanent: permanentAddress.success ? permanentAddress.data.perm_address : null,
+        present: presentAddress.success ? presentAddress.data.present_address : null
+      };
+      setAddressData(addresses);
+
+      // Set errors for debugging
+      const apiErrors = {
+        memberCoordinates: !memberCoordinates.success ? memberCoordinates.error : null,
+        socialMedia: !socialMedia.success ? socialMedia.error : null,
+        personalDetails: !personalDetails.success ? personalDetails.error : null,
+        educationalDetails: !educationalDetails.success ? educationalDetails.error : null,
+        permanentAddress: !permanentAddress.success ? permanentAddress.error : null,
+        presentAddress: !presentAddress.success ? presentAddress.error : null,
+      };
+      setErrors(apiErrors);
+
+      console.log('Profile data loaded successfully');
     } catch (error) {
       console.error('Profile data loading error:', error);
       Alert.alert('Network Error', 'Please check your internet connection and try again.');
     }
   };
 
+  // Timeline data loading - Updated for actual API
   const loadTimelineData = async () => {
     try {
-      const result = await ApiService.fetchTimeline();
+      const result = await fetchTimeline();
       
-      if (result.success) {
-        setTimelineData(result.data.timeline || []);
+      if (result.success && result.data.timeline) {
+        setTimelineData(result.data.timeline);
         console.log('Timeline data loaded successfully:', result.data.timeline);
       } else {
-        console.error('Failed to load timeline data:', result);
-        Alert.alert('Error', 'Failed to load timeline data. Please try again.');
+        console.error('Failed to load timeline data:', result.error);
+        setTimelineData([]);
       }
     } catch (error) {
       console.error('Timeline data loading error:', error);
-      Alert.alert('Network Error', 'Please check your internet connection and try again.');
+      setTimelineData([]);
     }
   };
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await loadInitialData();
+    await loadInitialData(); // Now includes timeline data
     setRefreshing(false);
   };
 
@@ -148,7 +261,6 @@ const KnowYourLeaderScreen = () => {
               </Text>
               <Text style={styles.designation}>Member of Parliament</Text>
               <View style={styles.locationRow}>
-                
                 <Text style={styles.locationText}>
                   {memberData ? 
                     `${memberData.constituency || ''}, ${memberData.state || ''}`.replace(', ,', ',').trim() : 
@@ -161,7 +273,7 @@ const KnowYourLeaderScreen = () => {
           
           {memberData?.party && (
             <View style={styles.partyContainer}>
-              <Text style={styles.partyLabel}>Party</Text>
+             
               <Text style={styles.partyName}>{memberData.party}</Text>
             </View>
           )}
@@ -487,11 +599,16 @@ const KnowYourLeaderScreen = () => {
             <View style={styles.timelineItemRight}>
               <View style={styles.timelineContentCard}>
                 <Text style={styles.timelineTitle}>
-                  {item.title_position?.title || 'Position'}
+                  {item.title || 'Position'}
                 </Text>
                 <Text style={styles.timelineDetails}>
-                  {item.title_position?.details || 'No details available'}
+                  {item.title_details || 'No details available'}
                 </Text>
+                {item.additional_info && (
+                  <Text style={styles.timelineAdditionalInfo}>
+                    {item.additional_info}
+                  </Text>
+                )}
               </View>
             </View>
           </View>
@@ -1049,6 +1166,14 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#495057',
     lineHeight: 20,
+  },
+
+  timelineAdditionalInfo: {
+    fontSize: 12,
+    color: '#6c757d',
+    marginTop: 4,
+    fontStyle: 'italic',
+    lineHeight: 18,
   },
 
   // Empty State

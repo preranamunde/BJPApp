@@ -63,7 +63,7 @@ class LoggingService {
 // Image Service for handling image URLs
 class ImageService {
   static baseUrls = [
-    'http://192.168.1.100:5000/',
+    'http://192.168.1.107:5000/',
     'http://localhost:5000/',
     'http://10.0.2.2:5000/', // Android emulator
   ];
@@ -125,7 +125,7 @@ class ImageService {
     return null;
   }
   
-  static constructImageUrl(imagePath, baseUrl = 'http://192.168.1.100:5000/') {
+  static constructImageUrl(imagePath, baseUrl = 'http://192.168.1.107:5000/') {
     if (!imagePath) return null;
     
     // If already a full URL, return as is
@@ -148,48 +148,115 @@ class ImageService {
 }
 
 // FIXED Profile API Class
+// FIXED Profile API Class
+// FIXED Profile API Class with Test Method
 class ProfileAPI {
-  static baseURL = 'http://192.168.1.100:5000/api/profile';
-  static imageBaseURL = 'http://192.168.1.100:5000/';
+  static baseURL = 'http://192.168.1.107:5000/api/profile';
+  static imageBaseURL = 'http://192.168.1.107:5000/';
 
   static async getProfile() {
     LoggingService.profileInfo('🚀 Starting profile fetch from API');
     
     try {
+      // Get proper auth headers
       const headers = await AuthService.getAuthHeaders();
       
       LoggingService.profileDebug('Auth headers prepared', { 
         hasAuthorization: !!headers.Authorization,
+        authorizationPreview: headers.Authorization ? `${headers.Authorization.slice(0, 20)}...` : 'Missing',
         contentType: headers['Content-Type']
       });
+
+      // Add timeout and better error handling
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 seconds timeout
 
       const response = await fetch(this.baseURL, {
         method: 'GET',
         headers: headers,
+        signal: controller.signal,
       });
 
-      const data = await response.json();
+      clearTimeout(timeoutId);
+
+      LoggingService.profileDebug('API Response received', {
+        status: response.status,
+        statusText: response.statusText,
+        ok: response.ok,
+        headers: Object.fromEntries(response.headers.entries())
+      });
+
+      // Handle different response types
+      let data;
+      const contentType = response.headers.get('content-type');
       
-      LoggingService.profileDebug('Raw API response received', {
+      if (contentType && contentType.includes('application/json')) {
+        data = await response.json();
+      } else {
+        const text = await response.text();
+        LoggingService.profileError('Non-JSON response received', {
+          contentType,
+          responseText: text.substring(0, 500) // First 500 chars
+        });
+        
+        // Try to parse as JSON anyway
+        try {
+          data = JSON.parse(text);
+        } catch (parseError) {
+          return {
+            success: false,
+            message: 'Server returned invalid response format',
+          };
+        }
+      }
+      
+      LoggingService.profileDebug('Raw API response data', {
         status: response.status,
         ok: response.ok,
-        responseKeys: Object.keys(data),
-        hasUserProperty: !!data.user,
-        userKeys: data.user ? Object.keys(data.user) : []
+        dataKeys: data ? Object.keys(data) : [],
+        dataStructure: data,
+        hasFormattedData: !!data?.formattedData,
+        hasUser: !!data?.user,
+        hasData: !!data?.data
       });
 
       if (response.ok) {
-        let userData = data.user || data;
+        // Handle the correct response structure from your API
+        let userData;
+        
+        // Check different possible response structures
+        if (data.formattedData) {
+          userData = data.formattedData;
+          LoggingService.profileDebug('✅ Using formattedData structure', { userData });
+        } else if (data.user) {
+          userData = data.user;
+          LoggingService.profileDebug('✅ Using user structure', { userData });
+        } else if (data.data) {
+          userData = data.data;
+          LoggingService.profileDebug('✅ Using data structure', { userData });
+        } else if (data._id || data.email) {
+          // Direct user object (fallback)
+          userData = data;
+          LoggingService.profileDebug('✅ Using direct data structure', { userData });
+        } else {
+          LoggingService.profileError('❌ No user data found in response', { data });
+          return {
+            success: false,
+            message: 'No profile data found in server response',
+          };
+        }
 
-        // ✅ FIXED: Better image URL handling
+        // Better image URL handling
         if (userData.profile_image) {
           const workingImageUrl = await ImageService.getWorkingImageUrl(userData.profile_image);
           
           if (workingImageUrl) {
             userData.profile_image = workingImageUrl;
+            LoggingService.profileInfo('✅ Profile image URL resolved', { url: workingImageUrl });
           } else {
             // Fallback: try direct construction
             userData.profile_image = ImageService.constructImageUrl(userData.profile_image, this.imageBaseURL);
+            LoggingService.profileWarn('⚠️ Using fallback image URL', { url: userData.profile_image });
           }
         }
 
@@ -198,7 +265,8 @@ class ProfileAPI {
           userName: userData.name,
           userEmail: userData.email,
           userMobile: userData.mobile,
-          profileImageURL: userData.profile_image
+          profileImageURL: userData.profile_image,
+          hasAllRequiredFields: !!(userData._id && userData.name && userData.email)
         });
         
         return {
@@ -206,27 +274,205 @@ class ProfileAPI {
           data: userData,
         };
       } else {
+        // Better error handling for different status codes
+        let errorMessage = 'Failed to fetch profile';
+        
+        if (response.status === 401) {
+          errorMessage = 'Authentication failed. Please login again.';
+        } else if (response.status === 403) {
+          errorMessage = 'Access denied. You do not have permission to view this profile.';
+        } else if (response.status === 404) {
+          errorMessage = 'Profile not found.';
+        } else if (response.status >= 500) {
+          errorMessage = 'Server error. Please try again later.';
+        } else {
+          errorMessage = data.message || data.error || errorMessage;
+        }
+        
         LoggingService.profileError('❌ Profile fetch failed - Server error', {
           status: response.status,
-          message: data.message,
+          statusText: response.statusText,
+          message: errorMessage,
           fullResponse: data
         });
         
         return {
           success: false,
-          message: data.message || 'Failed to fetch profile',
+          message: errorMessage,
+          status: response.status
         };
       }
     } catch (error) {
+      // Better error categorization
+      let errorMessage = 'Network error. Please check your connection and try again.';
+      
+      if (error.name === 'AbortError') {
+        errorMessage = 'Request timeout. Please try again.';
+      } else if (error.message.includes('Network request failed')) {
+        errorMessage = 'Network error. Please check your internet connection.';
+      } else if (error.message.includes('Authentication failed')) {
+        errorMessage = 'Authentication failed. Please login again.';
+      }
+      
       LoggingService.profileError('💥 Profile API network error', {
         errorMessage: error.message,
-        errorName: error.name
+        errorName: error.name,
+        errorStack: error.stack
       });
       
       return {
         success: false,
-        message: 'Network error. Please check your connection and try again.',
+        message: errorMessage,
       };
+    }
+  }
+
+  // ADD THIS TEST METHOD TO YOUR EXISTING ProfileAPI CLASS
+  static async testProfileEndpoint() {
+    try {
+      console.log('🧪 Testing profile endpoint accessibility...');
+      
+      // Test 1: Basic connectivity
+      const pingResponse = await fetch('http://192.168.1.107:5000/', {
+        method: 'GET',
+        headers: { 'Accept': 'application/json' }
+      });
+      
+      console.log('🌐 Server ping:', {
+        status: pingResponse.status,
+        accessible: pingResponse.ok
+      });
+      
+      // Test 2: Auth headers
+      const headers = await AuthService.getAuthHeaders();
+      console.log('🔐 Auth headers test:', {
+        hasAuth: !!headers.Authorization,
+        authPreview: headers.Authorization ? headers.Authorization.substring(0, 20) + '...' : 'Missing'
+      });
+      
+      // Test 3: Profile endpoint with auth
+      const profileResponse = await fetch(this.baseURL, {
+        method: 'GET',
+        headers: headers
+      });
+      
+      const responseText = await profileResponse.text();
+      
+      console.log('📊 Profile endpoint test:', {
+        status: profileResponse.status,
+        statusText: profileResponse.statusText,
+        contentType: profileResponse.headers.get('content-type'),
+        responseLength: responseText.length,
+        responsePreview: responseText.substring(0, 500)
+      });
+      
+      // Try to parse response
+      try {
+        const data = JSON.parse(responseText);
+        console.log('✅ Profile response parsed successfully:', {
+          keys: Object.keys(data),
+          hasFormattedData: !!data.formattedData,
+          hasUser: !!data.user,
+          hasData: !!data.data,
+          formattedDataKeys: data.formattedData ? Object.keys(data.formattedData) : [],
+          userKeys: data.user ? Object.keys(data.user) : [],
+          dataKeys: data.data ? Object.keys(data.data) : [],
+          fullStructure: data
+        });
+        return data;
+      } catch (parseError) {
+        console.error('❌ Failed to parse profile response:', parseError.message);
+        return null;
+      }
+      
+    } catch (error) {
+      console.error('💥 Profile endpoint test failed:', error);
+      return null;
+    }
+  }
+}
+
+// You can also add this as a debug button in your ViewProfileScreen component
+const addDebugButtonToViewProfileScreen = () => {
+  // Add this inside your ViewProfileScreen component, in the debug section:
+  
+  /* 
+  In your existing debug section (around line 700), add this button:
+  
+  <TouchableOpacity 
+    style={styles.debugButton}
+    onPress={async () => {
+      console.log('🔍 Testing Profile API Endpoint...');
+      const result = await ProfileAPI.testProfileEndpoint();
+      if (result) {
+        Alert.alert('Test Complete', 'Check console for detailed results');
+      } else {
+        Alert.alert('Test Failed', 'Check console for error details');
+      }
+    }}
+  >
+    <Text style={styles.debugButtonText}>Test API Endpoint</Text>
+  </TouchableOpacity>
+  */
+};
+class ProfileTestAPI {
+  static async testProfileEndpoint() {
+    const baseURL = 'http://192.168.1.107:5000/api/profile';
+    
+    try {
+      console.log('🧪 Testing profile endpoint accessibility...');
+      
+      // Test 1: Basic connectivity
+      const pingResponse = await fetch('http://192.168.1.107:5000/', {
+        method: 'GET',
+        headers: { 'Accept': 'application/json' }
+      });
+      
+      console.log('🌐 Server ping:', {
+        status: pingResponse.status,
+        accessible: pingResponse.ok
+      });
+      
+      // Test 2: Auth headers
+      const headers = await AuthService.getAuthHeaders();
+      console.log('🔐 Auth headers test:', {
+        hasAuth: !!headers.Authorization,
+        authPreview: headers.Authorization ? headers.Authorization.substring(0, 20) + '...' : 'Missing'
+      });
+      
+      // Test 3: Profile endpoint with auth
+      const profileResponse = await fetch(baseURL, {
+        method: 'GET',
+        headers: headers
+      });
+      
+      const responseText = await profileResponse.text();
+      
+      console.log('📊 Profile endpoint test:', {
+        status: profileResponse.status,
+        statusText: profileResponse.statusText,
+        contentType: profileResponse.headers.get('content-type'),
+        responseLength: responseText.length,
+        responsePreview: responseText.substring(0, 200)
+      });
+      
+      // Try to parse response
+      try {
+        const data = JSON.parse(responseText);
+        console.log('✅ Profile response parsed successfully:', {
+          hasUser: !!data.user,
+          hasData: !!data.data,
+          keys: Object.keys(data)
+        });
+        return data;
+      } catch (parseError) {
+        console.error('❌ Failed to parse profile response:', parseError.message);
+        return null;
+      }
+      
+    } catch (error) {
+      console.error('💥 Profile endpoint test failed:', error);
+      return null;
     }
   }
 }

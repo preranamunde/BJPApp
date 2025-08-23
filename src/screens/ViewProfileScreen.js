@@ -151,7 +151,7 @@ class ImageService {
 // FIXED Profile API Class
 // FIXED Profile API Class with Test Method
 class ProfileAPI {
-  static baseURL = 'http://192.168.1.107:5000/api/profile';
+  static baseURL = 'http://192.168.0.108:5000/api/profile';
   static imageBaseURL = 'http://192.168.1.107:5000/';
 
   static async getProfile() {

@@ -20,7 +20,7 @@ import { launchImageLibrary, launchCamera } from 'react-native-image-picker';
 import AuthService from '../utils/AuthService';
 
 // API Configuration
-const API_BASE_URL = 'http://192.168.1.107:5000'; // Update with your server IP
+const API_BASE_URL = 'http://192.168.0.108:5000'; // Update with your server IP
 
 const apiCall = async (endpoint, method = 'POST', data = null) => {
   try {
@@ -659,7 +659,7 @@ const handleEditProfile = async () => {
             });
           }
 
-          const response = await fetch('http://192.168.1.107:5000/api/auth/register', {
+          const response = await fetch('http://192.168.0.108:5000/api/auth/register', {
             method: 'POST',
             headers: {
               'Content-Type': 'multipart/form-data',

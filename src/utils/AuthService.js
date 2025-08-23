@@ -26,7 +26,7 @@ try {
 class AuthService {
   static tokenKey = 'jwt_token';
   static refreshTokenKey = 'refresh_token';
-  static baseURL = 'http://192.168.1.107:5000'; // Centralized base URL
+  static baseURL = 'http://192.168.0.108:5000'; // Centralized base URL
   static loginUrl = `${this.baseURL}/api/auth/login`;
   static refreshTokenUrl = `${this.baseURL}/api/auth/refresh-token`;
   static logoutUrl = `${this.baseURL}/api/auth/logout`;

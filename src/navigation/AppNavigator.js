@@ -17,6 +17,7 @@ import ChatBot from '../screens/ChatBot';
 import SamvadScreen from '../screens/SamvadScreen';
 import LoginScreen from '../screens/LoginScreen';
 import ViewProfileScreen from '../screens/ViewProfileScreen';
+import DeviceService from '../services/DeviceService';
 
 import HomeScreen from '../screens/HomeScreen';
 

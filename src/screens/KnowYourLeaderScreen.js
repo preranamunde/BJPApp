@@ -10,18 +10,28 @@ import {
   ActivityIndicator,
   Alert,
   RefreshControl,
-  Dimensions
+  Dimensions,
+  Modal,
+  TextInput,
+  SafeAreaView,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
+import EncryptedStorage from 'react-native-encrypted-storage';
 
 const { width } = Dimensions.get('window');
 
 // API Configuration
-const API_BASE_URL = 'http://192.168.1.107:5000';
-const DEFAULT_MEMBER_ID = '7702000725'; // You can make this dynamic
+const API_BASE_URL = 'http://192.168.1.104:5000';
 
 const KnowYourLeaderScreen = () => {
   // Tab state
   const [activeTab, setActiveTab] = useState('profile');
+  
+  // Member ID and Role state
+  const [memberId, setMemberId] = useState(null);
+  const [userRole, setUserRole] = useState(null);
+  const [isAdmin, setIsAdmin] = useState(false);
   
   // Loading states
   const [loading, setLoading] = useState(true);
@@ -40,9 +50,167 @@ const KnowYourLeaderScreen = () => {
   // Error states
   const [errors, setErrors] = useState({});
 
+  // Edit Modal States
+  const [editModalVisible, setEditModalVisible] = useState(false);
+  const [editType, setEditType] = useState('');
+  const [editData, setEditData] = useState({});
+  const [editLoading, setEditLoading] = useState(false);
+
+  // Developer mode states - NEW
+  const [showDevInput, setShowDevInput] = useState(false);
+  const [devInput, setDevInput] = useState('');
+  const [devClickCount, setDevClickCount] = useState(0);
+
   useEffect(() => {
-    loadInitialData();
+    initializeApp();
   }, []);
+
+  // Check if user is admin - ENHANCED
+  const checkAdminRole = async () => {
+    try {
+      const userRole = await EncryptedStorage.getItem('userRole');
+      const appOwnerInfo = await EncryptedStorage.getItem('AppOwnerInfo');
+      const devMode = await EncryptedStorage.getItem('developerMode');
+      
+      // Check for developer mode first
+      if (devMode === 'enabled') {
+        setIsAdmin(true);
+        return true;
+      }
+
+      if (userRole === 'admin') {
+        setIsAdmin(true);
+        return true;
+      } else if (appOwnerInfo) {
+        const parsedData = JSON.parse(appOwnerInfo);
+        if (parsedData.role === 'admin' || parsedData.userType === 'admin') {
+          setIsAdmin(true);
+          return true;
+        }
+      }
+      return false;
+    } catch (error) {
+      console.error('Error checking admin role:', error);
+      return false;
+    }
+  };
+
+  // Developer mode functions - NEW
+  const handleLeaderNamePress = () => {
+    setDevClickCount(prevCount => {
+      const newCount = prevCount + 1;
+      if (newCount >= 5) {
+        setShowDevInput(true);
+        return 0; // Reset count
+      }
+      return newCount;
+    });
+  };
+
+  const handleDevInputSubmit = async () => {
+    if (devInput.toLowerCase() === 'admin') {
+      try {
+        await EncryptedStorage.setItem('developerMode', 'enabled');
+        setIsAdmin(true);
+        setShowDevInput(false);
+        setDevInput('');
+        Alert.alert('Developer Mode', 'Admin features enabled for testing!');
+      } catch (error) {
+        console.error('Error enabling developer mode:', error);
+        Alert.alert('Error', 'Failed to enable developer mode');
+      }
+    } else {
+      Alert.alert('Invalid Input', 'Please enter the correct developer code');
+      setDevInput('');
+    }
+  };
+
+  const closeDevInput = () => {
+    setShowDevInput(false);
+    setDevInput('');
+  };
+
+  // Function to get member ID and role from EncryptedStorage
+  const getMemberInfoFromStorage = async () => {
+    try {
+      console.log('🔍 Retrieving member info from EncryptedStorage...');
+      
+      // Get AppOwnerInfo for member ID and role
+      const appOwnerInfo = await EncryptedStorage.getItem('AppOwnerInfo');
+      if (appOwnerInfo) {
+        const parsedData = JSON.parse(appOwnerInfo);
+        console.log('📱 AppOwnerInfo found:', Object.keys(parsedData));
+        
+        // Get member identifier
+        const memberIdentifier = parsedData.mobile_no || 
+                                parsedData.regdMobileNo || 
+                                parsedData.mobile_number || 
+                                parsedData.phone ||
+                                parsedData.mobileNo ||
+                                parsedData.member_id ||
+                                parsedData.user_id;
+        
+        // Get user role
+        const role = parsedData.role || parsedData.user_role || parsedData.userRole || 'user';
+        
+        console.log('✅ Member ID found:', memberIdentifier);
+        console.log('👤 User Role found:', role);
+        
+        return {
+          memberId: memberIdentifier || '7702000725',
+          role: role.toLowerCase()
+        };
+      }
+      
+      // Fallback: Try to get from individual storage items
+      const storedMemberId = await EncryptedStorage.getItem('MOBILE_NUMBER') || 
+                            await EncryptedStorage.getItem('MEMBER_ID') || 
+                            '7702000725';
+      
+      const storedRole = await EncryptedStorage.getItem('USER_ROLE') || 'user';
+      
+      return {
+        memberId: storedMemberId,
+        role: storedRole.toLowerCase()
+      };
+      
+    } catch (error) {
+      console.error('❌ Error retrieving member info from storage:', error);
+      return {
+        memberId: '7702000725',
+        role: 'user'
+      };
+    }
+  };
+
+  const initializeApp = async () => {
+    try {
+      setLoading(true);
+      
+      // Get member info from storage
+      const memberInfo = await getMemberInfoFromStorage();
+      setMemberId(memberInfo.memberId);
+      setUserRole(memberInfo.role);
+      
+      // Check admin role (including developer mode)
+      const adminStatus = await checkAdminRole();
+      setIsAdmin(adminStatus);
+      
+      console.log('📱 Using member ID:', memberInfo.memberId);
+      console.log('👤 User role:', memberInfo.role);
+      console.log('🔑 Is Admin:', adminStatus);
+      
+      // Load initial data
+      await loadInitialData(memberInfo.memberId);
+      
+    } catch (error) {
+      console.error('❌ App initialization error:', error);
+      Alert.alert('Initialization Error', 'Failed to initialize app. Using default settings.');
+      await loadInitialData('7702000725');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   // Generic API call helper
   const makeApiCall = async (endpoint, method = 'GET', body = null) => {
@@ -72,46 +240,129 @@ const KnowYourLeaderScreen = () => {
     }
   };
 
-  // Individual API calls
-  const fetchMemberCoordinates = async (memberId = DEFAULT_MEMBER_ID) => {
-    return await makeApiCall(`api/coordinates/${memberId}`, 'GET');
+  // Individual API calls - GET methods
+  const fetchMemberCoordinates = async (memberIdentifier) => {
+    return await makeApiCall(`api/coordinates/${memberIdentifier}`, 'GET');
   };
 
-  const fetchSocialMedia = async (memberId = DEFAULT_MEMBER_ID) => {
-    return await makeApiCall(`api/socialmedia/${memberId}`, 'GET');
+  const fetchSocialMedia = async (memberIdentifier) => {
+    return await makeApiCall(`api/socialmedia/${memberIdentifier}`, 'GET');
   };
 
-  const fetchPersonalDetails = async (memberId = DEFAULT_MEMBER_ID) => {
-    return await makeApiCall(`api/personaldetails/${memberId}`, 'GET');
+  const fetchPersonalDetails = async (memberIdentifier) => {
+    return await makeApiCall(`api/personaldetails/${memberIdentifier}`, 'GET');
   };
 
-  const fetchEducationalDetails = async (memberId = DEFAULT_MEMBER_ID) => {
-    return await makeApiCall(`api/edudata/${memberId}`, 'GET');
+  const fetchEducationalDetails = async (memberIdentifier) => {
+    return await makeApiCall(`api/edudata/${memberIdentifier}`, 'GET');
   };
 
-  const fetchPermanentAddress = async (memberId = DEFAULT_MEMBER_ID) => {
-    return await makeApiCall(`api/permaddress/${memberId}`, 'GET');
+  const fetchPermanentAddress = async (memberIdentifier) => {
+    return await makeApiCall(`api/permaddress/${memberIdentifier}`, 'GET');
   };
 
-  const fetchPresentAddress = async (memberId = DEFAULT_MEMBER_ID) => {
-    return await makeApiCall(`api/preaddress/${memberId}`, 'GET');
+  const fetchPresentAddress = async (memberIdentifier) => {
+    return await makeApiCall(`api/preaddress/${memberIdentifier}`, 'GET');
   };
 
-  // Timeline API - Now available!
-  const fetchTimeline = async (memberId = DEFAULT_MEMBER_ID) => {
-    return await makeApiCall(`api/leadertimeline/${memberId}`, 'GET');
+  const fetchTimeline = async (memberIdentifier) => {
+    return await makeApiCall(`api/leadertimeline/${memberIdentifier}`, 'GET');
   };
 
-  const loadInitialData = async () => {
-    setLoading(true);
-    await loadProfileData();
-    await loadTimelineData(); // Timeline API is now available
-    setLoading(false);
+  // PUT API calls for updating data
+  const updateMemberCoordinates = async (memberIdentifier, data) => {
+  // Ensure data is wrapped in leader_coordinates object
+  const requestBody = {
+    leader_coordinates: {
+      regd_mobile_no: memberIdentifier,
+      ...data
+    }
+  };
+  
+  return await makeApiCall(`api/coordinates/${memberIdentifier}`, 'PUT', requestBody);
+};
+
+const updateSocialMedia = async (memberIdentifier, data) => {
+  // Ensure data is wrapped in social_media object
+  const requestBody = {
+    social_media: {
+      regd_mobile_no: memberIdentifier,
+      ...data
+    }
+  };
+  
+  return await makeApiCall(`api/socialmedia/${memberIdentifier}`, 'PUT', requestBody);
+};
+
+const updatePersonalDetails = async (memberIdentifier, data) => {
+  // Ensure data is wrapped in personal_details object
+  const requestBody = {
+    personal_details: {
+      regd_mobile_no: memberIdentifier,
+      ...data
+    }
+  };
+  
+  return await makeApiCall(`api/personaldetails/${memberIdentifier}`, 'PUT', requestBody);
+};
+
+const updateEducationalDetails = async (memberIdentifier, data) => {
+  // Ensure data is wrapped in leader_edu_data object
+  const requestBody = {
+    leader_edu_data: {
+      regd_mobile_no: memberIdentifier,
+      edu_qual: Array.isArray(data.edu_qual) ? data.edu_qual : [data]
+    }
+  };
+  
+  return await makeApiCall(`api/edudata/${memberIdentifier}`, 'PUT', requestBody);
+};
+
+const updatePermanentAddress = async (memberIdentifier, data) => {
+  // Ensure data is wrapped in perm_address object
+  const requestBody = {
+    perm_address: {
+      regd_mobile_no: memberIdentifier,
+      ...data
+    }
+  };
+  
+  return await makeApiCall(`api/permaddress/${memberIdentifier}`, 'PUT', requestBody);
+};
+
+const updatePresentAddress = async (memberIdentifier, data) => {
+  // Ensure data is wrapped in present_address object
+  const requestBody = {
+    present_address: {
+      regd_mobile_no: memberIdentifier,
+      ...data
+    }
+  };
+  
+  return await makeApiCall(`api/preaddress/${memberIdentifier}`, 'PUT', requestBody);
+};
+
+const updateTimeline = async (memberIdentifier, data) => {
+  // For timeline, send as array if it's a single item
+  const requestBody = {
+    timeline: Array.isArray(data) ? data : [data]
+  };
+  
+  return await makeApiCall(`api/leadertimeline/${memberIdentifier}`, 'PUT', requestBody);
+};
+  const loadInitialData = async (memberIdentifier) => {
+    if (!memberIdentifier) {
+      console.error('❌ No member identifier provided');
+      return;
+    }
+
+    await loadProfileData(memberIdentifier);
+    await loadTimelineData(memberIdentifier);
   };
 
-  const loadProfileData = async () => {
+  const loadProfileData = async (memberIdentifier) => {
     try {
-      const memberId = DEFAULT_MEMBER_ID; // You can make this dynamic
+      console.log('📡 Loading profile data for member:', memberIdentifier);
 
       // Fetch all profile data concurrently
       const [
@@ -122,12 +373,12 @@ const KnowYourLeaderScreen = () => {
         permanentAddress,
         presentAddress
       ] = await Promise.all([
-        fetchMemberCoordinates(memberId),
-        fetchSocialMedia(memberId),
-        fetchPersonalDetails(memberId),
-        fetchEducationalDetails(memberId),
-        fetchPermanentAddress(memberId),
-        fetchPresentAddress(memberId)
+        fetchMemberCoordinates(memberIdentifier),
+        fetchSocialMedia(memberIdentifier),
+        fetchPersonalDetails(memberIdentifier),
+        fetchEducationalDetails(memberIdentifier),
+        fetchPermanentAddress(memberIdentifier),
+        fetchPresentAddress(memberIdentifier)
       ]);
 
       // Set member data
@@ -151,14 +402,14 @@ const KnowYourLeaderScreen = () => {
         console.error('Failed to load personal details:', personalDetails.error);
       }
 
-      // Set education data - Fix: The API returns "leader_edu_data" not "edu_qual"
+      // Set education data
       if (educationalDetails.success && educationalDetails.data.leader_edu_data) {
         setEducationData(educationalDetails.data.leader_edu_data.edu_qual);
       } else {
         console.error('Failed to load educational details:', educationalDetails.error);
       }
 
-      // Combine address data - Fix: API returns "perm_address" and "present_address"
+      // Combine address data
       const addresses = {
         permanent: permanentAddress.success ? permanentAddress.data.perm_address : null,
         present: presentAddress.success ? presentAddress.data.present_address : null
@@ -176,21 +427,21 @@ const KnowYourLeaderScreen = () => {
       };
       setErrors(apiErrors);
 
-      console.log('Profile data loaded successfully');
+      console.log('✅ Profile data loaded successfully');
     } catch (error) {
       console.error('Profile data loading error:', error);
       Alert.alert('Network Error', 'Please check your internet connection and try again.');
     }
   };
 
-  // Timeline data loading - Updated for actual API
-  const loadTimelineData = async () => {
+  const loadTimelineData = async (memberIdentifier) => {
     try {
-      const result = await fetchTimeline();
+      console.log('📡 Loading timeline data for member:', memberIdentifier);
+      const result = await fetchTimeline(memberIdentifier);
       
       if (result.success && result.data.timeline) {
         setTimelineData(result.data.timeline);
-        console.log('Timeline data loaded successfully:', result.data.timeline);
+        console.log('✅ Timeline data loaded successfully:', result.data.timeline);
       } else {
         console.error('Failed to load timeline data:', result.error);
         setTimelineData([]);
@@ -203,8 +454,221 @@ const KnowYourLeaderScreen = () => {
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await loadInitialData(); // Now includes timeline data
+    if (memberId) {
+      await loadInitialData(memberId);
+    } else {
+      await initializeApp();
+    }
     setRefreshing(false);
+  };
+
+  // Edit functionality
+  const openEditModal = (type, data) => {
+    if (!isAdmin) {
+      Alert.alert('Access Denied', 'You need admin privileges to edit this data.');
+      return;
+    }
+
+    setEditType(type);
+    setEditData({ ...data });
+    setEditModalVisible(true);
+  };
+
+  const handleSaveEdit = async () => {
+    if (!memberId || !editType) return;
+
+    setEditLoading(true);
+    
+    try {
+      let result;
+      
+      switch (editType) {
+        case 'coordinates':
+          result = await updateMemberCoordinates(memberId, editData);
+          break;
+        case 'social':
+          result = await updateSocialMedia(memberId, editData);
+          break;
+        case 'personal':
+          result = await updatePersonalDetails(memberId, editData);
+          break;
+        case 'education':
+          result = await updateEducationalDetails(memberId, editData);
+          break;
+        case 'permanent_address':
+          result = await updatePermanentAddress(memberId, editData);
+          break;
+        case 'present_address':
+          result = await updatePresentAddress(memberId, editData);
+          break;
+        case 'timeline':
+          result = await updateTimeline(memberId, editData);
+          break;
+        default:
+          throw new Error('Unknown edit type');
+      }
+
+      if (result.success) {
+        Alert.alert('Success', 'Data updated successfully!');
+        setEditModalVisible(false);
+        // Reload the specific data section
+        await loadInitialData(memberId);
+      } else {
+        throw new Error(result.error);
+      }
+    } catch (error) {
+      console.error('Error updating data:', error);
+      Alert.alert('Update Failed', error.message || 'Failed to update data. Please try again.');
+    } finally {
+      setEditLoading(false);
+    }
+  };
+
+  const renderEditButton = (type, data) => {
+    if (!isAdmin) return null;
+
+    return (
+      <TouchableOpacity
+        style={styles.editButton}
+        onPress={() => openEditModal(type, data)}
+      >
+        <Text style={styles.editButtonText}>✏️</Text>
+      </TouchableOpacity>
+    );
+  };
+
+  const renderEditModal = () => {
+    return (
+      <Modal
+        visible={editModalVisible}
+        animationType="slide"
+        presentationStyle="formSheet"
+        onRequestClose={() => setEditModalVisible(false)}
+      >
+        <SafeAreaView style={styles.editModalContainer}>
+          <KeyboardAvoidingView 
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            style={styles.editModalContent}
+          >
+            {/* Modal Header */}
+            <View style={styles.editModalHeader}>
+              <TouchableOpacity
+                onPress={() => setEditModalVisible(false)}
+                style={styles.editModalCloseButton}
+              >
+                <Text style={styles.editModalCloseText}>✕</Text>
+              </TouchableOpacity>
+              <Text style={styles.editModalTitle}>
+                Edit {editType.replace('_', ' ').toUpperCase()}
+              </Text>
+              <TouchableOpacity
+                onPress={handleSaveEdit}
+                style={styles.editModalSaveButton}
+                disabled={editLoading}
+              >
+                {editLoading ? (
+                  <ActivityIndicator size="small" color="#ffffff" />
+                ) : (
+                  <Text style={styles.editModalSaveText}>Save</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+
+            {/* Modal Body */}
+            <ScrollView style={styles.editModalBody}>
+              {renderEditForm()}
+            </ScrollView>
+          </KeyboardAvoidingView>
+        </SafeAreaView>
+      </Modal>
+    );
+  };
+
+  const renderEditForm = () => {
+    const renderInput = (key, value, placeholder) => (
+      <View key={key} style={styles.editInputContainer}>
+        <Text style={styles.editInputLabel}>
+          {key.replace('_', ' ').toUpperCase()}
+        </Text>
+        <TextInput
+          style={styles.editInput}
+          value={value || ''}
+          onChangeText={(text) => setEditData({...editData, [key]: text})}
+          placeholder={placeholder}
+          multiline={key.includes('address') || key.includes('details')}
+          numberOfLines={key.includes('address') || key.includes('details') ? 3 : 1}
+        />
+      </View>
+    );
+
+    if (!editData) return null;
+
+    return (
+      <View style={styles.editFormContainer}>
+        {Object.keys(editData).map((key) => {
+          if (key === 'id' || key === 'created_at' || key === 'updated_at') return null;
+          
+          return renderInput(
+            key,
+            editData[key],
+            `Enter ${key.replace('_', ' ')}`
+          );
+        })}
+      </View>
+    );
+  };
+
+  // Developer Input Modal - NEW
+  const renderDeveloperInputModal = () => {
+    return (
+      <Modal
+        visible={showDevInput}
+        animationType="fade"
+        transparent={true}
+        onRequestClose={closeDevInput}
+      >
+        <View style={styles.devModalOverlay}>
+          <View style={styles.devModalContent}>
+            <View style={styles.devModalHeader}>
+              <Text style={styles.devModalTitle}>Developer Access</Text>
+              <TouchableOpacity onPress={closeDevInput} style={styles.devModalCloseButton}>
+                <Text style={styles.devModalCloseText}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.devModalBody}>
+              <Text style={styles.devModalDescription}>
+                Enter developer code to enable admin features for testing:
+              </Text>
+              <TextInput
+                style={styles.devInput}
+                value={devInput}
+                onChangeText={setDevInput}
+                placeholder="Enter code..."
+                secureTextEntry={false}
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+            </View>
+
+            <View style={styles.devModalFooter}>
+              <TouchableOpacity
+                style={[styles.devModalButton, styles.devCancelButton]}
+                onPress={closeDevInput}
+              >
+                <Text style={styles.devCancelButtonText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.devModalButton, styles.devSaveButton]}
+                onPress={handleDevInputSubmit}
+              >
+                <Text style={styles.devSaveButtonText}>Submit</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+    );
   };
 
   const openLink = (url) => {
@@ -234,6 +698,13 @@ const KnowYourLeaderScreen = () => {
     
     return (
       <View style={styles.modernHeader}>
+        {/* Admin Badge */}
+        {isAdmin && (
+          <View style={styles.adminBadge}>
+            <Text style={styles.adminBadgeText}>👑 ADMIN</Text>
+          </View>
+        )}
+        
         {/* Background Pattern */}
         <View style={styles.headerPattern}>
           <View style={[styles.patternCircle, { top: -20, right: -30 }]} />
@@ -253,12 +724,21 @@ const KnowYourLeaderScreen = () => {
             </View>
             
             <View style={styles.basicInfo}>
-              <Text style={styles.leaderName}>
-                {memberData ? 
-                  `${memberData.title || ''} ${memberData.member_name || ''}`.trim() : 
-                  'Loading...'
-                }
-              </Text>
+              <View style={styles.nameRow}>
+                <TouchableOpacity
+                  style={styles.nameContainer}
+                  onPress={handleLeaderNamePress}
+                  activeOpacity={0.8}
+                >
+                  <Text style={styles.leaderName}>
+                    {memberData ? 
+                      `${memberData.title || ''} ${memberData.member_name || ''}`.trim() : 
+                      'Loading...'
+                    }
+                  </Text>
+                </TouchableOpacity>
+                {renderEditButton('coordinates', memberData)}
+              </View>
               <Text style={styles.designation}>Member of Parliament</Text>
               <View style={styles.locationRow}>
                 <Text style={styles.locationText}>
@@ -273,7 +753,6 @@ const KnowYourLeaderScreen = () => {
           
           {memberData?.party && (
             <View style={styles.partyContainer}>
-             
               <Text style={styles.partyName}>{memberData.party}</Text>
             </View>
           )}
@@ -357,14 +836,17 @@ const KnowYourLeaderScreen = () => {
     </View>
   );
 
-  const renderInfoCard = (title, icon, children, backgroundColor = '#ffffff') => (
+  const renderInfoCard = (title, icon, children, backgroundColor = '#ffffff', editType = null, editData = null) => (
     <View style={[styles.infoCard, { backgroundColor }]}>
       <View style={styles.cardHeader}>
         <View style={styles.cardTitleContainer}>
           <Text style={styles.cardIcon}>{icon}</Text>
           <Text style={styles.cardTitle}>{title}</Text>
         </View>
-        <View style={styles.cardAccent} />
+        <View style={styles.cardHeaderRight}>
+          <View style={styles.cardAccent} />
+          {editType && editData && renderEditButton(editType, editData)}
+        </View>
       </View>
       <View style={styles.cardBody}>
         {children}
@@ -407,7 +889,10 @@ const KnowYourLeaderScreen = () => {
             <Text style={styles.infoValue}>{personalData.profession}</Text>
           </View>
         )}
-      </View>
+      </View>,
+      '#ffffff',
+      'personal',
+      personalData
     );
   };
 
@@ -434,7 +919,10 @@ const KnowYourLeaderScreen = () => {
             </View>
           </View>
         ))}
-      </View>
+      </View>,
+      '#ffffff',
+      'education',
+      { edu_qual: educationData }
     );
   };
 
@@ -448,6 +936,7 @@ const KnowYourLeaderScreen = () => {
           <View style={styles.contactSection}>
             <View style={styles.contactSectionHeader}>
               <Text style={styles.contactSectionTitle}>🏠 Permanent Address</Text>
+              {renderEditButton('permanent_address', addressData.permanent)}
             </View>
             <Text style={styles.addressLine}>
               {[
@@ -490,6 +979,7 @@ const KnowYourLeaderScreen = () => {
           <View style={styles.contactSection}>
             <View style={styles.contactSectionHeader}>
               <Text style={styles.contactSectionTitle}>🏢 Present Address</Text>
+              {renderEditButton('present_address', addressData.present)}
             </View>
             <Text style={styles.addressLine}>
               {[
@@ -564,7 +1054,10 @@ const KnowYourLeaderScreen = () => {
             <Text style={styles.socialArrow}>→</Text>
           </TouchableOpacity>
         ))}
-      </View>
+      </View>,
+      '#ffffff',
+      'social',
+      socialMediaData
     );
   };
 
@@ -598,9 +1091,12 @@ const KnowYourLeaderScreen = () => {
             
             <View style={styles.timelineItemRight}>
               <View style={styles.timelineContentCard}>
-                <Text style={styles.timelineTitle}>
-                  {item.title || 'Position'}
-                </Text>
+                <View style={styles.timelineHeader}>
+                  <Text style={styles.timelineTitle}>
+                    {item.title || 'Position'}
+                  </Text>
+                  {renderEditButton('timeline', item)}
+                </View>
                 <Text style={styles.timelineDetails}>
                   {item.title_details || 'No details available'}
                 </Text>
@@ -613,7 +1109,10 @@ const KnowYourLeaderScreen = () => {
             </View>
           </View>
         ))}
-      </View>
+      </View>,
+      '#ffffff',
+      'timeline',
+      timelineData
     );
   };
 
@@ -648,6 +1147,12 @@ const KnowYourLeaderScreen = () => {
       </View>
       
       <View style={styles.bottomSpacing} />
+      
+      {/* Edit Modal */}
+      {renderEditModal()}
+
+      {/* Developer Input Modal */}
+      {renderDeveloperInputModal()}
     </ScrollView>
   );
 };
@@ -693,6 +1198,24 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     position: 'relative',
     overflow: 'hidden',
+  },
+
+  // Admin Badge
+  adminBadge: {
+    position: 'absolute',
+    top: 55,
+    right: 20,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 15,
+    zIndex: 2,
+  },
+  
+  adminBadgeText: {
+    color: '#ffffff',
+    fontSize: 12,
+    fontWeight: 'bold',
   },
   
   headerPattern: {
@@ -750,6 +1273,17 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingTop: 5,
   },
+
+  nameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+
+  // NEW: Name container for tap functionality
+  nameContainer: {
+    flex: 1,
+  },
   
   leaderName: {
     fontSize: 22,
@@ -770,11 +1304,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   
-  locationIcon: {
-    fontSize: 14,
-    marginRight: 5,
-  },
-  
   locationText: {
     fontSize: 14,
     color: 'rgba(255,255,255,0.9)',
@@ -786,12 +1315,6 @@ const styles = StyleSheet.create({
     padding: 12,
     borderRadius: 10,
     marginBottom: 15,
-  },
-  
-  partyLabel: {
-    fontSize: 12,
-    color: 'rgba(255,255,255,0.8)',
-    marginBottom: 2,
   },
   
   partyName: {
@@ -817,6 +1340,118 @@ const styles = StyleSheet.create({
   
   quickActionIcon: {
     fontSize: 20,
+  },
+
+  // Edit Button
+  editButton: {
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginLeft: 10,
+  },
+  
+  editButtonText: {
+    fontSize: 16,
+  },
+
+  // Developer Modal Styles - NEW
+  devModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  devModalContent: {
+    backgroundColor: '#fff',
+    borderRadius: 15,
+    width: '85%',
+    elevation: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 5 },
+    shadowOpacity: 0.3,
+    shadowRadius: 10,
+  },
+  devModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  devModalTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#2c3e50',
+    flex: 1,
+  },
+  devModalCloseButton: {
+    backgroundColor: '#e74c3c',
+    borderRadius: 15,
+    width: 30,
+    height: 30,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  devModalCloseText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  devModalBody: {
+    padding: 20,
+  },
+  devModalDescription: {
+    fontSize: 14,
+    color: '#7f8c8d',
+    marginBottom: 15,
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+  devInput: {
+    borderWidth: 1,
+    borderColor: '#bdc3c7',
+    borderRadius: 8,
+    padding: 12,
+    fontSize: 16,
+    backgroundColor: '#fff',
+    color: '#2c3e50',
+    textAlign: 'center',
+  },
+  devModalFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    padding: 20,
+    borderTopWidth: 1,
+    borderTopColor: '#f0f0f0',
+    gap: 10,
+  },
+  devModalButton: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 45,
+  },
+  devCancelButton: {
+    backgroundColor: '#95a5a6',
+  },
+  devCancelButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  devSaveButton: {
+    backgroundColor: '#27ae60',
+  },
+  devSaveButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: 'bold',
   },
 
   // Segmented Control
@@ -901,6 +1536,11 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: 'bold',
     color: '#2c3e50',
+  },
+
+  cardHeaderRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   
   cardAccent: {
@@ -1009,6 +1649,9 @@ const styles = StyleSheet.create({
   },
   
   contactSectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     marginBottom: 10,
   },
   
@@ -1086,7 +1729,7 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
 
-  // Timeline - Fixed Styles
+  // Timeline
   timelineContainer: {
     paddingVertical: 10,
   },
@@ -1153,13 +1796,20 @@ const styles = StyleSheet.create({
     borderLeftWidth: 4,
     borderLeftColor: '#e16e2b',
   },
+
+  timelineHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 6,
+  },
   
   timelineTitle: {
     fontSize: 16,
     fontWeight: 'bold',
     color: '#2c3e50',
-    marginBottom: 6,
     lineHeight: 22,
+    flex: 1,
   },
   
   timelineDetails: {
@@ -1193,6 +1843,107 @@ const styles = StyleSheet.create({
     color: '#7f8c8d',
     fontStyle: 'italic',
     textAlign: 'center',
+  },
+
+  // Edit Modal Styles
+  editModalContainer: {
+    flex: 1,
+    backgroundColor: '#f0f2f5',
+  },
+
+  editModalContent: {
+    flex: 1,
+  },
+
+  editModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingVertical: 15,
+    backgroundColor: '#ffffff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#e9ecef',
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 3,
+  },
+
+  editModalCloseButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#f8f9fa',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+
+  editModalCloseText: {
+    fontSize: 18,
+    color: '#6c757d',
+    fontWeight: 'bold',
+  },
+
+  editModalTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#2c3e50',
+  },
+
+  editModalSaveButton: {
+    backgroundColor: '#e16e2b',
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 20,
+    minWidth: 80,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+
+  editModalSaveText: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+
+  editModalBody: {
+    flex: 1,
+    padding: 20,
+  },
+
+  editFormContainer: {
+    gap: 20,
+  },
+
+  editInputContainer: {
+    backgroundColor: '#ffffff',
+    borderRadius: 12,
+    padding: 16,
+    elevation: 1,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+  },
+
+  editInputLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#2c3e50',
+    marginBottom: 8,
+  },
+
+  editInput: {
+    borderWidth: 1,
+    borderColor: '#e9ecef',
+    borderRadius: 8,
+    padding: 12,
+    fontSize: 16,
+    color: '#495057',
+    backgroundColor: '#f8f9fa',
+    textAlignVertical: 'top',
   },
 
   // Bottom Spacing

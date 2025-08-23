@@ -1,4 +1,4 @@
-package com.nutantek.sanjayjaiswal.Backup
+package com.nutantek.sanjayjaiswal
 
 import android.app.Application
 import com.facebook.react.PackageList
@@ -10,7 +10,7 @@ import com.facebook.react.ReactPackage
 import com.facebook.react.defaults.DefaultReactHost.getDefaultReactHost
 import com.facebook.react.defaults.DefaultReactNativeHost
 
-class MainApplicationBackup : Application(), ReactApplication {
+class MainApplication : Application(), ReactApplication {
 
   override val reactNativeHost: ReactNativeHost =
     object : DefaultReactNativeHost(this) {

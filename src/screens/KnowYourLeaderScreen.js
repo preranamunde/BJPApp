@@ -18,11 +18,10 @@ import {
   Platform,
 } from 'react-native';
 import EncryptedStorage from 'react-native-encrypted-storage';
+import ConfigService from '../services/ConfigService'; // Adjust the path as needed
+import ApiService from '../services/ApiService'; // Adjust the path as needed
 
 const { width } = Dimensions.get('window');
-
-// API Configuration
-const API_BASE_URL = 'http://192.168.1.104:5000';
 
 const KnowYourLeaderScreen = () => {
   // Tab state
@@ -56,7 +55,7 @@ const KnowYourLeaderScreen = () => {
   const [editData, setEditData] = useState({});
   const [editLoading, setEditLoading] = useState(false);
 
-  // Developer mode states - NEW
+  // Developer mode states
   const [showDevInput, setShowDevInput] = useState(false);
   const [devInput, setDevInput] = useState('');
   const [devClickCount, setDevClickCount] = useState(0);
@@ -95,7 +94,7 @@ const KnowYourLeaderScreen = () => {
     }
   };
 
-  // Developer mode functions - NEW
+  // Developer mode functions
   const handleLeaderNamePress = () => {
     setDevClickCount(prevCount => {
       const newCount = prevCount + 1;
@@ -212,144 +211,299 @@ const KnowYourLeaderScreen = () => {
     }
   };
 
-  // Generic API call helper
-  const makeApiCall = async (endpoint, method = 'GET', body = null) => {
+  // Individual API calls using ApiService and ConfigService
+  const fetchMemberCoordinates = async (memberIdentifier) => {
     try {
-      const config = {
-        method: method,
-        headers: {
-          'Content-Type': 'application/json',
-        },
+      const baseUrl = await ConfigService.getBaseUrl();
+      const endpoint = `${baseUrl}/api/coordinates/${memberIdentifier}`;
+      const result = await ApiService.get(endpoint);
+      
+      return {
+        success: result.success,
+        data: result.success ? result.data : null,
+        error: result.success ? null : result.error || result.message
       };
-
-      if (body && method !== 'GET') {
-        config.body = JSON.stringify(body);
-      }
-
-      const response = await fetch(`${API_BASE_URL}/${endpoint}`, config);
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const data = await response.json();
-      return { success: true, data };
     } catch (error) {
-      console.error(`API Error (${endpoint}):`, error);
+      console.error('API Error (coordinates):', error);
       return { success: false, error: error.message };
     }
   };
 
-  // Individual API calls - GET methods
-  const fetchMemberCoordinates = async (memberIdentifier) => {
-    return await makeApiCall(`api/coordinates/${memberIdentifier}`, 'GET');
-  };
-
   const fetchSocialMedia = async (memberIdentifier) => {
-    return await makeApiCall(`api/socialmedia/${memberIdentifier}`, 'GET');
+    try {
+      const baseUrl = await ConfigService.getBaseUrl();
+      const endpoint = `${baseUrl}/api/socialmedia/${memberIdentifier}`;
+      const result = await ApiService.get(endpoint);
+      
+      return {
+        success: result.success,
+        data: result.success ? result.data : null,
+        error: result.success ? null : result.error || result.message
+      };
+    } catch (error) {
+      console.error('API Error (socialmedia):', error);
+      return { success: false, error: error.message };
+    }
   };
 
   const fetchPersonalDetails = async (memberIdentifier) => {
-    return await makeApiCall(`api/personaldetails/${memberIdentifier}`, 'GET');
+    try {
+      const baseUrl = await ConfigService.getBaseUrl();
+      const endpoint = `${baseUrl}/api/personaldetails/${memberIdentifier}`;
+      const result = await ApiService.get(endpoint);
+      
+      return {
+        success: result.success,
+        data: result.success ? result.data : null,
+        error: result.success ? null : result.error || result.message
+      };
+    } catch (error) {
+      console.error('API Error (personaldetails):', error);
+      return { success: false, error: error.message };
+    }
   };
 
   const fetchEducationalDetails = async (memberIdentifier) => {
-    return await makeApiCall(`api/edudata/${memberIdentifier}`, 'GET');
+    try {
+      const baseUrl = await ConfigService.getBaseUrl();
+      const endpoint = `${baseUrl}/api/edudata/${memberIdentifier}`;
+      const result = await ApiService.get(endpoint);
+      
+      return {
+        success: result.success,
+        data: result.success ? result.data : null,
+        error: result.success ? null : result.error || result.message
+      };
+    } catch (error) {
+      console.error('API Error (edudata):', error);
+      return { success: false, error: error.message };
+    }
   };
 
   const fetchPermanentAddress = async (memberIdentifier) => {
-    return await makeApiCall(`api/permaddress/${memberIdentifier}`, 'GET');
+    try {
+      const baseUrl = await ConfigService.getBaseUrl();
+      const endpoint = `${baseUrl}/api/permaddress/${memberIdentifier}`;
+      const result = await ApiService.get(endpoint);
+      
+      return {
+        success: result.success,
+        data: result.success ? result.data : null,
+        error: result.success ? null : result.error || result.message
+      };
+    } catch (error) {
+      console.error('API Error (permaddress):', error);
+      return { success: false, error: error.message };
+    }
   };
 
   const fetchPresentAddress = async (memberIdentifier) => {
-    return await makeApiCall(`api/preaddress/${memberIdentifier}`, 'GET');
+    try {
+      const baseUrl = await ConfigService.getBaseUrl();
+      const endpoint = `${baseUrl}/api/preaddress/${memberIdentifier}`;
+      const result = await ApiService.get(endpoint);
+      
+      return {
+        success: result.success,
+        data: result.success ? result.data : null,
+        error: result.success ? null : result.error || result.message
+      };
+    } catch (error) {
+      console.error('API Error (preaddress):', error);
+      return { success: false, error: error.message };
+    }
   };
 
   const fetchTimeline = async (memberIdentifier) => {
-    return await makeApiCall(`api/leadertimeline/${memberIdentifier}`, 'GET');
+    try {
+      const baseUrl = await ConfigService.getBaseUrl();
+      const endpoint = `${baseUrl}/api/leadertimeline/${memberIdentifier}`;
+      const result = await ApiService.get(endpoint);
+      
+      return {
+        success: result.success,
+        data: result.success ? result.data : null,
+        error: result.success ? null : result.error || result.message
+      };
+    } catch (error) {
+      console.error('API Error (leadertimeline):', error);
+      return { success: false, error: error.message };
+    }
   };
 
-  // PUT API calls for updating data
+  // PUT API calls for updating data using ApiService
   const updateMemberCoordinates = async (memberIdentifier, data) => {
-  // Ensure data is wrapped in leader_coordinates object
-  const requestBody = {
-    leader_coordinates: {
-      regd_mobile_no: memberIdentifier,
-      ...data
+    try {
+      const baseUrl = await ConfigService.getBaseUrl();
+      const endpoint = `${baseUrl}/api/coordinates/${memberIdentifier}`;
+      
+      // Ensure data is wrapped in leader_coordinates object
+      const requestBody = {
+        leader_coordinates: {
+          regd_mobile_no: memberIdentifier,
+          ...data
+        }
+      };
+      
+      const result = await ApiService.put(endpoint, requestBody);
+      return {
+        success: result.success,
+        data: result.success ? result.data : null,
+        error: result.success ? null : result.error || result.message
+      };
+    } catch (error) {
+      console.error('API Error (update coordinates):', error);
+      return { success: false, error: error.message };
     }
   };
-  
-  return await makeApiCall(`api/coordinates/${memberIdentifier}`, 'PUT', requestBody);
-};
 
-const updateSocialMedia = async (memberIdentifier, data) => {
-  // Ensure data is wrapped in social_media object
-  const requestBody = {
-    social_media: {
-      regd_mobile_no: memberIdentifier,
-      ...data
+  const updateSocialMedia = async (memberIdentifier, data) => {
+    try {
+      const baseUrl = await ConfigService.getBaseUrl();
+      const endpoint = `${baseUrl}/api/socialmedia/${memberIdentifier}`;
+      
+      // Ensure data is wrapped in social_media object
+      const requestBody = {
+        social_media: {
+          regd_mobile_no: memberIdentifier,
+          ...data
+        }
+      };
+      
+      const result = await ApiService.put(endpoint, requestBody);
+      return {
+        success: result.success,
+        data: result.success ? result.data : null,
+        error: result.success ? null : result.error || result.message
+      };
+    } catch (error) {
+      console.error('API Error (update social media):', error);
+      return { success: false, error: error.message };
     }
   };
-  
-  return await makeApiCall(`api/socialmedia/${memberIdentifier}`, 'PUT', requestBody);
-};
 
-const updatePersonalDetails = async (memberIdentifier, data) => {
-  // Ensure data is wrapped in personal_details object
-  const requestBody = {
-    personal_details: {
-      regd_mobile_no: memberIdentifier,
-      ...data
+  const updatePersonalDetails = async (memberIdentifier, data) => {
+    try {
+      const baseUrl = await ConfigService.getBaseUrl();
+      const endpoint = `${baseUrl}/api/personaldetails/${memberIdentifier}`;
+      
+      // Ensure data is wrapped in personal_details object
+      const requestBody = {
+        personal_details: {
+          regd_mobile_no: memberIdentifier,
+          ...data
+        }
+      };
+      
+      const result = await ApiService.put(endpoint, requestBody);
+      return {
+        success: result.success,
+        data: result.success ? result.data : null,
+        error: result.success ? null : result.error || result.message
+      };
+    } catch (error) {
+      console.error('API Error (update personal details):', error);
+      return { success: false, error: error.message };
     }
   };
-  
-  return await makeApiCall(`api/personaldetails/${memberIdentifier}`, 'PUT', requestBody);
-};
 
-const updateEducationalDetails = async (memberIdentifier, data) => {
-  // Ensure data is wrapped in leader_edu_data object
-  const requestBody = {
-    leader_edu_data: {
-      regd_mobile_no: memberIdentifier,
-      edu_qual: Array.isArray(data.edu_qual) ? data.edu_qual : [data]
+  const updateEducationalDetails = async (memberIdentifier, data) => {
+    try {
+      const baseUrl = await ConfigService.getBaseUrl();
+      const endpoint = `${baseUrl}/api/edudata/${memberIdentifier}`;
+      
+      // Ensure data is wrapped in leader_edu_data object
+      const requestBody = {
+        leader_edu_data: {
+          regd_mobile_no: memberIdentifier,
+          edu_qual: Array.isArray(data.edu_qual) ? data.edu_qual : [data]
+        }
+      };
+      
+      const result = await ApiService.put(endpoint, requestBody);
+      return {
+        success: result.success,
+        data: result.success ? result.data : null,
+        error: result.success ? null : result.error || result.message
+      };
+    } catch (error) {
+      console.error('API Error (update education):', error);
+      return { success: false, error: error.message };
     }
   };
-  
-  return await makeApiCall(`api/edudata/${memberIdentifier}`, 'PUT', requestBody);
-};
 
-const updatePermanentAddress = async (memberIdentifier, data) => {
-  // Ensure data is wrapped in perm_address object
-  const requestBody = {
-    perm_address: {
-      regd_mobile_no: memberIdentifier,
-      ...data
+  const updatePermanentAddress = async (memberIdentifier, data) => {
+    try {
+      const baseUrl = await ConfigService.getBaseUrl();
+      const endpoint = `${baseUrl}/api/permaddress/${memberIdentifier}`;
+      
+      // Ensure data is wrapped in perm_address object
+      const requestBody = {
+        perm_address: {
+          regd_mobile_no: memberIdentifier,
+          ...data
+        }
+      };
+      
+      const result = await ApiService.put(endpoint, requestBody);
+      return {
+        success: result.success,
+        data: result.success ? result.data : null,
+        error: result.success ? null : result.error || result.message
+      };
+    } catch (error) {
+      console.error('API Error (update permanent address):', error);
+      return { success: false, error: error.message };
     }
   };
-  
-  return await makeApiCall(`api/permaddress/${memberIdentifier}`, 'PUT', requestBody);
-};
 
-const updatePresentAddress = async (memberIdentifier, data) => {
-  // Ensure data is wrapped in present_address object
-  const requestBody = {
-    present_address: {
-      regd_mobile_no: memberIdentifier,
-      ...data
+  const updatePresentAddress = async (memberIdentifier, data) => {
+    try {
+      const baseUrl = await ConfigService.getBaseUrl();
+      const endpoint = `${baseUrl}/api/preaddress/${memberIdentifier}`;
+      
+      // Ensure data is wrapped in present_address object
+      const requestBody = {
+        present_address: {
+          regd_mobile_no: memberIdentifier,
+          ...data
+        }
+      };
+      
+      const result = await ApiService.put(endpoint, requestBody);
+      return {
+        success: result.success,
+        data: result.success ? result.data : null,
+        error: result.success ? null : result.error || result.message
+      };
+    } catch (error) {
+      console.error('API Error (update present address):', error);
+      return { success: false, error: error.message };
     }
   };
-  
-  return await makeApiCall(`api/preaddress/${memberIdentifier}`, 'PUT', requestBody);
-};
 
-const updateTimeline = async (memberIdentifier, data) => {
-  // For timeline, send as array if it's a single item
-  const requestBody = {
-    timeline: Array.isArray(data) ? data : [data]
+  const updateTimeline = async (memberIdentifier, data) => {
+    try {
+      const baseUrl = await ConfigService.getBaseUrl();
+      const endpoint = `${baseUrl}/api/leadertimeline/${memberIdentifier}`;
+      
+      // For timeline, send as array if it's a single item
+      const requestBody = {
+        timeline: Array.isArray(data) ? data : [data]
+      };
+      
+      const result = await ApiService.put(endpoint, requestBody);
+      return {
+        success: result.success,
+        data: result.success ? result.data : null,
+        error: result.success ? null : result.error || result.message
+      };
+    } catch (error) {
+      console.error('API Error (update timeline):', error);
+      return { success: false, error: error.message };
+    }
   };
-  
-  return await makeApiCall(`api/leadertimeline/${memberIdentifier}`, 'PUT', requestBody);
-};
+
   const loadInitialData = async (memberIdentifier) => {
     if (!memberIdentifier) {
       console.error('❌ No member identifier provided');
@@ -618,7 +772,7 @@ const updateTimeline = async (memberIdentifier, data) => {
     );
   };
 
-  // Developer Input Modal - NEW
+  // Developer Input Modal
   const renderDeveloperInputModal = () => {
     return (
       <Modal
@@ -1280,7 +1434,6 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
 
-  // NEW: Name container for tap functionality
   nameContainer: {
     flex: 1,
   },
@@ -1357,7 +1510,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
 
-  // Developer Modal Styles - NEW
+  // Developer Modal Styles
   devModalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.7)',

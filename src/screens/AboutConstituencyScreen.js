@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, Linking, TouchableOpacity, ActivityIndicator, Modal, TextInput, Alert } from 'react-native';
 import EncryptedStorage from 'react-native-encrypted-storage';
+import ConfigService from '../services/ConfigService'; // Add this import
+import ApiService from '../services/ApiService'; // Add this import
 
 const AboutConstituencyScreen = () => {
   const [constituencyData, setConstituencyData] = useState(null);
@@ -157,33 +159,34 @@ const AboutConstituencyScreen = () => {
       
       console.log('📡 Fetching constituency data for mobile:', mobileNo);
       
-      // Fetch constituency profile data
-      const profileResponse = await fetch(`http://192.168.1.104:5000/api/constituencyprofile/${mobileNo}`, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-user-id': 'admin_user',
-        },
-      });
+      // Get base URL from ConfigService
+      const baseUrl = await ConfigService.getBaseUrl();
+      console.log('🌐 Using base URL:', baseUrl);
       
-      if (!profileResponse.ok) {
-        throw new Error(`Failed to fetch constituency profile: ${profileResponse.status}`);
+      // Fetch constituency profile data using ApiService
+      const profileResult = await ApiService.get(
+        `${baseUrl}/api/constituencyprofile/${mobileNo}`,
+        {
+          'x-user-id': 'admin_user',
+        }
+      );
+      
+      if (!profileResult.success) {
+        throw new Error(`Failed to fetch constituency profile: ${profileResult.message}`);
       }
       
-      const profileData = await profileResponse.json();
-      setConstituencyData(profileData);
+      setConstituencyData(profileResult.data);
       
-      // Fetch assembly constituencies data
-      const assemblyResponse = await fetch(`http://192.168.1.104:5000/api/assemblyconstituencies/${mobileNo}`, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
+      // Fetch assembly constituencies data using ApiService
+      const assemblyResult = await ApiService.get(
+        `${baseUrl}/api/assemblyconstituencies/${mobileNo}`,
+        {
           'x-user-id': 'admin_user',
-        },
-      });
+        }
+      );
       
-      if (assemblyResponse.ok) {
-        const assemblyData = await assemblyResponse.json();
+      if (assemblyResult.success) {
+        const assemblyData = assemblyResult.data;
         
         let constituencies = [];
         if (assemblyData && assemblyData.assembly_constituencies && Array.isArray(assemblyData.assembly_constituencies.assembly_const)) {
@@ -267,277 +270,180 @@ const AboutConstituencyScreen = () => {
   };
 
   const handleUpdateConstituency = async () => {
-  if (!regdMobileNo) {
-    Alert.alert('Error', 'Mobile number not found. Please restart the app.');
-    return;
-  }
-  
-  setUpdateLoading(true);
-  try {
-    console.log('🔄 Updating constituency profile...');
-    console.log('📱 Mobile Number:', regdMobileNo);
-    
-    // Clean the form data - remove empty strings and null values
-    const cleanedFormData = {};
-    Object.keys(editFormData).forEach(key => {
-      const value = editFormData[key];
-      if (value !== null && value !== undefined && value.toString().trim() !== '') {
-        cleanedFormData[key] = value.toString().trim();
-      }
-    });
-    
-    // IMPORTANT: The backend expects "constitency_profile" (with typo), not "constituency_profile"
-    // This matches your Postman collection structure
-    const requestPayload = {
-      constitency_profile: cleanedFormData  // Note: "constitency" with typo to match backend
-    };
-    
-    console.log('🧹 Cleaned form data:', JSON.stringify(requestPayload, null, 2));
-    console.log('🌐 API URL:', `http://192.168.1.104:5000/api/constituencyprofile/${regdMobileNo}`);
-    
-    const response = await fetch(`http://192.168.1.104:5000/api/constituencyprofile/${regdMobileNo}`, {
-      method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-        'x-user-id': 'admin_user', // This header is required based on your Postman collection
-      },
-      body: JSON.stringify(requestPayload),
-    });
-    
-    console.log('📡 Response status:', response.status);
-    console.log('📡 Response ok:', response.ok);
-    
-    // Get response text first to see what we're receiving
-    const responseText = await response.text();
-    console.log('📡 Response text:', responseText);
-    
-    if (!response.ok) {
-      throw new Error(`Failed to update constituency profile: ${response.status} - ${responseText}`);
+    if (!regdMobileNo) {
+      Alert.alert('Error', 'Mobile number not found. Please restart the app.');
+      return;
     }
     
-    // Try to parse as JSON
-    let updatedData;
+    setUpdateLoading(true);
     try {
-      updatedData = JSON.parse(responseText);
-      console.log('✅ Parsed response data:', JSON.stringify(updatedData, null, 2));
+      console.log('🔄 Updating constituency profile...');
+      console.log('📱 Mobile Number:', regdMobileNo);
+      
+      // Clean the form data - remove empty strings and null values
+      const cleanedFormData = {};
+      Object.keys(editFormData).forEach(key => {
+        const value = editFormData[key];
+        if (value !== null && value !== undefined && value.toString().trim() !== '') {
+          cleanedFormData[key] = value.toString().trim();
+        }
+      });
+      
+      // Get base URL from ConfigService
+      const baseUrl = await ConfigService.getBaseUrl();
+      
+      // IMPORTANT: The backend expects "constitency_profile" (with typo), not "constituency_profile"
+      // This matches your Postman collection structure
+      const requestPayload = {
+        constitency_profile: cleanedFormData  // Note: "constitency" with typo to match backend
+      };
+      
+      console.log('🧹 Cleaned form data:', JSON.stringify(requestPayload, null, 2));
+      console.log('🌐 API URL:', `${baseUrl}/api/constituencyprofile/${regdMobileNo}`);
+      
+      const result = await ApiService.put(
+        `${baseUrl}/api/constituencyprofile/${regdMobileNo}`,
+        requestPayload,
+        {
+          'x-user-id': 'admin_user', // This header is required based on your Postman collection
+        }
+      );
+      
+      console.log('📡 Response success:', result.success);
+      console.log('📡 Response data:', result.data);
+      
+      if (!result.success) {
+        throw new Error(`Failed to update constituency profile: ${result.message}`);
+      }
       
       // Update local state with new data
       // The response might come back with the correct spelling, so handle both cases
-      if (updatedData && updatedData.constituency_profile) {
-        setConstituencyData(updatedData.constituency_profile);
-      } else if (updatedData && updatedData.constitency_profile) {
-        setConstituencyData(updatedData.constitency_profile);
-      } else if (updatedData) {
-        setConstituencyData(updatedData);
+      if (result.data && result.data.constituency_profile) {
+        setConstituencyData(result.data.constituency_profile);
+      } else if (result.data && result.data.constitency_profile) {
+        setConstituencyData(result.data.constitency_profile);
+      } else if (result.data) {
+        setConstituencyData(result.data);
       }
-    } catch (parseError) {
-      console.log('⚠️ Response is not JSON, refreshing from server');
+      
+      // Close modal first
+      setEditModalVisible(false);
+      
+      // Refresh data from server to ensure sync
+      console.log('🔄 Refreshing data from server...');
+      await fetchConstituencyData(regdMobileNo);
+      
+      Alert.alert('Success', 'Constituency profile updated successfully!');
+      console.log('✅ Update completed successfully');
+      
+    } catch (error) {
+      console.error('❌ Error updating constituency profile:', error);
+      console.error('❌ Error details:', error.message);
+      Alert.alert('Error', `Failed to update constituency profile: ${error.message}`);
+    } finally {
+      setUpdateLoading(false);
     }
-    
-    // Close modal first
-    setEditModalVisible(false);
-    
-    // Refresh data from server to ensure sync
-    console.log('🔄 Refreshing data from server...');
-    await fetchConstituencyData(regdMobileNo);
-    
-    Alert.alert('Success', 'Constituency profile updated successfully!');
-    console.log('✅ Update completed successfully');
-    
-  } catch (error) {
-    console.error('❌ Error updating constituency profile:', error);
-    console.error('❌ Error details:', error.message);
-    Alert.alert('Error', `Failed to update constituency profile: ${error.message}`);
-  } finally {
-    setUpdateLoading(false);
-  }
-};
+  };
 
-const handleUpdateAssembly = async () => {
-  if (!regdMobileNo || !editingAssemblyId) {
-    Alert.alert('Error', 'Missing required data. Please try again.');
-    return;
-  }
-  
-  setUpdateLoading(true);
-  try {
-    console.log('🔄 Updating assembly constituency...');
-    console.log('📱 Mobile Number:', regdMobileNo);
-    console.log('🆔 Assembly ID:', editingAssemblyId);
-    console.log('📝 Form Data being sent:', JSON.stringify(editFormData, null, 2));
-    
-    // Clean the form data
-    const cleanedFormData = {};
-    Object.keys(editFormData).forEach(key => {
-      const value = editFormData[key];
-      if (value !== null && value !== undefined && value.toString().trim() !== '') {
-        cleanedFormData[key] = value.toString().trim();
-      }
-    });
-    
-    // Find the assembly constituency to update in the current list
-    const assemblyToUpdate = assemblyConstituencies.find(
-      assembly => (assembly._id || assembly.id) === editingAssemblyId
-    );
-    
-    if (!assemblyToUpdate) {
-      throw new Error('Assembly constituency not found in current data');
+  const handleUpdateAssembly = async () => {
+    if (!regdMobileNo || !editingAssemblyId) {
+      Alert.alert('Error', 'Missing required data. Please try again.');
+      return;
     }
     
-    // Create updated assembly constituencies array
-    const updatedAssemblyConstituencies = assemblyConstituencies.map(assembly => {
-      if ((assembly._id || assembly.id) === editingAssemblyId) {
-        return {
-          ...assembly,
-          ac_number: cleanedFormData.ac_number || assembly.ac_number,
-          ac_name: cleanedFormData.ac_name || assembly.ac_name,
-          district: cleanedFormData.district || assembly.district,
-          type: cleanedFormData.type || assembly.type || ''
-        };
-      }
-      return assembly;
-    });
-    
-    // Structure the payload according to your backend API
-    // Based on the Postman collection, it expects "assembly_constituencies" wrapper
-    const requestPayload = {
-      assembly_constituencies: {
-        narration: "Updated assembly constituencies",
-        assembly_const_count: updatedAssemblyConstituencies.length,
-        assembly_const: updatedAssemblyConstituencies.map(assembly => ({
-          ac_number: parseInt(assembly.ac_number) || 0,
-          ac_name: assembly.ac_name || '',
-          district: assembly.district || '',
-          ...(assembly.type && { type: assembly.type })
-        }))
-      }
-    };
-    
-    console.log('🧹 Final payload:', JSON.stringify(requestPayload, null, 2));
-    console.log('🌐 API URL:', `http://192.168.1.104:5000/api/assemblyconstituencies/${regdMobileNo}`);
-    
-    const response = await fetch(`http://192.168.1.104:5000/api/assemblyconstituencies/${regdMobileNo}`, {
-      method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-        'x-user-id': 'admin_user',
-      },
-      body: JSON.stringify(requestPayload),
-    });
-    
-    console.log('📡 Response status:', response.status);
-    console.log('📡 Response headers:', JSON.stringify([...response.headers.entries()]));
-    
-    const responseText = await response.text();
-    console.log('📡 Response text:', responseText);
-    
-    if (!response.ok) {
-      throw new Error(`Failed to update assembly constituency: ${response.status} - ${responseText}`);
-    }
-    
-    // Close modal first
-    setEditModalVisible(false);
-    
-    // Refresh assembly constituencies data from server
-    console.log('🔄 Refreshing assembly data from server...');
-    await fetchConstituencyData(regdMobileNo);
-    
-    Alert.alert('Success', 'Assembly constituency updated successfully!');
-    console.log('✅ Assembly update completed successfully');
-    
-  } catch (error) {
-    console.error('❌ Error updating assembly constituency:', error);
-    console.error('❌ Error stack:', error.stack);
-    Alert.alert('Error', `Failed to update assembly constituency: ${error.message}`);
-  } finally {
-    setUpdateLoading(false);
-  }
-};
-
-// Enhanced network debugging function - add this new function
-const debugNetworkRequest = async (url, options) => {
-  console.log('🔍 DEBUG NETWORK REQUEST');
-  console.log('URL:', url);
-  console.log('Method:', options.method);
-  console.log('Headers:', JSON.stringify(options.headers, null, 2));
-  console.log('Body:', options.body);
-  console.log('Body length:', options.body?.length || 0);
-  
-  try {
-    const response = await fetch(url, options);
-    console.log('Response Status:', response.status);
-    console.log('Response OK:', response.ok);
-    console.log('Response Headers:', JSON.stringify([...response.headers.entries()]));
-    
-    const text = await response.text();
-    console.log('Response Body:', text);
-    
-    return { response, text };
-  } catch (error) {
-    console.log('Network Error:', error);
-    throw error;
-  }
-};
-
-// Alternative method using the debug function - use this if the above doesn't work
-const handleUpdateConstituencyWithDebug = async () => {
-  if (!regdMobileNo) {
-    Alert.alert('Error', 'Mobile number not found. Please restart the app.');
-    return;
-  }
-  
-  setUpdateLoading(true);
-  try {
-    // Clean the form data
-    const cleanedFormData = {};
-    Object.keys(editFormData).forEach(key => {
-      const value = editFormData[key];
-      if (value !== null && value !== undefined && value.toString().trim() !== '') {
-        cleanedFormData[key] = value.toString().trim();
-      }
-    });
-    
-    const url = `http://192.168.1.104:5000/api/constituencyprofile/${regdMobileNo}`;
-    const options = {
-      method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-        'x-user-id': 'admin_user',
-        'Cache-Control': 'no-cache',
-      },
-      body: JSON.stringify(cleanedFormData),
-    };
-    
-    const { response, text } = await debugNetworkRequest(url, options);
-    
-    if (!response.ok) {
-      throw new Error(`Failed to update: ${response.status} - ${text}`);
-    }
-    
-    // Parse response and update state
+    setUpdateLoading(true);
     try {
-      const updatedData = JSON.parse(text);
-      setConstituencyData(updatedData);
-    } catch (parseError) {
-      console.log('Response is not JSON, refreshing from server');
+      console.log('🔄 Updating assembly constituency...');
+      console.log('📱 Mobile Number:', regdMobileNo);
+      console.log('🆔 Assembly ID:', editingAssemblyId);
+      console.log('📝 Form Data being sent:', JSON.stringify(editFormData, null, 2));
+      
+      // Clean the form data
+      const cleanedFormData = {};
+      Object.keys(editFormData).forEach(key => {
+        const value = editFormData[key];
+        if (value !== null && value !== undefined && value.toString().trim() !== '') {
+          cleanedFormData[key] = value.toString().trim();
+        }
+      });
+      
+      // Find the assembly constituency to update in the current list
+      const assemblyToUpdate = assemblyConstituencies.find(
+        assembly => (assembly._id || assembly.id) === editingAssemblyId
+      );
+      
+      if (!assemblyToUpdate) {
+        throw new Error('Assembly constituency not found in current data');
+      }
+      
+      // Create updated assembly constituencies array
+      const updatedAssemblyConstituencies = assemblyConstituencies.map(assembly => {
+        if ((assembly._id || assembly.id) === editingAssemblyId) {
+          return {
+            ...assembly,
+            ac_number: cleanedFormData.ac_number || assembly.ac_number,
+            ac_name: cleanedFormData.ac_name || assembly.ac_name,
+            district: cleanedFormData.district || assembly.district,
+            type: cleanedFormData.type || assembly.type || ''
+          };
+        }
+        return assembly;
+      });
+      
+      // Get base URL from ConfigService
+      const baseUrl = await ConfigService.getBaseUrl();
+      
+      // Structure the payload according to your backend API
+      // Based on the Postman collection, it expects "assembly_constituencies" wrapper
+      const requestPayload = {
+        assembly_constituencies: {
+          narration: "Updated assembly constituencies",
+          assembly_const_count: updatedAssemblyConstituencies.length,
+          assembly_const: updatedAssemblyConstituencies.map(assembly => ({
+            ac_number: parseInt(assembly.ac_number) || 0,
+            ac_name: assembly.ac_name || '',
+            district: assembly.district || '',
+            ...(assembly.type && { type: assembly.type })
+          }))
+        }
+      };
+      
+      console.log('🧹 Final payload:', JSON.stringify(requestPayload, null, 2));
+      console.log('🌐 API URL:', `${baseUrl}/api/assemblyconstituencies/${regdMobileNo}`);
+      
+      const result = await ApiService.put(
+        `${baseUrl}/api/assemblyconstituencies/${regdMobileNo}`,
+        requestPayload,
+        {
+          'x-user-id': 'admin_user',
+        }
+      );
+      
+      console.log('📡 Response success:', result.success);
+      console.log('📡 Response data:', result.data);
+      
+      if (!result.success) {
+        throw new Error(`Failed to update assembly constituency: ${result.message}`);
+      }
+      
+      // Close modal first
+      setEditModalVisible(false);
+      
+      // Refresh assembly constituencies data from server
+      console.log('🔄 Refreshing assembly data from server...');
+      await fetchConstituencyData(regdMobileNo);
+      
+      Alert.alert('Success', 'Assembly constituency updated successfully!');
+      console.log('✅ Assembly update completed successfully');
+      
+    } catch (error) {
+      console.error('❌ Error updating assembly constituency:', error);
+      console.error('❌ Error stack:', error.stack);
+      Alert.alert('Error', `Failed to update assembly constituency: ${error.message}`);
+    } finally {
+      setUpdateLoading(false);
     }
-    
-    // Always refresh from server
-    await fetchConstituencyData(regdMobileNo);
-    setEditModalVisible(false);
-    
-    Alert.alert('Success', 'Constituency profile updated successfully!');
-    
-  } catch (error) {
-    console.error('❌ Update failed:', error);
-    Alert.alert('Error', `Failed to update: ${error.message}`);
-  } finally {
-    setUpdateLoading(false);
-  }
-};
+  };
 
   const handleSubmitEdit = () => {
     if (editingConstituency) {
@@ -732,30 +638,30 @@ const handleUpdateConstituencyWithDebug = async () => {
               <Text style={styles.tableHeaderText}>TOTAL</Text>
             </View>
             {electorsTableData.map((item, index) => {
-      const isTotalRow = item.category === 'TOTAL';
-      return (
-        <View
-          key={index}
-          style={[
-            styles.tableRow,
-            index % 2 === 0 && styles.tableRowEven
-          ]}
-        >
-          <Text
-            style={[
-              styles.tableCellLeft,
-              { flex: 1.5, fontWeight: isTotalRow ? 'bold' : 'normal' }
-            ]}
-          >
-            {item.category}
-          </Text>
-          <Text style={[styles.tableCellCenter, { fontWeight: isTotalRow ? 'bold' : 'normal' }]}>{item.men}</Text>
-          <Text style={[styles.tableCellCenter, { fontWeight: isTotalRow ? 'bold' : 'normal' }]}>{item.women}</Text>
-          <Text style={[styles.tableCellCenter, { fontWeight: isTotalRow ? 'bold' : 'normal' }]}>{item.thirdGender}</Text>
-          <Text style={[styles.tableCellCenter, { fontWeight: isTotalRow ? 'bold' : 'normal' }]}>{item.total}</Text>
-        </View>
-      );
-    })}
+              const isTotalRow = item.category === 'TOTAL';
+              return (
+                <View
+                  key={index}
+                  style={[
+                    styles.tableRow,
+                    index % 2 === 0 && styles.tableRowEven
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.tableCellLeft,
+                      { flex: 1.5, fontWeight: isTotalRow ? 'bold' : 'normal' }
+                    ]}
+                  >
+                    {item.category}
+                  </Text>
+                  <Text style={[styles.tableCellCenter, { fontWeight: isTotalRow ? 'bold' : 'normal' }]}>{item.men}</Text>
+                  <Text style={[styles.tableCellCenter, { fontWeight: isTotalRow ? 'bold' : 'normal' }]}>{item.women}</Text>
+                  <Text style={[styles.tableCellCenter, { fontWeight: isTotalRow ? 'bold' : 'normal' }]}>{item.thirdGender}</Text>
+                  <Text style={[styles.tableCellCenter, { fontWeight: isTotalRow ? 'bold' : 'normal' }]}>{item.total}</Text>
+                </View>
+              );
+            })}
           </View>
         )}
 

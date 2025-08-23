@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import EncryptedStorage from 'react-native-encrypted-storage';
 import AuthService from '../utils/AuthService';
 
 // Enhanced Logging Service
@@ -63,7 +64,7 @@ class LoggingService {
 // Image Service for handling image URLs
 class ImageService {
   static baseUrls = [
-    'http://192.168.1.107:5000/',
+    'http://192.168.1.104:5000/',
     'http://localhost:5000/',
     'http://10.0.2.2:5000/', // Android emulator
   ];
@@ -125,7 +126,7 @@ class ImageService {
     return null;
   }
   
-  static constructImageUrl(imagePath, baseUrl = 'http://192.168.1.107:5000/') {
+  static constructImageUrl(imagePath, baseUrl = 'http://192.168.1.104:5000/') {
     if (!imagePath) return null;
     
     // If already a full URL, return as is
@@ -147,12 +148,98 @@ class ImageService {
   }
 }
 
-// FIXED Profile API Class
-// FIXED Profile API Class
-// FIXED Profile API Class with Test Method
+// Enhanced Admin Service for handling admin verification
+class AdminService {
+  static async checkIfUserIsAdmin(userEmail) {
+    try {
+      LoggingService.profileInfo('🔍 Checking if user is admin', { userEmail });
+      
+      // Get AppOwnerInfo from encrypted storage
+      const appOwnerInfoStr = await EncryptedStorage.getItem('AppOwnerInfo');
+      
+      if (!appOwnerInfoStr) {
+        LoggingService.profileWarn('⚠️ No AppOwnerInfo found in storage');
+        return { isAdmin: false, ownerEmail: null };
+      }
+      
+      const appOwnerInfo = JSON.parse(appOwnerInfoStr);
+      
+      // Extract owner email from different possible fields
+      const ownerEmail = appOwnerInfo.emailid || appOwnerInfo.email || appOwnerInfo.email_id;
+      
+      LoggingService.profileDebug('Owner email comparison', {
+        userEmail: userEmail?.toLowerCase(),
+        ownerEmail: ownerEmail?.toLowerCase(),
+        appOwnerInfoKeys: Object.keys(appOwnerInfo)
+      });
+      
+      if (!ownerEmail) {
+        LoggingService.profileWarn('⚠️ No owner email found in AppOwnerInfo');
+        return { isAdmin: false, ownerEmail: null };
+      }
+      
+      // Compare emails (case-insensitive)
+      const isAdmin = userEmail?.toLowerCase() === ownerEmail?.toLowerCase();
+      
+      LoggingService.profileInfo(`${isAdmin ? '👑' : '👤'} Admin check result`, {
+        isAdmin,
+        userEmail,
+        ownerEmail,
+        match: isAdmin
+      });
+      
+      return { 
+        isAdmin, 
+        ownerEmail: ownerEmail,
+        appOwnerInfo: appOwnerInfo
+      };
+      
+    } catch (error) {
+      LoggingService.profileError('❌ Error checking admin status', {
+        error: error.message,
+        userEmail
+      });
+      return { isAdmin: false, ownerEmail: null };
+    }
+  }
+  
+  static async getUserRoleInfo(userEmail) {
+    try {
+      const adminCheck = await this.checkIfUserIsAdmin(userEmail);
+      
+      // Also check stored user role for additional verification
+      const storedRole = await EncryptedStorage.getItem('USER_ROLE') || 'user';
+      
+      LoggingService.profileDebug('Complete user role info', {
+        adminCheckResult: adminCheck.isAdmin,
+        storedRole: storedRole,
+        userEmail: userEmail
+      });
+      
+      return {
+        isAdmin: adminCheck.isAdmin,
+        userRole: adminCheck.isAdmin ? 'admin' : 'user',
+        storedRole: storedRole,
+        ownerEmail: adminCheck.ownerEmail,
+        appOwnerInfo: adminCheck.appOwnerInfo
+      };
+      
+    } catch (error) {
+      LoggingService.profileError('❌ Error getting user role info', error);
+      return {
+        isAdmin: false,
+        userRole: 'user',
+        storedRole: 'user',
+        ownerEmail: null
+      };
+    }
+  }
+}
+
+// Enhanced Profile API Class
 class ProfileAPI {
-  static baseURL = 'http://192.168.0.108:5000/api/profile';
-  static imageBaseURL = 'http://192.168.1.107:5000/';
+  static baseURL = 'http://192.168.1.104:5000/api/profile';
+  static imageBaseURL = 'http://192.168.1.104:5000/';
 
   static async getProfile() {
     LoggingService.profileInfo('🚀 Starting profile fetch from API');
@@ -326,155 +413,6 @@ class ProfileAPI {
       };
     }
   }
-
-  // ADD THIS TEST METHOD TO YOUR EXISTING ProfileAPI CLASS
-  static async testProfileEndpoint() {
-    try {
-      console.log('🧪 Testing profile endpoint accessibility...');
-      
-      // Test 1: Basic connectivity
-      const pingResponse = await fetch('http://192.168.1.107:5000/', {
-        method: 'GET',
-        headers: { 'Accept': 'application/json' }
-      });
-      
-      console.log('🌐 Server ping:', {
-        status: pingResponse.status,
-        accessible: pingResponse.ok
-      });
-      
-      // Test 2: Auth headers
-      const headers = await AuthService.getAuthHeaders();
-      console.log('🔐 Auth headers test:', {
-        hasAuth: !!headers.Authorization,
-        authPreview: headers.Authorization ? headers.Authorization.substring(0, 20) + '...' : 'Missing'
-      });
-      
-      // Test 3: Profile endpoint with auth
-      const profileResponse = await fetch(this.baseURL, {
-        method: 'GET',
-        headers: headers
-      });
-      
-      const responseText = await profileResponse.text();
-      
-      console.log('📊 Profile endpoint test:', {
-        status: profileResponse.status,
-        statusText: profileResponse.statusText,
-        contentType: profileResponse.headers.get('content-type'),
-        responseLength: responseText.length,
-        responsePreview: responseText.substring(0, 500)
-      });
-      
-      // Try to parse response
-      try {
-        const data = JSON.parse(responseText);
-        console.log('✅ Profile response parsed successfully:', {
-          keys: Object.keys(data),
-          hasFormattedData: !!data.formattedData,
-          hasUser: !!data.user,
-          hasData: !!data.data,
-          formattedDataKeys: data.formattedData ? Object.keys(data.formattedData) : [],
-          userKeys: data.user ? Object.keys(data.user) : [],
-          dataKeys: data.data ? Object.keys(data.data) : [],
-          fullStructure: data
-        });
-        return data;
-      } catch (parseError) {
-        console.error('❌ Failed to parse profile response:', parseError.message);
-        return null;
-      }
-      
-    } catch (error) {
-      console.error('💥 Profile endpoint test failed:', error);
-      return null;
-    }
-  }
-}
-
-// You can also add this as a debug button in your ViewProfileScreen component
-const addDebugButtonToViewProfileScreen = () => {
-  // Add this inside your ViewProfileScreen component, in the debug section:
-  
-  /* 
-  In your existing debug section (around line 700), add this button:
-  
-  <TouchableOpacity 
-    style={styles.debugButton}
-    onPress={async () => {
-      console.log('🔍 Testing Profile API Endpoint...');
-      const result = await ProfileAPI.testProfileEndpoint();
-      if (result) {
-        Alert.alert('Test Complete', 'Check console for detailed results');
-      } else {
-        Alert.alert('Test Failed', 'Check console for error details');
-      }
-    }}
-  >
-    <Text style={styles.debugButtonText}>Test API Endpoint</Text>
-  </TouchableOpacity>
-  */
-};
-class ProfileTestAPI {
-  static async testProfileEndpoint() {
-    const baseURL = 'http://192.168.1.107:5000/api/profile';
-    
-    try {
-      console.log('🧪 Testing profile endpoint accessibility...');
-      
-      // Test 1: Basic connectivity
-      const pingResponse = await fetch('http://192.168.1.107:5000/', {
-        method: 'GET',
-        headers: { 'Accept': 'application/json' }
-      });
-      
-      console.log('🌐 Server ping:', {
-        status: pingResponse.status,
-        accessible: pingResponse.ok
-      });
-      
-      // Test 2: Auth headers
-      const headers = await AuthService.getAuthHeaders();
-      console.log('🔐 Auth headers test:', {
-        hasAuth: !!headers.Authorization,
-        authPreview: headers.Authorization ? headers.Authorization.substring(0, 20) + '...' : 'Missing'
-      });
-      
-      // Test 3: Profile endpoint with auth
-      const profileResponse = await fetch(baseURL, {
-        method: 'GET',
-        headers: headers
-      });
-      
-      const responseText = await profileResponse.text();
-      
-      console.log('📊 Profile endpoint test:', {
-        status: profileResponse.status,
-        statusText: profileResponse.statusText,
-        contentType: profileResponse.headers.get('content-type'),
-        responseLength: responseText.length,
-        responsePreview: responseText.substring(0, 200)
-      });
-      
-      // Try to parse response
-      try {
-        const data = JSON.parse(responseText);
-        console.log('✅ Profile response parsed successfully:', {
-          hasUser: !!data.user,
-          hasData: !!data.data,
-          keys: Object.keys(data)
-        });
-        return data;
-      } catch (parseError) {
-        console.error('❌ Failed to parse profile response:', parseError.message);
-        return null;
-      }
-      
-    } catch (error) {
-      console.error('💥 Profile endpoint test failed:', error);
-      return null;
-    }
-  }
 }
 
 const ViewProfileScreen = ({ navigation, route }) => {
@@ -485,6 +423,8 @@ const ViewProfileScreen = ({ navigation, route }) => {
   const [justRegistered, setJustRegistered] = useState(false);
   const [imageLoading, setImageLoading] = useState(false);
   const [imageError, setImageError] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [adminInfo, setAdminInfo] = useState(null);
 
   useEffect(() => {
     LoggingService.profileInfo('🔄 ViewProfileScreen mounted, starting session check');
@@ -496,6 +436,90 @@ const ViewProfileScreen = ({ navigation, route }) => {
       setJustRegistered(true);
     }
   }, []);
+
+  const checkAdminStatus = async (userEmail) => {
+    try {
+      LoggingService.profileInfo('🔍 === CHECKING ADMIN STATUS ===');
+      
+      if (!userEmail) {
+        LoggingService.profileWarn('⚠️ No user email provided for admin check');
+        return { isAdmin: false };
+      }
+
+      const roleInfo = await AdminService.getUserRoleInfo(userEmail);
+      
+      LoggingService.profileInfo(`${roleInfo.isAdmin ? '👑' : '👤'} Admin status determined`, {
+        userEmail: userEmail,
+        isAdmin: roleInfo.isAdmin,
+        userRole: roleInfo.userRole,
+        ownerEmail: roleInfo.ownerEmail
+      });
+
+      setIsAdmin(roleInfo.isAdmin);
+      setAdminInfo(roleInfo);
+      
+      return roleInfo;
+      
+    } catch (error) {
+      LoggingService.profileError('❌ Error checking admin status', error);
+      setIsAdmin(false);
+      setAdminInfo(null);
+      return { isAdmin: false };
+    }
+  };
+
+  const enhanceUserProfileWithAdminStatus = async (userData) => {
+    try {
+      LoggingService.profileInfo('🔧 === ENHANCING PROFILE WITH ADMIN STATUS ===');
+      
+      const adminStatus = await checkAdminStatus(userData.email);
+      
+      // Clone userData to avoid mutations
+      const enhancedProfile = { ...userData };
+      
+      // If user is admin, automatically set email as verified
+      if (adminStatus.isAdmin) {
+        LoggingService.profileInfo('👑 User is admin - auto-verifying email', {
+          email: userData.email,
+          originalEmailVerified: userData.emailVerified
+        });
+        
+        enhancedProfile.emailVerified = true;
+        enhancedProfile.isAdmin = true;
+        enhancedProfile.userRole = 'admin';
+        
+        // Add admin-specific info if available
+        if (adminStatus.appOwnerInfo) {
+          enhancedProfile.adminInfo = {
+            ownerEmail: adminStatus.ownerEmail,
+            mobile: adminStatus.appOwnerInfo.mobile_no || adminStatus.appOwnerInfo.mobile_number,
+            // Add other owner info if needed
+          };
+        }
+        
+        LoggingService.profileInfo('✅ Profile enhanced for admin user', {
+          emailVerified: enhancedProfile.emailVerified,
+          isAdmin: enhancedProfile.isAdmin,
+          userRole: enhancedProfile.userRole
+        });
+      } else {
+        LoggingService.profileInfo('👤 Regular user - keeping original email verification status', {
+          email: userData.email,
+          emailVerified: userData.emailVerified
+        });
+        
+        enhancedProfile.isAdmin = false;
+        enhancedProfile.userRole = 'user';
+      }
+      
+      return enhancedProfile;
+      
+    } catch (error) {
+      LoggingService.profileError('❌ Error enhancing profile with admin status', error);
+      // Return original data if enhancement fails
+      return userData;
+    }
+  };
 
   const checkSessionAndLoadProfile = async () => {
     try {
@@ -593,18 +617,30 @@ const ViewProfileScreen = ({ navigation, route }) => {
       });
       
       if (result.success && result.data) {
-        LoggingService.profileInfo('✅ Setting user profile from API', {
+        LoggingService.profileInfo('✅ Profile data received, enhancing with admin status', {
           profileId: result.data._id,
           profileName: result.data.name,
+          profileEmail: result.data.email,
           profileImage: result.data.profile_image
         });
         
-        setUserProfile(result.data);
+        // Enhance profile with admin status and email verification logic
+        const enhancedProfile = await enhanceUserProfileWithAdminStatus(result.data);
         
-        // Also save to local storage for backup
+        LoggingService.profileInfo('✅ Setting enhanced user profile', {
+          profileId: enhancedProfile._id,
+          profileName: enhancedProfile.name,
+          isAdmin: enhancedProfile.isAdmin,
+          emailVerified: enhancedProfile.emailVerified,
+          userRole: enhancedProfile.userRole
+        });
+        
+        setUserProfile(enhancedProfile);
+        
+        // Also save enhanced profile to local storage for backup
         try {
-          await AsyncStorage.setItem('userData', JSON.stringify(result.data));
-          LoggingService.profileDebug('💾 Profile saved to local storage successfully');
+          await AsyncStorage.setItem('userData', JSON.stringify(enhancedProfile));
+          LoggingService.profileDebug('💾 Enhanced profile saved to local storage successfully');
         } catch (saveError) {
           LoggingService.profileError('Failed to save profile to local storage', saveError);
         }
@@ -651,12 +687,17 @@ const ViewProfileScreen = ({ navigation, route }) => {
           parsedData.profile_image = ImageService.constructImageUrl(parsedData.profile_image);
         }
         
-        LoggingService.profileInfo('✅ Local profile loaded successfully', {
-          profileId: parsedData._id || parsedData.id,
-          profileName: parsedData.name,
-          profileImage: parsedData.profile_image
+        // Enhance local profile with admin status too
+        const enhancedLocalProfile = await enhanceUserProfileWithAdminStatus(parsedData);
+        
+        LoggingService.profileInfo('✅ Local profile loaded and enhanced successfully', {
+          profileId: enhancedLocalProfile._id || enhancedLocalProfile.id,
+          profileName: enhancedLocalProfile.name,
+          isAdmin: enhancedLocalProfile.isAdmin,
+          emailVerified: enhancedLocalProfile.emailVerified,
+          profileImage: enhancedLocalProfile.profile_image
         });
-        setUserProfile(parsedData);
+        setUserProfile(enhancedLocalProfile);
       } else {
         LoggingService.profileWarn('⚠️ No local profile data found');
       }
@@ -903,6 +944,14 @@ const ViewProfileScreen = ({ navigation, route }) => {
           <Icon name="refresh" size={22} color="#fff" />
         </TouchableOpacity>
 
+        {/* Admin Badge - Top Center (if admin) */}
+        {userProfile?.isAdmin && (
+          <View style={styles.adminBadge}>
+            <Icon name="admin-panel-settings" size={16} color="#FFD700" />
+            <Text style={styles.adminBadgeText}>ADMIN</Text>
+          </View>
+        )}
+
         {/* Profile Image */}
         <View style={styles.profileImageContainer}>
           {renderProfileImage()}
@@ -922,15 +971,79 @@ const ViewProfileScreen = ({ navigation, route }) => {
           {userProfile.emailVerified && (
             <View style={styles.verifiedBadgeHeader}>
               <Icon name="verified" size={16} color="#4CAF50" />
-              <Text style={styles.verifiedTextHeader}>Verified</Text>
+              <Text style={styles.verifiedTextHeader}>
+                {userProfile.isAdmin ? 'Admin - Auto Verified' : 'Verified'}
+              </Text>
             </View>
           )}
+          {userProfile.isAdmin && !userProfile.emailVerified && (
+            <View style={styles.verifiedBadgeHeader}>
+              <Icon name="admin-panel-settings" size={16} color="#FFD700" />
+              <Text style={styles.adminAutoVerifyText}>Admin Account</Text>
+            </View>
+          )}
+        </View>
+
+        {/* User Role Indicator */}
+        <View style={styles.roleContainer}>
+          <Icon 
+            name={userProfile.isAdmin ? "admin-panel-settings" : "person"} 
+            size={16} 
+            color={userProfile.isAdmin ? "#FFD700" : "#fff"} 
+          />
+          <Text style={[styles.roleText, userProfile.isAdmin && styles.adminRoleText]}>
+            {userProfile.isAdmin ? 'Administrator' : 'User'}
+          </Text>
         </View>
       </View>
 
       {/* PROFILE INFORMATION SECTION */}
       <View style={styles.infoContainer}>
         
+        {/* Account Status Section (New) */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Account Status</Text>
+          
+          {/* User Role */}
+          <View style={styles.infoRow}>
+            <View style={styles.infoIconContainer}>
+              <Icon 
+                name={userProfile.isAdmin ? "admin-panel-settings" : "person"} 
+                size={20} 
+                color="#e16e2b" 
+              />
+            </View>
+            <View style={styles.infoContent}>
+              <Text style={styles.infoLabel}>Account Type</Text>
+              <Text style={[styles.infoValue, userProfile.isAdmin && styles.adminText]}>
+                {userProfile.isAdmin ? 'Administrator (Owner)' : 'Standard User'}
+              </Text>
+            </View>
+          </View>
+
+          {/* Email Verification Status */}
+          <View style={styles.infoRow}>
+            <View style={styles.infoIconContainer}>
+              <Icon 
+                name={userProfile.emailVerified ? "verified" : "error"} 
+                size={20} 
+                color={userProfile.emailVerified ? "#4CAF50" : "#FF5722"} 
+              />
+            </View>
+            <View style={styles.infoContent}>
+              <Text style={styles.infoLabel}>Email Verification</Text>
+              <Text style={[styles.infoValue, 
+                userProfile.emailVerified ? styles.verifiedText : styles.unverifiedText
+              ]}>
+                {userProfile.emailVerified 
+                  ? (userProfile.isAdmin ? 'Verified (Auto - Admin)' : 'Verified') 
+                  : 'Not Verified'
+                }
+              </Text>
+            </View>
+          </View>
+        </View>
+
         {/* Personal Information */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Personal Information</Text>
@@ -962,20 +1075,63 @@ const ViewProfileScreen = ({ navigation, route }) => {
           )}
         </View>
 
+        {/* Admin Information Section (Only for Admins) */}
+        {userProfile.isAdmin && adminInfo && (
+          <View style={styles.section}>
+            <Text style={[styles.sectionTitle, styles.adminSectionTitle]}>
+              👑 Administrator Information
+            </Text>
+            {renderInfoRow('Owner Email', adminInfo.ownerEmail, 'admin-panel-settings')}
+            {adminInfo.appOwnerInfo?.mobile_no && renderInfoRow(
+              'Owner Mobile', 
+              adminInfo.appOwnerInfo.mobile_no, 
+              'phone'
+            )}
+            
+            <View style={styles.adminPrivilegesBox}>
+              <Text style={styles.adminPrivilegesTitle}>Administrator Privileges:</Text>
+              <Text style={styles.adminPrivilegeItem}>• Full system access</Text>
+              <Text style={styles.adminPrivilegeItem}>• Email auto-verification</Text>
+              <Text style={styles.adminPrivilegeItem}>• User management capabilities</Text>
+              <Text style={styles.adminPrivilegeItem}>• System configuration access</Text>
+            </View>
+          </View>
+        )}
+
         {/* Debug Information (Development Only) */}
         {__DEV__ && userProfile && (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>🔧 Debug Info</Text>
             {renderInfoRow('User ID', userProfile._id, 'fingerprint')}
             {renderInfoRow('Image Path', userProfile.profile_image, 'image')}
+            {renderInfoRow('Is Admin', userProfile.isAdmin ? 'Yes' : 'No', 'admin-panel-settings')}
+            {renderInfoRow('Email Verified', userProfile.emailVerified ? 'Yes' : 'No', 'verified')}
+            {renderInfoRow('User Role', userProfile.userRole, 'person')}
+            
             <TouchableOpacity 
               style={styles.debugButton}
               onPress={() => {
                 console.log('🔍 Full User Profile:', JSON.stringify(userProfile, null, 2));
+                console.log('🔍 Admin Info:', JSON.stringify(adminInfo, null, 2));
                 Alert.alert('Debug', 'Check console for full profile data');
               }}
             >
               <Text style={styles.debugButtonText}>Log Full Profile Data</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity 
+              style={styles.debugButton}
+              onPress={async () => {
+                console.log('🧪 Testing Admin Check for current user...');
+                const adminCheck = await AdminService.checkIfUserIsAdmin(userProfile.email);
+                console.log('🧪 Admin Check Result:', adminCheck);
+                Alert.alert(
+                  'Admin Check Result',
+                  `Is Admin: ${adminCheck.isAdmin}\nOwner Email: ${adminCheck.ownerEmail}`
+                );
+              }}
+            >
+              <Text style={styles.debugButtonText}>Test Admin Check</Text>
             </TouchableOpacity>
           </View>
         )}
@@ -1008,6 +1164,29 @@ const styles = StyleSheet.create({
   header: { backgroundColor: '#e16e2b', alignItems: 'center', paddingVertical: 30, paddingTop: 50, borderBottomLeftRadius: 30, borderBottomRightRadius: 30, position: 'relative' },
   editIconButton: { position: 'absolute', top: 20, right: 20, width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(255,255,255,0.2)', justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.3)', zIndex: 1 },
   refreshIconButton: { position: 'absolute', top: 20, left: 20, width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(255,255,255,0.2)', justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.3)', zIndex: 1 },
+  
+  // New Admin Badge Style
+  adminBadge: {
+    position: 'absolute',
+    top: 20,
+    left: '50%',
+    marginLeft: -40,
+    backgroundColor: 'rgba(255, 215, 0, 0.2)',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 215, 0, 0.5)',
+  },
+  adminBadgeText: {
+    color: '#FFD700',
+    fontSize: 12,
+    fontWeight: 'bold',
+    marginLeft: 4,
+  },
+  
   profileImageContainer: { marginBottom: 15, position: 'relative' },
   profileImage: { width: 120, height: 120, borderRadius: 60, borderWidth: 4, borderColor: '#fff' },
   profileImagePlaceholder: { width: 120, height: 120, borderRadius: 60, backgroundColor: '#fff', justifyContent: 'center', alignItems: 'center', borderWidth: 4, borderColor: '#fff' },
@@ -1018,14 +1197,73 @@ const styles = StyleSheet.create({
   userEmail: { fontSize: 14, color: '#fff', opacity: 0.9, marginRight: 8 },
   verifiedBadgeHeader: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(76, 175, 80, 0.2)', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12, borderWidth: 1, borderColor: 'rgba(76, 175, 80, 0.5)' },
   verifiedTextHeader: { color: '#4CAF50', fontSize: 10, fontWeight: '600', marginLeft: 3 },
+  
+  // New Admin Auto Verify Style
+  adminAutoVerifyText: { color: '#FFD700', fontSize: 10, fontWeight: '600', marginLeft: 3 },
+
+  // Role Container Style
+  roleContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 15,
+    marginTop: 5,
+  },
+  roleText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '600',
+    marginLeft: 5,
+  },
+  adminRoleText: {
+    color: '#FFD700',
+  },
+
   infoContainer: { padding: 20 },
   section: { marginBottom: 25 },
   sectionTitle: { fontSize: 18, fontWeight: 'bold', color: '#e16e2b', marginBottom: 15, paddingBottom: 8, borderBottomWidth: 2, borderBottomColor: '#e16e2b' },
+  
+  // Admin Section Title Style
+  adminSectionTitle: {
+    color: '#FFD700',
+    borderBottomColor: '#FFD700',
+  },
+
   infoRow: { flexDirection: 'row', backgroundColor: '#fff', marginBottom: 12, borderRadius: 12, padding: 15, elevation: 2, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.1, shadowRadius: 2 },
   infoIconContainer: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#fff3e0', justifyContent: 'center', alignItems: 'center', marginRight: 15 },
   infoContent: { flex: 1, justifyContent: 'center' },
   infoLabel: { fontSize: 12, color: '#666', fontWeight: '600', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 0.5 },
   infoValue: { fontSize: 16, color: '#333', fontWeight: '500', lineHeight: 22 },
+  
+  // Status Text Styles
+  adminText: { color: '#FFD700', fontWeight: 'bold' },
+  verifiedText: { color: '#4CAF50', fontWeight: '600' },
+  unverifiedText: { color: '#FF5722', fontWeight: '600' },
+
+  // Admin Privileges Box
+  adminPrivilegesBox: {
+    backgroundColor: '#fff9e6',
+    padding: 15,
+    borderRadius: 12,
+    marginTop: 10,
+    borderWidth: 1,
+    borderColor: '#FFD700',
+  },
+  adminPrivilegesTitle: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: '#FF8C00',
+    marginBottom: 8,
+  },
+  adminPrivilegeItem: {
+    fontSize: 13,
+    color: '#666',
+    marginBottom: 4,
+    lineHeight: 18,
+  },
+
   debugButton: { backgroundColor: '#666', padding: 10, borderRadius: 8, marginTop: 10 },
   debugButtonText: { color: '#fff', fontSize: 14, textAlign: 'center' },
 });

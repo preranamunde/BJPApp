@@ -2,18 +2,13 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 class ConfigService {
   static BASE_URL_KEY = 'app_base_url';
-  static DEFAULT_BASE_URL = 'https://c3c74499132c.ngrok-free.app'; // Fallback URL
+  static DEFAULT_BASE_URL = 'https://3f1fc17a1762.ngrok-free.app'; // 👈 Update this when ngrok gives new URL
 
-  // Initialize configuration with default values
+  // Initialize configuration with default values (always enforce DEFAULT_BASE_URL)
   static async initializeConfig() {
     try {
-      const existingBaseUrl = await this.getBaseUrl();
-      if (!existingBaseUrl || existingBaseUrl === this.DEFAULT_BASE_URL) {
-        await this.setBaseUrl(this.DEFAULT_BASE_URL);
-        console.log('✅ Configuration initialized with default base URL:', this.DEFAULT_BASE_URL);
-      } else {
-        console.log('✅ Configuration already exists:', existingBaseUrl);
-      }
+      await this.setBaseUrl(this.DEFAULT_BASE_URL); // Force new ngrok URL
+      console.log('✅ Configuration initialized with ngrok base URL:', this.DEFAULT_BASE_URL);
     } catch (error) {
       console.error('❌ Error initializing configuration:', error);
     }
@@ -105,13 +100,13 @@ class ConfigService {
       } catch (healthError) {
         console.log('Health endpoint failed, trying bootstrap endpoint...');
         response = await fetch(`${baseUrl}/api/bootstrap`, {
-          method: 'HEAD', // Use HEAD to avoid sending data
+          method: 'HEAD',
           signal: controller.signal,
         });
       }
 
       clearTimeout(timeoutId);
-      const isReachable = response.ok || response.status === 405; // 405 = Method Not Allowed (endpoint exists)
+      const isReachable = response.ok || response.status === 405;
       console.log(`Connection test result: ${isReachable ? 'SUCCESS' : 'FAILED'} (Status: ${response.status})`);
       return isReachable;
     } catch (error) {
@@ -120,14 +115,11 @@ class ConfigService {
     }
   }
 
-  // Get all API endpoints (expanded to include bootstrap and all required endpoints)
+  // Get all API endpoints
   static async getApiEndpoints() {
     const baseUrl = await this.getBaseUrl();
     return {
-      // Bootstrap endpoint
       bootstrap: `${baseUrl}/api/bootstrap`,
-      
-      // Authentication endpoints
       auth: {
         login: `${baseUrl}/api/auth/login`,
         register: `${baseUrl}/api/auth/register`,
@@ -137,39 +129,30 @@ class ConfigService {
         sendOTP: `${baseUrl}/api/auth/sendotp`,
         verifyEmailOTP: `${baseUrl}/api/auth/verifyemailotp`,
       },
-      
-      // User endpoints
       user: {
         profile: `${baseUrl}/api/profile`,
         updateProfile: `${baseUrl}/api/profile`,
       },
-      
-      // Location endpoints
       location: {
-        pincode: `${baseUrl}/api/pincodes`, // Base URL for pincode API
+        pincode: `${baseUrl}/api/pincodes`,
       },
-      
-      // App endpoints
       app: {
         health: `${baseUrl}/api/health`,
-        bootstrap: `${baseUrl}/api/bootstrap`, // Also available in app section
+        bootstrap: `${baseUrl}/api/bootstrap`,
       }
     };
   }
 
-  // Get bootstrap endpoint specifically
   static async getBootstrapEndpoint() {
     const baseUrl = await this.getBaseUrl();
     return `${baseUrl}/api/bootstrap`;
   }
 
-  // Get specific pincode endpoint
   static async getPincodeEndpoint(pincode) {
     const baseUrl = await this.getBaseUrl();
     return `${baseUrl}/api/pincodes/${pincode}`;
   }
 
-  // Clear all configuration
   static async clearConfig() {
     try {
       await AsyncStorage.removeItem(this.BASE_URL_KEY);
@@ -179,13 +162,11 @@ class ConfigService {
     }
   }
 
-  // Get upload URL for profile images
   static async getUploadUrl(path = '') {
     const baseUrl = await this.getBaseUrl();
     return `${baseUrl}/uploads${path}`;
   }
 
-  // Get profile image URL
   static async getProfileImageUrl(filename) {
     if (!filename || filename === 'placeholder') {
       return null;
@@ -194,7 +175,6 @@ class ConfigService {
     return `${baseUrl}/uploads/profile_images/${filename}`;
   }
 
-  // Get current configuration summary
   static async getConfigSummary() {
     try {
       const baseUrl = await this.getBaseUrl();
@@ -218,7 +198,6 @@ class ConfigService {
     }
   }
 
-  // Reset to default configuration
   static async resetToDefault() {
     try {
       await this.setBaseUrl(this.DEFAULT_BASE_URL);
@@ -236,5 +215,8 @@ class ConfigService {
     }
   }
 }
+
+// 👇 Automatically initialize with current ngrok URL
+ConfigService.initializeConfig();
 
 export default ConfigService;

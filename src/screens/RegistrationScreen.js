@@ -171,6 +171,9 @@ const RegistrationScreen = ({ navigation, route }) => {
           ...prev,
           pincode: value,
           district: '',
+
+
+
           city: '', // ✅ Clear city field
           state: '',
         }));
@@ -232,38 +235,40 @@ const RegistrationScreen = ({ navigation, route }) => {
   };
 
   // ✅ UPDATED EMAIL VERIFICATION USING APISERVICE
-  const handleEmailVerification = async () => {
-    if (isEditMode) return; // Disabled in edit mode
+ const handleEmailVerification = async () => {
+  if (isEditMode) return; // Disabled in edit mode
 
-    if (!formData.email || !validateEmail(formData.email)) {
-      Alert.alert('Error', 'Please enter a valid email address');
-      return;
-    }
+  if (!formData.email || !validateEmail(formData.email)) {
+    Alert.alert('Error', 'Please enter a valid email address');
+    return;
+  }
 
-    if (!apiEndpoints) {
-      Alert.alert('Error', 'API configuration not loaded');
-      return;
-    }
+  if (!apiEndpoints) {
+    Alert.alert('Error', 'API configuration not loaded');
+    return;
+  }
 
-    setEmailVerificationState('loading');
+  setEmailVerificationState('loading');
 
-    try {
-      const result = await ApiService.post(apiEndpoints.auth.verifyEmail, {
-        email: formData.email,
-      });
+  try {
+    const result = await ApiService.post(apiEndpoints.auth.verifyEmail, {
+      email: formData.email,
+    });
 
-      if (result.success) {
-        setEmailVerificationState('verify');
-        Alert.alert('Email Verified', 'You can now send OTP');
-      } else {
-        setEmailVerificationState('input');
-        Alert.alert('Error', result.message || 'Failed to verify email. Please try again.');
-      }
-    } catch (error) {
+    if (result.success) {
+      setEmailVerificationState('verify'); 
+      // Removed: Alert for "You can now send OTP"
+      // Instead, enable OTP input/button in UI
+    } else {
       setEmailVerificationState('input');
-      Alert.alert('Error', 'Failed to verify email. Please try again.');
+      Alert.alert('Error', result.message || 'Failed to verify email. Please try again.');
     }
-  };
+  } catch (error) {
+    setEmailVerificationState('input');
+    Alert.alert('Error', 'Failed to verify email. Please try again.');
+  }
+};
+
 
   const validateEmail = (email) => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;

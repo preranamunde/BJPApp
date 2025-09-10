@@ -9,9 +9,15 @@ import {
   Alert,
   Dimensions,
   BackHandler,
+  ActivityIndicator,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import EncryptedStorage from 'react-native-encrypted-storage';
 import { useFocusEffect } from '@react-navigation/native';
+import ConfigService from '../services/ConfigService';
+import ApiService from '../services/ApiService';
+import styles from '../styles/Samvadstyles';
+import DeviceService from '../services/DeviceService';
 
 const { width } = Dimensions.get('window');
 
@@ -21,20 +27,189 @@ const SamvadScreen = ({ route, navigation }) => {
   const [focusedField, setFocusedField] = useState(null);
   const [isUserLoggedIn, setIsUserLoggedIn] = useState(false);
   const [showRegistrationSuccess, setShowRegistrationSuccess] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isLoadingData, setIsLoadingData] = useState(false);
+  const [submittedData, setSubmittedData] = useState([]);
+  const [userRole, setUserRole] = useState('user');
+
+  // Add admin status filter states
+const [selectedStatus, setSelectedStatus] = useState('Open');
+const [isStatusDropdownOpen, setIsStatusDropdownOpen] = useState(false);
+
+const statusOptions = [
+  { label: 'Open', value: 'Open' },
+  { label: 'In Progress', value: 'Progress' },
+  { label: 'Resolved', value: 'Resolved' },
+  { label: 'Cancelled', value: 'Cancelled' }
+];
+
+// Add this function to check user role
+const checkUserRole = async () => {
+  try {
+    const role = await EncryptedStorage.getItem('USER_ROLE') || 'user';
+    setUserRole(role);
+    console.log('Current user role:', role);
+    return role;
+  } catch (error) {
+    console.error('Error checking user role:', error);
+    setUserRole('user');
+    return 'user';
+  }
+};
+
+  // FIXED: Separate pincode verification states for each tab
+  const [pincodeVerificationStates, setPincodeVerificationStates] = useState({
+    APPEAL: 'input',
+    APPOINTMENT: 'input',
+    GRIEVANCE: 'input',
+    COMPLAINTS: 'input'
+  });
+  
+  const [pincodeVerifiedStates, setPincodeVerifiedStates] = useState({
+    APPEAL: false,
+    APPOINTMENT: false,
+    GRIEVANCE: false,
+    COMPLAINTS: false
+  });
+
+  // User info from AppOwnerInfo and login
+  const [userInfo, setUserInfo] = useState({
+    leaderMobile: '',
+    userEmail: ''
+  });
 
   // Check login status whenever screen comes into focus
   useFocusEffect(
     React.useCallback(() => {
       checkLoginStatus();
+      getUserInfo();
+        checkUserRole(); // Add this line
+        DeviceService.initializeDeviceIP();
     }, [])
   );
+
+  // FIXED: Enhanced getUserInfo function with better error handling and multiple storage checks
+  const getUserInfo = async () => {
+    try {
+      console.log('🔍 === GETTING USER INFO ===');
+      
+      // Get leader mobile from AppOwnerInfo (client mobile) - Multiple possible sources
+      let leaderMobile = '';
+      
+      // Try to get from AsyncStorage first (AppOwnerInfo)
+      try {
+        const appOwnerInfo = await AsyncStorage.getItem('appOwnerInfo');
+        console.log('📱 AppOwnerInfo raw from AsyncStorage:', appOwnerInfo);
+        
+        if (appOwnerInfo) {
+          const ownerInfo = JSON.parse(appOwnerInfo);
+          console.log('📱 Parsed AppOwnerInfo:', ownerInfo);
+          console.log('📱 AppOwnerInfo keys:', Object.keys(ownerInfo));
+          
+          // Try multiple possible mobile field names
+          const mobileFields = ['client_mobile', 'mobile', 'mobile_no', 'phone', 'contact'];
+          for (const field of mobileFields) {
+            if (ownerInfo[field]) {
+              leaderMobile = String(ownerInfo[field]).trim();
+              console.log(`✅ Found mobile in field '${field}': ${leaderMobile}`);
+              break;
+            }
+          }
+          
+          if (!leaderMobile) {
+            console.log('⚠️ No mobile found in AppOwnerInfo, available fields:', Object.keys(ownerInfo));
+          }
+        } else {
+          console.log('⚠️ No AppOwnerInfo found in AsyncStorage');
+        }
+      } catch (error) {
+        console.log('⚠️ Error reading AppOwnerInfo from AsyncStorage:', error.message);
+      }
+
+      // If still no mobile, try EncryptedStorage
+      if (!leaderMobile) {
+        try {
+          const encryptedAppOwnerInfo = await EncryptedStorage.getItem('AppOwnerInfo');
+          console.log('📱 AppOwnerInfo from EncryptedStorage exists:', !!encryptedAppOwnerInfo);
+          
+          if (encryptedAppOwnerInfo) {
+            const ownerInfo = JSON.parse(encryptedAppOwnerInfo);
+            console.log('📱 Parsed EncryptedStorage AppOwnerInfo keys:', Object.keys(ownerInfo));
+            
+            const mobileFields = ['client_mobile', 'mobile', 'mobile_no', 'phone', 'contact'];
+            for (const field of mobileFields) {
+              if (ownerInfo[field]) {
+                leaderMobile = String(ownerInfo[field]).trim();
+                console.log(`✅ Found mobile in EncryptedStorage field '${field}': ${leaderMobile}`);
+                break;
+              }
+            }
+          }
+        } catch (error) {
+          console.log('⚠️ Error reading AppOwnerInfo from EncryptedStorage:', error.message);
+        }
+      }
+
+      // If still no mobile, try direct owner mobile storage
+      if (!leaderMobile) {
+        try {
+          leaderMobile = await EncryptedStorage.getItem('OWNER_MOBILE') || '';
+          if (leaderMobile) {
+            console.log('✅ Found mobile in OWNER_MOBILE storage:', leaderMobile);
+          }
+        } catch (error) {
+          console.log('⚠️ Error reading OWNER_MOBILE:', error.message);
+        }
+      }
+
+      // Get user email from login session - Multiple possible sources
+      let userEmail = '';
+      try {
+        userEmail = await AsyncStorage.getItem('userEmail') || 
+                   await AsyncStorage.getItem('user_email') || 
+                   await EncryptedStorage.getItem('LOGGED_IN_EMAIL') || '';
+        
+        console.log('📧 User email found:', userEmail);
+      } catch (error) {
+        console.log('⚠️ Error reading user email:', error.message);
+      }
+
+      // Update state
+      const userInfoData = {
+        leaderMobile: leaderMobile || '',
+        userEmail: userEmail || ''
+      };
+
+      setUserInfo(userInfoData);
+
+      console.log('✅ === USER INFO RESULT ===');
+      console.log('📱 Leader Mobile:', leaderMobile || '(EMPTY)');
+      console.log('📧 User Email:', userEmail || '(EMPTY)');
+      console.log('✅ Has Leader Mobile:', !!leaderMobile);
+      console.log('✅ Has User Email:', !!userEmail);
+
+      // Store in AsyncStorage for easy access (backup)
+      if (leaderMobile) {
+        await AsyncStorage.setItem('leaderMobile', leaderMobile);
+      }
+
+      return userInfoData;
+      
+    } catch (error) {
+      console.error('❌ Error getting user info:', error);
+      const fallbackUserInfo = {
+        leaderMobile: '',
+        userEmail: ''
+      };
+      setUserInfo(fallbackUserInfo);
+      return fallbackUserInfo;
+    }
+  };
 
   // Handle back button for logged in users
   useEffect(() => {
     if (isUserLoggedIn) {
       const backAction = () => {
-        // Disable back button for logged in users
-        // App can only be closed intentionally
         Alert.alert(
           "Exit App", 
           "Are you sure you want to exit?", 
@@ -50,7 +225,7 @@ const SamvadScreen = ({ route, navigation }) => {
             }
           ]
         );
-        return true; // Prevent default back action
+        return true;
       };
 
       const backHandler = BackHandler.addEventListener("hardwareBackPress", backAction);
@@ -63,16 +238,58 @@ const SamvadScreen = ({ route, navigation }) => {
       const loginStatus = await AsyncStorage.getItem('isLoggedin');
       const isLoggedIn = loginStatus === 'TRUE';
       
-      // Set global variable
       global.isUserLoggedin = isLoggedIn;
       setIsUserLoggedIn(isLoggedIn);
       
       console.log('Login status:', isLoggedIn);
     } catch (error) {
       console.error('Error checking login status:', error);
-      // Default to false if there's an error
       global.isUserLoggedin = false;
       setIsUserLoggedIn(false);
+    }
+  };
+
+  // FIXED: Updated getAuthHeaders to include request type
+  const getAuthHeaders = async (requestType = null) => {
+    try {
+      const accessToken = await AsyncStorage.getItem('userAccessToken') ||
+                         await AsyncStorage.getItem('jwt_token') ||
+                         await EncryptedStorage.getItem('ACCESS_TOKEN');
+
+      const appKey = await EncryptedStorage.getItem('APP_KEY');
+
+      console.log('Auth Headers Debug:', {
+        hasAccessToken: !!accessToken,
+        hasAppKey: !!appKey,
+        accessTokenLength: accessToken?.length || 0,
+        appKeyLength: appKey?.length || 0,
+        requestType: requestType
+      });
+
+      if (!accessToken) {
+        throw new Error('Access token not found');
+      }
+
+      if (!appKey) {
+        throw new Error('App key not found');
+      }
+
+      const headers = {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'Authorization': `Bearer ${accessToken}`,
+        'x-app-key': appKey,
+      };
+
+      // Add request type to headers if provided
+      if (requestType) {
+        headers['x-request-type'] = requestType;
+      }
+
+      return headers;
+    } catch (error) {
+      console.error('Error getting auth headers:', error);
+      throw error;
     }
   };
 
@@ -88,10 +305,8 @@ const SamvadScreen = ({ route, navigation }) => {
         setActiveSubTab(initialSubTab);
       }
       
-      // Handle registration success
       if (registrationSuccess || fromRegistration) {
         setShowRegistrationSuccess(true);
-        // Clear the parameter after showing for 4 seconds
         setTimeout(() => {
           setShowRegistrationSuccess(false);
           navigation.setParams({ 
@@ -103,7 +318,17 @@ const SamvadScreen = ({ route, navigation }) => {
     }
   }, [route?.params]);
 
-  // Separate form data for each tab
+  // Load data when PREVIEW tab is selected
+ // Load data when PREVIEW or LIST tab is selected
+useEffect(() => {
+  if (['APPEAL', 'GRIEVANCE', 'COMPLAINTS'].includes(activeMainTab) && 
+      isUserLoggedIn && (activeSubTab === 'PREVIEW' || activeSubTab === 'LIST')) {
+    loadSubmittedData();
+  } else if (activeMainTab === 'APPOINTMENT' && isUserLoggedIn && (activeSubTab === 'PREVIEW' || activeSubTab === 'LIST')) {
+    loadAppointments();
+  }
+}, [activeMainTab, activeSubTab, isUserLoggedIn]);
+
   const [formDataByTab, setFormDataByTab] = useState({
     APPEAL: {
       mobile: '',
@@ -111,8 +336,6 @@ const SamvadScreen = ({ route, navigation }) => {
       fatherHusbandName: '',
       address: '',
       pincode: '',
-      postOffice: '',
-      taluka: '',
       district: '',
       state: '',
       purpose: '',
@@ -125,8 +348,6 @@ const SamvadScreen = ({ route, navigation }) => {
       fatherHusbandName: '',
       address: '',
       pincode: '',
-      postOffice: '',
-      taluka: '',
       district: '',
       state: '',
       purpose: '',
@@ -139,8 +360,6 @@ const SamvadScreen = ({ route, navigation }) => {
       fatherHusbandName: '',
       address: '',
       pincode: '',
-      postOffice: '',
-      taluka: '',
       district: '',
       state: '',
       purpose: '',
@@ -153,8 +372,6 @@ const SamvadScreen = ({ route, navigation }) => {
       fatherHusbandName: '',
       address: '',
       pincode: '',
-      postOffice: '',
-      taluka: '',
       district: '',
       state: '',
       purpose: '',
@@ -164,36 +381,77 @@ const SamvadScreen = ({ route, navigation }) => {
   });
 
   const mainTabs = ['APPEAL', 'APPOINTMENT', 'GRIEVANCE', 'COMPLAINTS'];
-  const subTabs = ['ADD', 'PREVIEW'];
+// Dynamic sub-tabs based on user role
+const getSubTabs = () => {
+  if (userRole === 'admin') {
+    return ['LIST', 'PREVIEW'];
+  } else {
+    return ['ADD', 'PREVIEW', 'LIST'];
+  }
+};
 
-  // Handle main tab click with login check
-  const handleMainTabClick = (tab) => {
-    setActiveMainTab(tab);
-    
-    // Check if user is logged in
-    if (!isUserLoggedIn) {
-      // Show sub tabs but don't allow form access
-      setActiveSubTab('ADD');
+const subTabs = getSubTabs();
+
+const handleMainTabClick = (tab) => {
+  setActiveMainTab(tab);
+  
+  if (!isUserLoggedIn) {
+    setActiveSubTab('ADD');
+  } else {
+    // Set default sub-tab based on user role
+    if (userRole === 'admin') {
+      setActiveSubTab('LIST');
     } else {
-      // User is logged in, normal flow
       setActiveSubTab('ADD');
     }
-  };
+  }
+};
 
-  // Handle sub tab click with login check
-  const handleSubTabClick = (subTab) => {
-    if (!isUserLoggedIn && subTab === 'ADD') {
-      // Don't change the sub tab, just show login message
-      return;
-    }
-    setActiveSubTab(subTab);
-  };
+const handleSubTabClick = (subTab) => {
+  // For non-logged users, only allow ADD
+  if (!isUserLoggedIn && subTab !== 'ADD') {
+    return;
+  }
+  
+  // For admin users, don't allow ADD tab
+  if (userRole === 'admin' && subTab === 'ADD') {
+    return;
+  }
+  
+  setActiveSubTab(subTab);
+};
 
-  // Get current tab's form data
   const getCurrentFormData = () => activeMainTab ? formDataByTab[activeMainTab] : {};
 
   const handleChange = (field, value) => {
     if (!activeMainTab) return;
+    
+    // FIXED: Reset pincode verification for current tab only when pincode changes
+    if (field === 'pincode' && value !== getCurrentFormData().pincode) {
+      setPincodeVerificationStates(prev => ({
+        ...prev,
+        [activeMainTab]: 'input'
+      }));
+      
+      setPincodeVerifiedStates(prev => ({
+        ...prev,
+        [activeMainTab]: false
+      }));
+      
+      // Clear district and state fields when pincode changes
+      if (value.length !== 6) {
+        setFormDataByTab(prev => ({
+          ...prev,
+          [activeMainTab]: {
+            ...prev[activeMainTab],
+            [field]: value,
+            district: '',
+            state: '',
+          }
+        }));
+        return;
+      }
+    }
     
     setFormDataByTab(prev => ({
       ...prev,
@@ -202,6 +460,74 @@ const SamvadScreen = ({ route, navigation }) => {
         [field]: value
       }
     }));
+  };
+
+  // FIXED: Pincode verification function now works per tab
+  const handlePincodeVerification = async () => {
+    const currentFormData = getCurrentFormData();
+    
+    if (!currentFormData.pincode || currentFormData.pincode.length !== 6) {
+      Alert.alert('Error', 'Please enter a valid 6-digit pincode');
+      return;
+    }
+
+    setPincodeVerificationStates(prev => ({
+      ...prev,
+      [activeMainTab]: 'loading'
+    }));
+
+    try {
+      const baseUrl = await ConfigService.getBaseUrl();
+      const result = await ApiService.get(`${baseUrl}/api/pincodes/${currentFormData.pincode}`);
+
+      if (result.success && result.data && result.data.length > 0) {
+        console.log('Pincode API Response:', result.data);
+
+        const data = result.data[0];
+        const district = data?.district || '';
+        const state = data?.statename || '';
+
+        if (district && state) {
+          setFormDataByTab(prev => ({
+            ...prev,
+            [activeMainTab]: {
+              ...prev[activeMainTab],
+              district,
+              state,
+            }
+          }));
+
+          setPincodeVerifiedStates(prev => ({
+            ...prev,
+            [activeMainTab]: true
+          }));
+
+          setPincodeVerificationStates(prev => ({
+            ...prev,
+            [activeMainTab]: 'verified'
+          }));
+        } else {
+          setPincodeVerificationStates(prev => ({
+            ...prev,
+            [activeMainTab]: 'error'
+          }));
+          Alert.alert('Error', 'Enter a valid pincode.');
+        }
+      } else {
+        setPincodeVerificationStates(prev => ({
+          ...prev,
+          [activeMainTab]: 'error'
+        }));
+        Alert.alert('Error', result.message || 'Enter a valid pincode.');
+      }
+    } catch (error) {
+      console.error('Pincode Fetch Error:', error);
+      setPincodeVerificationStates(prev => ({
+        ...prev,
+        [activeMainTab]: 'error'
+      }));
+      Alert.alert('Error', 'Something went wrong. Please try again.');
+    }
   };
 
   const getFormHeader = () => {
@@ -234,6 +560,19 @@ const SamvadScreen = ({ route, navigation }) => {
     }
   };
 
+  const getRequestType = () => {
+    switch (activeMainTab) {
+      case 'APPEAL':
+        return 'Appeal';
+      case 'GRIEVANCE':
+        return 'Grievance';
+      case 'COMPLAINTS':
+        return 'Complaints';
+      default:
+        return activeMainTab;
+    }
+  };
+
   const validateForm = () => {
     const currentFormData = getCurrentFormData();
     
@@ -261,14 +600,10 @@ const SamvadScreen = ({ route, navigation }) => {
       Alert.alert('Error', 'Please enter a valid 6-digit pincode.');
       return false;
     }
-    
-    if (!currentFormData.postOffice || currentFormData.postOffice.trim().length < 2) {
-      Alert.alert('Error', 'Please enter post office name.');
-      return false;
-    }
-    
-    if (!currentFormData.taluka || currentFormData.taluka.trim().length < 2) {
-      Alert.alert('Error', 'Please enter taluka name.');
+
+    // FIXED: Check if pincode is verified for current tab only
+    if (!pincodeVerifiedStates[activeMainTab]) {
+      Alert.alert('Error', 'Please verify your pincode first.');
       return false;
     }
     
@@ -300,30 +635,855 @@ const SamvadScreen = ({ route, navigation }) => {
     return true;
   };
 
-  const handleSubmit = () => {
+  // FIXED: Updated to include request type in headers
+  const submitGrievance = async (grievanceData) => {
+    try {
+      console.log("Submitting grievance...", grievanceData);
+
+      const headers = await getAuthHeaders(getRequestType()); // Pass request type
+      const baseUrl = await ConfigService.getBaseUrl();
+      const apiUrl = `${baseUrl}/api/grievances`;
+
+      console.log("API URL:", apiUrl);
+      console.log("Headers:", headers);
+      console.log("Request payload:", JSON.stringify(grievanceData, null, 2));
+
+      const response = await fetch(apiUrl, {
+        method: "POST",
+        headers: headers,
+        body: JSON.stringify(grievanceData),
+      });
+
+      const status = response.status;
+      console.log("Response Status:", status);
+
+      const responseText = await response.text();
+      console.log("Raw API Response:", responseText);
+
+      let responseData = {};
+      if (responseText) {
+        try {
+          responseData = JSON.parse(responseText);
+        } catch (parseError) {
+          console.error("Failed to parse response as JSON:", parseError);
+          console.log("Response was not valid JSON:", responseText);
+          
+          return {
+            success: false,
+            message: `Server error (${status}): ${responseText.substring(0, 200)}`,
+            status,
+          };
+        }
+      }
+
+      console.log("Parsed Grievance API Response:", responseData);
+
+      if (response.ok) {
+        return {
+          success: true,
+          data: responseData,
+          status,
+        };
+      } else {
+        return {
+          success: false,
+          message: responseData.message || 
+                   responseData.error || 
+                   responseData.details || 
+                   `Request failed with status ${status}`,
+          status,
+          data: responseData,
+        };
+      }
+    } catch (error) {
+      console.error("Network Error submitting grievance:", error);
+      return {
+        success: false,
+        message: error.message.includes('Network request failed') 
+          ? "Cannot connect to server. Please check your internet connection."
+          : "Network error. Please try again.",
+        error: error.message,
+      };
+    }
+  };
+
+  // FIXED: Updated to include request type in headers
+  const submitAppointment = async (appointmentData) => {
+    try {
+      console.log('Submitting appointment...', appointmentData);
+      
+      const headers = await getAuthHeaders('APPOINTMENT'); // Pass APPOINTMENT as request type
+      const baseUrl = await ConfigService.getBaseUrl();
+      const apiUrl = `${baseUrl}/api/appointments`;
+      
+      console.log('API URL:', apiUrl);
+      console.log('Headers:', headers);
+
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: headers,
+        body: JSON.stringify(appointmentData),
+      });
+
+      const responseText = await response.text();
+      console.log('Raw API Response:', responseText);
+
+      let responseData;
+      try {
+        responseData = JSON.parse(responseText);
+      } catch (parseError) {
+        console.error('Failed to parse response as JSON:', parseError);
+        return { 
+          success: false, 
+          message: 'Invalid response from server',
+          status: response.status 
+        };
+      }
+
+      console.log('Parsed Appointment API Response:', responseData);
+
+      if (response.ok) {
+        return { success: true, data: responseData };
+      } else {
+        return { 
+          success: false, 
+          message: responseData.message || responseData.error || 'Failed to submit appointment',
+          status: response.status 
+        };
+      }
+    } catch (error) {
+      console.error('Error submitting appointment:', error);
+      return { 
+        success: false, 
+        message: 'Network error. Please check your connection.',
+        error: error.message 
+      };
+    }
+  };
+
+  // Updated loadSubmittedData function
+const loadSubmittedData = async () => {
+  try {
+    setIsLoadingData(true);
+    
+    // Refresh user info before making API call
+    const currentUserInfo = await getUserInfo();
+    
+    console.log('Loading submitted data - User Info Check:', {
+      leaderMobile: currentUserInfo.leaderMobile,
+      userEmail: currentUserInfo.userEmail,
+      hasLeaderMobile: !!currentUserInfo.leaderMobile,
+      hasUserEmail: !!currentUserInfo.userEmail
+    });
+    
+    // Validate required parameters
+    if (!currentUserInfo.leaderMobile || !currentUserInfo.userEmail) {
+      console.error('Missing required parameters for API call:', {
+        leaderMobile: currentUserInfo.leaderMobile || '(MISSING)',
+        userEmail: currentUserInfo.userEmail || '(MISSING)'
+      });
+      
+      Alert.alert(
+        'Missing Information', 
+        'Unable to load data. Required information is missing:\n' +
+        `Leader Mobile: ${currentUserInfo.leaderMobile ? '✓' : '✗'}\n` +
+        `User Email: ${currentUserInfo.userEmail ? '✓' : '✗'}\n\n` +
+        'Please ensure you are logged in and the app is properly configured.',
+        [{ text: 'OK' }]
+      );
+      return;
+    }
+    
+    const headers = await getAuthHeaders(getRequestType());
+    const baseUrl = await ConfigService.getBaseUrl();
+    
+    // FIXED: Use the correct endpoint format matching Postman
+    const encodedMobile = encodeURIComponent(currentUserInfo.leaderMobile);
+    const encodedEmail = encodeURIComponent(currentUserInfo.userEmail);
+    
+    // Use the same endpoint format as Postman (without /search)
+    const apiUrl = `${baseUrl}/api/grievances/?leader_regd_mobile_no=${encodedMobile}&user_email_id=${encodedEmail}`;
+    
+    console.log('API Call Details:', {
+      url: apiUrl,
+      method: 'GET',
+      headers: headers,
+      leaderMobile: currentUserInfo.leaderMobile,
+      userEmail: currentUserInfo.userEmail
+    });
+
+    const response = await fetch(apiUrl, {
+      method: 'GET',
+      headers: headers,
+    });
+
+    console.log('API Response Status:', response.status);
+    console.log('API Response Status Text:', response.statusText);
+
+    // Handle different content types
+    let responseData;
+    const contentType = response.headers.get('content-type');
+    
+    if (contentType && contentType.includes('application/json')) {
+      responseData = await response.json();
+    } else {
+      const responseText = await response.text();
+      console.log('Non-JSON Response:', responseText);
+      
+      try {
+        responseData = JSON.parse(responseText);
+      } catch (parseError) {
+        console.error('Failed to parse response as JSON:', parseError);
+        Alert.alert('Error', 'Invalid response format from server');
+        return;
+      }
+    }
+
+    console.log('Parsed Response Data:', responseData);
+
+    if (response.ok) {
+      // Handle different response structures
+      let dataArray = [];
+      
+      if (Array.isArray(responseData)) {
+        dataArray = responseData;
+      } else if (responseData.data && Array.isArray(responseData.data)) {
+        dataArray = responseData.data;
+      } else if (responseData.grievances && Array.isArray(responseData.grievances)) {
+        dataArray = responseData.grievances;
+      } else if (responseData.results && Array.isArray(responseData.results)) {
+        dataArray = responseData.results;
+      } else {
+        console.log('Unexpected response structure:', responseData);
+        dataArray = [];
+      }
+
+      console.log('Data array length:', dataArray.length);
+
+      if (dataArray.length > 0) {
+        const requestType = getRequestType();
+        console.log('Filtering for request type:', requestType);
+        
+        const filteredData = dataArray.filter(item => {
+          const itemRequestType = item.request_type || item.type || '';
+          const matches = itemRequestType === requestType || 
+                         itemRequestType.includes(requestType) ||
+                         itemRequestType.toLowerCase() === requestType.toLowerCase();
+          
+          if (matches) {
+            console.log('Matched item:', {
+              id: item.id || item.regn_no,
+              request_type: itemRequestType,
+              applicant_name: item.applicant_name
+            });
+          }
+          
+          return matches;
+        });
+        
+        console.log('Filtered data length:', filteredData.length);
+        setSubmittedData(filteredData);
+        
+        if (filteredData.length === 0) {
+          console.log('No data found for request type:', requestType);
+          console.log('Available request types:', dataArray.map(item => item.request_type || item.type));
+        }
+      } else {
+        console.log('No data found in response');
+        setSubmittedData([]);
+      }
+    } else {
+      console.error('API Error Response:', {
+        status: response.status,
+        statusText: response.statusText,
+        data: responseData
+      });
+      
+      let errorMessage = 'Failed to load submitted data';
+      
+      if (response.status === 401) {
+        errorMessage = 'Authentication failed. Please login again.';
+      } else if (response.status === 403) {
+        errorMessage = 'Access denied. Please check your permissions.';
+      } else if (response.status === 404) {
+        errorMessage = 'Service not found. Please contact support.';
+      } else if (response.status === 500) {
+        errorMessage = 'Server error. Please try again later.';
+      } else if (responseData && responseData.message) {
+        errorMessage = responseData.message;
+      }
+      
+      Alert.alert('Error', errorMessage);
+    }
+  } catch (error) {
+    console.error('Network Error loading submitted data:', {
+      message: error.message,
+      stack: error.stack,
+      userInfo: userInfo
+    });
+    
+    let errorMessage = 'Network error while loading data';
+    
+    if (error.message.includes('Network request failed')) {
+      errorMessage = 'Cannot connect to server. Please check your internet connection.';
+    } else if (error.message.includes('timeout')) {
+      errorMessage = 'Request timeout. Please try again.';
+    }
+    
+    Alert.alert('Network Error', errorMessage);
+  } finally {
+    setIsLoadingData(false);
+  }
+};
+
+ // Updated loadAppointments function
+const loadAppointments = async () => {
+  try {
+    setIsLoadingData(true);
+    
+    // Refresh user info before making API call
+    const currentUserInfo = await getUserInfo();
+    
+    console.log('Loading appointments - User Info Check:', {
+      leaderMobile: currentUserInfo.leaderMobile,
+      userEmail: currentUserInfo.userEmail
+    });
+    
+    // Validate required parameters for appointments too
+    if (!currentUserInfo.leaderMobile || !currentUserInfo.userEmail) {
+      Alert.alert(
+        'Missing Information', 
+        'Unable to load appointments. Required user information is missing.',
+        [{ text: 'OK' }]
+      );
+      return;
+    }
+    
+    const headers = await getAuthHeaders('APPOINTMENT');
+    const baseUrl = await ConfigService.getBaseUrl();
+    
+    // FIXED: Add query parameters to appointments endpoint
+    const encodedMobile = encodeURIComponent(currentUserInfo.leaderMobile);
+    const encodedEmail = encodeURIComponent(currentUserInfo.userEmail);
+    const apiUrl = `${baseUrl}/api/appointments/?leader_regd_mobile_no=${encodedMobile}&user_email_id=${encodedEmail}`;
+    
+    console.log('Loading appointments from:', apiUrl);
+    console.log('Headers:', headers);
+
+    const response = await fetch(apiUrl, {
+      method: 'GET',
+      headers: headers,
+    });
+
+    console.log('Appointments API Response Status:', response.status);
+
+    const responseText = await response.text();
+    console.log('Raw Appointments Response:', responseText);
+
+    let responseData;
+    try {
+      responseData = JSON.parse(responseText);
+    } catch (parseError) {
+      console.error('Failed to parse appointments response as JSON:', parseError);
+      Alert.alert('Error', 'Invalid response format from server');
+      return;
+    }
+
+    console.log('Parsed Appointments Response:', responseData);
+
+    if (response.ok) {
+      // Handle different response structures for appointments
+      let appointmentsArray = [];
+      
+      if (Array.isArray(responseData)) {
+        appointmentsArray = responseData;
+      } else if (responseData.appointments && Array.isArray(responseData.appointments)) {
+        appointmentsArray = responseData.appointments;
+      } else if (responseData.data && Array.isArray(responseData.data)) {
+        appointmentsArray = responseData.data;
+      } else if (responseData.results && Array.isArray(responseData.results)) {
+        appointmentsArray = responseData.results;
+      } else {
+        console.log('Unexpected appointments response structure:', responseData);
+        appointmentsArray = [];
+      }
+
+      console.log('Appointments array length:', appointmentsArray.length);
+      setSubmittedData(appointmentsArray);
+    } else {
+      console.error('Failed to load appointments:', {
+        status: response.status,
+        statusText: response.statusText,
+        data: responseData
+      });
+      
+      let errorMessage = 'Failed to load appointments';
+      
+      if (response.status === 401) {
+        errorMessage = 'Authentication failed. Please login again.';
+      } else if (response.status === 403) {
+        errorMessage = 'Access denied. Please check your permissions.';
+      } else if (response.status === 404) {
+        errorMessage = 'Appointments service not found.';
+      } else if (response.status === 500) {
+        errorMessage = 'Server error. Please try again later.';
+      } else if (responseData && responseData.message) {
+        errorMessage = responseData.message;
+      }
+      
+      Alert.alert('Error', errorMessage);
+    }
+  } catch (error) {
+    console.error('Error loading appointments:', {
+      message: error.message,
+      stack: error.stack
+    });
+    
+    let errorMessage = 'Network error while loading appointments';
+    
+    if (error.message.includes('Network request failed')) {
+      errorMessage = 'Cannot connect to server. Please check your internet connection.';
+    } else if (error.message.includes('timeout')) {
+      errorMessage = 'Request timeout. Please try again.';
+    }
+    
+    Alert.alert('Network Error', errorMessage);
+  } finally {
+    setIsLoadingData(false);
+  }
+};
+// Add this function after loadAppointments function
+const loadDataByStatus = async (status = selectedStatus) => {
+  try {
+    setIsLoadingData(true);
+    
+    const currentUserInfo = await getUserInfo();
+    
+    console.log('Loading data by status:', {
+      leaderMobile: currentUserInfo.leaderMobile,
+      userEmail: currentUserInfo.userEmail,
+      status: status,
+      requestType: getRequestType()
+    });
+    
+    if (!currentUserInfo.leaderMobile || !currentUserInfo.userEmail) {
+      Alert.alert('Missing Information', 'Unable to load data. Required information is missing.');
+      return;
+    }
+    
+    const headers = await getAuthHeaders(getRequestType());
+    const baseUrl = await ConfigService.getBaseUrl();
+    
+    let apiUrl;
+    const encodedMobile = encodeURIComponent(currentUserInfo.leaderMobile);
+    const encodedEmail = encodeURIComponent(currentUserInfo.userEmail);
+    
+    if (activeMainTab === 'APPOINTMENT') {
+      apiUrl = `${baseUrl}/api/appointments/status/?leader_regd_mobile_no=${encodedMobile}&user_email_id=${encodedEmail}&status=${encodeURIComponent(status)}`;
+    } else {
+      const requestType = getRequestType();
+      apiUrl = `${baseUrl}/api/grievances/status/?leader_regd_mobile_no=${encodedMobile}&user_email_id=${encodedEmail}&request_type=${encodeURIComponent(requestType)}&status=${encodeURIComponent(status)}`;
+    }
+    
+    console.log('Status Filter API URL:', apiUrl);
+
+    const response = await fetch(apiUrl, {
+      method: 'GET',
+      headers: headers,
+    });
+
+    const responseText = await response.text();
+    let responseData;
+    
+    try {
+      responseData = JSON.parse(responseText);
+    } catch (parseError) {
+      console.error('Failed to parse response:', parseError);
+      Alert.alert('Error', 'Invalid response from server');
+      return;
+    }
+
+    if (response.ok) {
+      let dataArray = [];
+      
+      if (Array.isArray(responseData)) {
+        dataArray = responseData;
+      } else if (responseData.data && Array.isArray(responseData.data)) {
+        dataArray = responseData.data;
+      } else if (responseData.grievances && Array.isArray(responseData.grievances)) {
+        dataArray = responseData.grievances;
+      } else if (responseData.appointments && Array.isArray(responseData.appointments)) {
+        dataArray = responseData.appointments;
+      }
+
+      setSubmittedData(dataArray);
+    } else {
+      console.error('API Error:', response.status, responseData);
+      Alert.alert('Error', responseData.message || 'Failed to load data by status');
+      setSubmittedData([]);
+    }
+  } catch (error) {
+    console.error('Network Error:', error);
+    Alert.alert('Network Error', 'Failed to connect to server');
+    setSubmittedData([]);
+  } finally {
+    setIsLoadingData(false);
+  }
+};
+
+const handleStatusFilterSubmit = () => {
+  console.log('Filtering by status:', selectedStatus);
+  loadDataByStatus(selectedStatus);
+};
+
+const renderAdminStatusFilter = () => {
+  return (
+    <View style={styles.adminFilterContainer}>
+      <Text style={styles.filterLabel}>Filter by Status:</Text>
+      
+      <View style={styles.dropdownContainer}>
+        <TouchableOpacity 
+          style={styles.dropdownButton}
+          onPress={() => setIsStatusDropdownOpen(!isStatusDropdownOpen)}
+        >
+          <Text style={styles.dropdownButtonText}>{selectedStatus}</Text>
+          <Text style={styles.dropdownArrow}>{isStatusDropdownOpen ? '▲' : '▼'}</Text>
+        </TouchableOpacity>
+        
+        {isStatusDropdownOpen && (
+          <View style={styles.dropdownOptions}>
+            {statusOptions.map((option, index) => (
+              <TouchableOpacity
+                key={option.value}
+                style={[
+                  styles.dropdownOption,
+                  selectedStatus === option.value && styles.selectedOption,
+                  index === statusOptions.length - 1 && styles.lastOption
+                ]}
+                onPress={() => {
+                  setSelectedStatus(option.value);
+                  setIsStatusDropdownOpen(false);
+                }}
+              >
+                <Text style={[
+                  styles.dropdownOptionText,
+                  selectedStatus === option.value && styles.selectedOptionText
+                ]}>
+                  {option.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
+      </View>
+      
+      <TouchableOpacity 
+        style={styles.filterSubmitButton}
+        onPress={handleStatusFilterSubmit}
+        disabled={isLoadingData}
+      >
+        {isLoadingData ? (
+          <View style={styles.loadingButtonContent}>
+            <ActivityIndicator size="small" color="#fff" />
+            <Text style={styles.filterSubmitButtonText}>Loading...</Text>
+          </View>
+        ) : (
+          <Text style={styles.filterSubmitButtonText}>Submit</Text>
+        )}
+      </TouchableOpacity>
+    </View>
+  );
+};
+  // FIXED: Added getDeviceIP function
+  const getDeviceIP = async () => {
+  try {
+    return await DeviceService.getDeviceIP();
+  } catch (error) {
+    console.error('Error getting device IP:', error);
+    return "192.168.1.100"; // Fallback IP
+  }
+};
+
+  const handleSubmit = async () => {
     if (!activeMainTab) return;
+    
+    // FIXED: Refresh user info before validation
+    await getUserInfo();
+    
+    // FIXED: Enhanced user info validation with detailed logging
+    console.log('Current userInfo before submit:', userInfo);
+    
+    if (!userInfo.leaderMobile || !userInfo.userEmail) {
+      console.error('User info validation failed:', {
+        leaderMobile: userInfo.leaderMobile,
+        userEmail: userInfo.userEmail,
+        hasLeaderMobile: !!userInfo.leaderMobile,
+        hasUserEmail: !!userInfo.userEmail
+      });
+      
+      Alert.alert(
+        'User Information Missing', 
+        'Unable to get your account information. Please logout and login again to continue.',
+        [
+          {
+            text: 'Go to Login',
+            onPress: () => navigation.navigate('Login')
+          },
+          {
+            text: 'Try Again',
+            onPress: async () => {
+              await getUserInfo();
+              console.log('Refreshed userInfo:', userInfo);
+            }
+          }
+        ]
+      );
+      return;
+    }
     
     if (!validateForm()) {
       return;
     }
     
     const currentFormData = getCurrentFormData();
-    console.log(`${activeMainTab} form submitted:`, currentFormData);
+    setIsSubmitting(true);
     
-    Alert.alert(
-      'Success', 
-      `Your ${activeMainTab.toLowerCase()} has been submitted successfully! You will receive a confirmation shortly.`,
-      [
-        {
-          text: 'View Preview',
-          onPress: () => setActiveSubTab('PREVIEW')
-        },
-        {
-          text: 'OK',
-          style: 'default'
+    try {
+      const currentDeviceIP = await getDeviceIP();
+      
+      if (['APPEAL', 'GRIEVANCE', 'COMPLAINTS'].includes(activeMainTab)) {
+        let requestTypeValue;
+        switch (activeMainTab) {
+          case 'APPEAL':
+            requestTypeValue = 'Appeal';
+            break;
+          case 'GRIEVANCE':
+            requestTypeValue = 'Grievance';
+            break;
+          case 'COMPLAINTS':
+            requestTypeValue = 'Complaints';
+            break;
+          default:
+            requestTypeValue = activeMainTab;
         }
-      ]
-    );
+
+        const grievanceData = {
+          leader_regd_mobile_no: userInfo.leaderMobile,
+          user_email_id: userInfo.userEmail,
+          request_type: requestTypeValue,
+          applicant_mobile: currentFormData.mobile,
+          applicant_name: currentFormData.name,
+          fh_name: currentFormData.fatherHusbandName,
+          address: currentFormData.address,
+          pincode: currentFormData.pincode,
+          district: currentFormData.district,
+          state: currentFormData.state,
+          description: currentFormData.purpose,
+          device_ip_number: currentDeviceIP
+        };
+
+        console.log('Submitting grievance data:', grievanceData);
+
+        const result = await submitGrievance(grievanceData);
+        
+        console.log('Full API response:', result);
+        
+        if (result.success) {
+        const regnNo = result.regn_no || result.data?.regn_no || 'N/A';
+          
+          // Clear form data after successful submission
+          setFormDataByTab(prev => ({
+            ...prev,
+            [activeMainTab]: {
+              mobile: '',
+              name: '',
+              fatherHusbandName: '',
+              address: '',
+              pincode: '',
+              district: '',
+              state: '',
+              purpose: '',
+              requestedDate: '',
+              declarationAccepted: false,
+            }
+          }));
+
+          // Reset pincode verification states
+          setPincodeVerificationStates(prev => ({
+            ...prev,
+            [activeMainTab]: 'input'
+          }));
+          
+          setPincodeVerifiedStates(prev => ({
+            ...prev,
+            [activeMainTab]: false
+          }));
+
+        const successMessage = `Your ${requestTypeValue} has been registered successfully with Registration No: ${regnNo}`;
+
+
+Alert.alert(
+  'Success', 
+  successMessage,
+  [
+    {
+      text: 'View Submitted',
+      onPress: () => setActiveSubTab('PREVIEW')
+    },
+    {
+      text: 'OK',
+      style: 'default'
+    }
+  ]
+);
+        } else {
+          console.error('Submission failed:', result);
+          
+          let errorMessage = 'Failed to submit request. Please try again.';
+          
+          if (result.status === 400) {
+            errorMessage = result.message || 'Invalid data provided. Please check your input.';
+          } else if (result.status === 401) {
+            errorMessage = 'Session expired. Please login again.';
+          } else if (result.status === 403) {
+            errorMessage = 'Access denied. Please check your permissions.';
+          } else if (result.status === 404) {
+            errorMessage = 'Service not found. Please contact support.';
+          } else if (result.status === 422) {
+            errorMessage = result.message || 'Data validation failed. Please check your input.';
+          } else if (result.status === 500) {
+            errorMessage = 'Server error. Please try again later or contact support.';
+            console.error('500 Error Details:', {
+              status: result.status,
+              message: result.message,
+              error: result.error,
+              data: grievanceData
+            });
+          } else if (result.status === 503) {
+            errorMessage = 'Service temporarily unavailable. Please try again later.';
+          } else if (result.message) {
+            errorMessage = result.message;
+          }
+
+          Alert.alert('Error', errorMessage, [{ text: 'OK' }]);
+        }
+      } else if (activeMainTab === 'APPOINTMENT') {
+        const appointmentData = {
+          leader_regd_mobile_no: userInfo.leaderMobile,
+          user_email_id: userInfo.userEmail,
+          applicant_mobile: currentFormData.mobile,
+          applicant_name: currentFormData.name,
+          fh_name: currentFormData.fatherHusbandName,
+          address: currentFormData.address,
+          pincode: currentFormData.pincode,
+          district: currentFormData.district,
+          state: currentFormData.state,
+          req_meeting_date: currentFormData.requestedDate,
+          meeting_purpose: currentFormData.purpose,
+          device_ip_number: currentDeviceIP
+        };
+
+        console.log('Submitting appointment data:', appointmentData);
+
+        const result = await submitAppointment(appointmentData);
+        console.log('Appointment API response:', result);
+        
+        if (result.success) {
+         const regnNo = result.data?.regn_no || 'N/A';
+          
+          // Clear form data after successful submission
+          setFormDataByTab(prev => ({
+            ...prev,
+            [activeMainTab]: {
+              mobile: '',
+              name: '',
+              fatherHusbandName: '',
+              address: '',
+              pincode: '',
+              district: '',
+              state: '',
+              purpose: '',
+              requestedDate: '',
+              declarationAccepted: false,
+            }
+          }));
+
+          // Reset pincode verification states
+          setPincodeVerificationStates(prev => ({
+            ...prev,
+            [activeMainTab]: 'input'
+          }));
+          
+          setPincodeVerifiedStates(prev => ({
+            ...prev,
+            [activeMainTab]: false
+          }));
+
+          Alert.alert(
+            'Success', 
+            `Your appointment has been submitted successfully! Registration No: ${regnNo}`,
+            [
+              {
+                text: 'View Appointments',
+                onPress: () => setActiveSubTab('PREVIEW')
+              },
+              {
+                text: 'OK',
+                style: 'default'
+              }
+            ]
+          );
+        } else {
+          console.error('Appointment submission failed:', result);
+          
+          let errorMessage = 'Failed to submit appointment. Please try again.';
+          
+          if (result.status === 400) {
+            errorMessage = result.message || 'Invalid data provided. Please check your input.';
+          } else if (result.status === 401) {
+            errorMessage = 'Session expired. Please login again.';
+          } else if (result.status === 403) {
+            errorMessage = 'Access denied. Please check your permissions.';
+          } else if (result.status === 404) {
+            errorMessage = 'Service not found. Please contact support.';
+          } else if (result.status === 422) {
+            errorMessage = result.message || 'Data validation failed. Please check your input.';
+          } else if (result.status === 500) {
+            errorMessage = 'Server error. Please try again later or contact support.';
+            console.error('500 Error Details:', {
+              status: result.status,
+              message: result.message,
+              error: result.error,
+              data: appointmentData
+            });
+          } else if (result.status === 503) {
+            errorMessage = 'Service temporarily unavailable. Please try again later.';
+          } else if (result.message) {
+            errorMessage = result.message;
+          }
+          
+          Alert.alert('Error', errorMessage);
+        }
+      }
+    } catch (error) {
+      console.error('Error in handleSubmit:', error);
+      
+      console.error('Error details:', {
+        message: error.message,
+        stack: error.stack,
+        activeMainTab,
+        formData: currentFormData,
+        userInfo
+      });
+      
+      Alert.alert(
+        'Error', 
+        'An unexpected error occurred. Please check your internet connection and try again.',
+        [{ text: 'OK' }]
+      );
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handleCancel = () => {
@@ -341,7 +1501,6 @@ const SamvadScreen = ({ route, navigation }) => {
           text: 'Yes, Clear',
           style: 'destructive',
           onPress: () => {
-            // Clear only the current tab's form data
             setFormDataByTab(prev => ({
               ...prev,
               [activeMainTab]: {
@@ -350,8 +1509,6 @@ const SamvadScreen = ({ route, navigation }) => {
                 fatherHusbandName: '',
                 address: '',
                 pincode: '',
-                postOffice: '',
-                taluka: '',
                 district: '',
                 state: '',
                 purpose: '',
@@ -360,6 +1517,18 @@ const SamvadScreen = ({ route, navigation }) => {
               }
             }));
             setFocusedField(null);
+            
+            // FIXED: Reset pincode verification state for current tab only
+            setPincodeVerificationStates(prev => ({
+              ...prev,
+              [activeMainTab]: 'input'
+            }));
+            
+            setPincodeVerifiedStates(prev => ({
+              ...prev,
+              [activeMainTab]: false
+            }));
+            
             Alert.alert('Cleared', `${activeMainTab} form has been cleared.`);
           }
         }
@@ -381,12 +1550,12 @@ const SamvadScreen = ({ route, navigation }) => {
           <View style={styles.loginRequiredContainer}>
             {justRegistered && (
               <View style={styles.successBanner}>
-                <Text style={styles.successText}>✅ Registration Successful!</Text>
+                <Text style={styles.successText}>Registration Successful!</Text>
                 <Text style={styles.successSubText}>Your account has been created successfully</Text>
               </View>
             )}
             
-            <Text style={styles.loginRequiredTitle}>🔒 Login Required</Text>
+            <Text style={styles.loginRequiredTitle}>Login Required</Text>
             <Text style={styles.loginRequiredMessage}>
               {justRegistered 
                 ? "Great! Your account has been created successfully."
@@ -394,7 +1563,7 @@ const SamvadScreen = ({ route, navigation }) => {
               }
             </Text>
             <Text style={styles.loginRequiredSubMessage}>
-              Please login to access {activeMainTab?.toLowerCase()} services and book appointments.
+              Please login to access {activeMainTab?.toLowerCase()} services and submit requests.
             </Text>
             
             <TouchableOpacity 
@@ -471,6 +1640,67 @@ const SamvadScreen = ({ route, navigation }) => {
     );
   };
 
+  // FIXED: Pincode field now uses tab-specific verification state
+  const renderPincodeField = () => {
+    const currentFormData = getCurrentFormData();
+    const isFocused = focusedField === 'pincode';
+    const hasValue = currentFormData.pincode && currentFormData.pincode.length > 0;
+    const currentTabVerificationState = pincodeVerificationStates[activeMainTab];
+    
+    return (
+      <View style={styles.inputContainer}>
+        <Text style={[styles.label, styles.requiredLabel]}>
+          Pincode
+          <Text style={styles.asterisk}> *</Text>
+        </Text>
+        <View style={styles.pincodeContainer}>
+          <View style={[
+            styles.pincodeInputWrapper,
+            isFocused && styles.inputWrapperFocused,
+            hasValue && styles.inputWrapperFilled,
+            currentTabVerificationState === 'verified' && styles.inputWrapperVerified
+          ]}>
+            <TextInput
+              style={[
+                styles.pincodeInput,
+                isFocused && styles.inputFocused
+              ]}
+              value={currentFormData.pincode || ''}
+              onChangeText={(text) => handleChange('pincode', text)}
+              placeholder="6-digit pincode"
+              placeholderTextColor="#999"
+              keyboardType="numeric"
+              onFocus={() => setFocusedField('pincode')}
+              onBlur={() => setFocusedField(null)}
+              maxLength={6}
+            />
+          </View>
+          <TouchableOpacity
+            style={[
+              styles.verifyButton,
+              currentTabVerificationState === 'loading' && styles.verifyButtonLoading,
+              currentTabVerificationState === 'verified' && styles.verifyButtonVerified,
+              currentTabVerificationState === 'error' && styles.verifyButtonError
+            ]}
+            onPress={handlePincodeVerification}
+            disabled={currentTabVerificationState === 'loading' || currentFormData.pincode?.length !== 6}
+          >
+            {currentTabVerificationState === 'loading' ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : currentTabVerificationState === 'verified' ? (
+              <Text style={styles.verifyButtonText}>✓ Verified</Text>
+            ) : (
+              <Text style={styles.verifyButtonText}>Verify</Text>
+            )}
+          </TouchableOpacity>
+        </View>
+        {currentTabVerificationState === 'error' && (
+          <Text style={styles.errorText}>Please enter a valid pincode</Text>
+        )}
+      </View>
+    );
+  };
+
   const renderCheckbox = () => {
     const currentFormData = getCurrentFormData();
     const isChecked = currentFormData.declarationAccepted;
@@ -501,6 +1731,275 @@ const SamvadScreen = ({ route, navigation }) => {
     );
   };
 
+// Enhanced renderSubmittedDataList function with clean UI
+const renderSubmittedDataList = () => {
+  return (
+    <View style={styles.dataContainer}>
+      {/* Add admin filter at the top if user is admin */}
+      {userRole === 'admin' && renderAdminStatusFilter()}
+      
+      {isLoadingData ? (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#FF6B35" />
+          <Text style={styles.loadingText}>Loading {getRequestType().toLowerCase()}s...</Text>
+        </View>
+      ) : submittedData.length === 0 ? (
+        <View style={styles.emptyContainer}>
+          <Text style={styles.emptyText}>No {getRequestType().toLowerCase()} found</Text>
+          <Text style={styles.emptySubText}>
+            {userRole === 'admin' 
+              ? `No ${getRequestType().toLowerCase()}s found with status: ${selectedStatus}`
+              : `Submit a new ${getRequestType().toLowerCase()} to see it here`
+            }
+          </Text>
+          {userRole !== 'admin' && (
+            <TouchableOpacity 
+              style={styles.addNewButton}
+              onPress={() => setActiveSubTab('ADD')}
+            >
+              <Text style={styles.addNewButtonText}>
+                Add New {getRequestType()}
+              </Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      ) : (
+        <>
+          <View style={styles.previewHeader}>
+            <Text style={styles.previewTitle}>{activeMainTab} RECORDS</Text>
+            <Text style={styles.dataCount}>
+              ({submittedData.length} Items{userRole === 'admin' ? ` - ${selectedStatus}` : ''})
+            </Text>
+          </View>
+          
+          <ScrollView 
+            style={styles.cardsContainer}
+            showsVerticalScrollIndicator={false}
+            nestedScrollEnabled={true}
+          >
+            {submittedData.map((item, index) => {
+              const regnNo = item.regn_no || item.registration_number || item.id || `${activeMainTab}${String(index + 1).padStart(4, '0')}`;
+              const applicantName = item.applicant_name || item.name || 'N/A';
+              const description = item.description || item.meeting_purpose || item.purpose || 'No description available';
+              const requestDate = item.created_at || item.requested_date || item.req_meeting_date || new Date().toISOString();
+              const status = item.status || 'pending';
+              const mobile = item.applicant_mobile || item.mobile || 'N/A';
+              
+              const formatDate = (dateString) => {
+                try {
+                  const date = new Date(dateString);
+                  const options = { 
+                    day: '2-digit',
+                    month: 'short',
+                    year: 'numeric'
+                  };
+                  return date.toLocaleDateString('en-US', options);
+                } catch (error) {
+                  return new Date().toLocaleDateString('en-US', { 
+                    day: '2-digit',
+                    month: 'short',
+                    year: 'numeric'
+                  });
+                }
+              };
+
+              const formattedDate = formatDate(requestDate);
+              
+              return (
+                <View key={`${regnNo}-${index}`} style={styles.enhancedDataCard}>
+                  <View style={styles.cardHeader}>
+                    <View style={styles.regnContainer}>
+                      <Text style={styles.regnLabel}>REG NO</Text>
+                      <Text style={styles.regnNumber}>{regnNo}</Text>
+                    </View>
+                    <View style={styles.statusContainer}>
+                      <Text style={[
+                        styles.statusBadge,
+                        status.toLowerCase() === 'approved' || status.toLowerCase() === 'completed' 
+                          ? styles.statusApproved
+                          : status.toLowerCase() === 'rejected' 
+                            ? styles.statusRejected 
+                            : styles.statusPending
+                      ]}>
+                        {status.toUpperCase()}
+                      </Text>
+                    </View>
+                  </View>
+
+                  <View style={styles.cardDivider} />
+
+                  <View style={styles.cardContent}>
+                    <View style={styles.applicantSection}>
+                      <Text style={styles.sectionLabel}>APPLICANT</Text>
+                      <Text style={styles.applicantName}>{applicantName}</Text>
+                      <Text style={styles.applicantMobile}>{mobile}</Text>
+                    </View>
+
+                    <View style={styles.descriptionSection}>
+                      <Text style={styles.sectionLabel}>
+                        {activeMainTab === 'APPOINTMENT' ? 'MEETING PURPOSE' : 'DESCRIPTION'}
+                      </Text>
+                      <Text style={styles.descriptionText} numberOfLines={3}>
+                        {description}
+                      </Text>
+                    </View>
+
+                    {activeMainTab === 'APPOINTMENT' && item.req_meeting_date && (
+                      <View style={styles.meetingDateSection}>
+                        <Text style={styles.sectionLabel}>REQUESTED DATE</Text>
+                        <Text style={styles.meetingDate}>{item.req_meeting_date}</Text>
+                      </View>
+                    )}
+
+                    <View style={styles.cardFooter}>
+                      <View style={styles.dateSection}>
+                        <Text style={styles.dateLabel}>SUBMITTED</Text>
+                        <Text style={styles.dateText}>{formattedDate}</Text>
+                      </View>
+                      
+                      <TouchableOpacity 
+                        style={styles.viewDetailsButton}
+                        onPress={() => showItemDetails(item)}
+                      >
+                        <Text style={styles.viewDetailsText}>VIEW DETAILS</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                </View>
+              );
+            })}
+          </ScrollView>
+        </>
+      )}
+    </View>
+  );
+};
+// New function to render LIST view
+const renderListView = () => {
+  if (isLoadingData) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#FF6B35" />
+        <Text style={styles.loadingText}>Loading {getRequestType().toLowerCase()}s...</Text>
+      </View>
+    );
+  }
+
+  if (submittedData.length === 0) {
+    return (
+      <View style={styles.emptyContainer}>
+        <Text style={styles.emptyText}>No {getRequestType().toLowerCase()} found</Text>
+        <Text style={styles.emptySubText}>No submissions available for this category</Text>
+        <TouchableOpacity 
+          style={styles.addNewButton}
+          onPress={() => {
+            if (activeMainTab === 'APPOINTMENT') {
+              loadAppointments();
+            } else {
+              loadSubmittedData();
+            }
+          }}
+        >
+          <Text style={styles.addNewButtonText}>Refresh Data</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
+  // Show simplified list view - different from PREVIEW
+  return (
+    <View style={styles.dataContainer}>
+      <View style={styles.previewHeader}>
+        <Text style={styles.previewTitle}>{activeMainTab} LIST</Text>
+        <Text style={styles.dataCount}>({submittedData.length} Total)</Text>
+      </View>
+      
+      <ScrollView 
+        style={styles.cardsContainer}
+        showsVerticalScrollIndicator={false}
+        nestedScrollEnabled={true}
+      >
+        {submittedData.map((item, index) => {
+          const regnNo = item.regn_no || item.registration_number || item.id || `${activeMainTab}${String(index + 1).padStart(4, '0')}`;
+          const applicantName = item.applicant_name || item.name || 'N/A';
+          const status = item.status || 'pending';
+          const mobile = item.applicant_mobile || item.mobile || 'N/A';
+          
+          return (
+            <TouchableOpacity 
+              key={`list-${regnNo}-${index}`} 
+              style={styles.listItemCard}
+              onPress={() => showItemDetails(item)}
+            >
+              <View style={styles.listItemHeader}>
+                <Text style={styles.listRegnNo}>{regnNo}</Text>
+                <Text style={[
+                  styles.listStatus,
+                  status.toLowerCase() === 'approved' || status.toLowerCase() === 'completed' 
+                    ? styles.statusApproved
+                    : status.toLowerCase() === 'rejected' 
+                      ? styles.statusRejected 
+                      : styles.statusPending
+                ]}>
+                  {status.toUpperCase()}
+                </Text>
+              </View>
+              <Text style={styles.listApplicantName}>{applicantName}</Text>
+              <Text style={styles.listMobile}>{mobile}</Text>
+            </TouchableOpacity>
+          );
+        })}
+      </ScrollView>
+    </View>
+  );
+};
+// Add this function after renderSubmittedDataList
+// Updated showItemDetails function in SamvadScreen.js
+// Replace the existing function with this updated version
+
+// Replace the existing showItemDetails function in your SamvadScreen with this:
+
+const showItemDetails = (item) => {
+  try {
+    const regnNo = item.regn_no || item.registration_number || item.id || 'N/A';
+    
+    // Determine the request type based on current activeMainTab
+    let requestType = activeMainTab;
+    if (activeMainTab === 'APPEAL') {
+      requestType = 'Appeal';
+    } else if (activeMainTab === 'GRIEVANCE') {
+      requestType = 'Grievance';  
+    } else if (activeMainTab === 'COMPLAINTS') {
+      requestType = 'Complaints';
+    } else if (activeMainTab === 'APPOINTMENT') {
+      requestType = 'APPOINTMENT';
+    }
+    
+    const navigationParams = {
+      regnNo,
+      requestType, // For API header
+      type: activeMainTab, // For determining which endpoint to use
+      userEmail: userInfo.userEmail,
+      leaderMobile: userInfo.leaderMobile,
+    };
+    
+    console.log('Navigating to details with params:', navigationParams);
+    
+    // Check if navigation object exists and has navigate method
+    if (navigation && typeof navigation.navigate === 'function') {
+      navigation.navigate('DetailedFormScreen', navigationParams);
+    } else {
+      console.error('Navigation object is not available');
+      Alert.alert('Error', 'Navigation not available. Please try again.');
+    }
+    
+  } catch (error) {
+    console.error('Error in showItemDetails:', error);
+    Alert.alert('Error', 'Failed to open details. Please try again.');
+  }
+};
+
+
   // Render welcome content when no main tab is selected
   const renderWelcomeContent = () => (
     <ScrollView
@@ -508,10 +2007,9 @@ const SamvadScreen = ({ route, navigation }) => {
       showsVerticalScrollIndicator={false}
     >
       <View style={styles.contentCard}>
-        {/* Registration Success Banner */}
         {showRegistrationSuccess && (
           <View style={styles.successBanner}>
-            <Text style={styles.successText}>🎉 Welcome! Registration Successful!</Text>
+            <Text style={styles.successText}>Welcome! Registration Successful!</Text>
             <Text style={styles.successSubText}>You can now access all Samvad services</Text>
           </View>
         )}
@@ -522,22 +2020,22 @@ const SamvadScreen = ({ route, navigation }) => {
         </Text>
         <View style={styles.categoryContainer}>
           <View style={styles.categoryItem}>
-            <Text style={styles.categoryName}>🔔 APPEAL</Text>
+            <Text style={styles.categoryName}>APPEAL</Text>
             <Text style={styles.categoryDescription}>Submit an appeal for review and resolution</Text>
           </View>
           
           <View style={styles.categoryItem}>
-            <Text style={styles.categoryName}>📅 APPOINTMENT</Text>
+            <Text style={styles.categoryName}>APPOINTMENT</Text>
             <Text style={styles.categoryDescription}>Schedule a meeting with your representative</Text>
           </View>
           
           <View style={styles.categoryItem}>
-            <Text style={styles.categoryName}>📋 GRIEVANCE</Text>
+            <Text style={styles.categoryName}>GRIEVANCE</Text>
             <Text style={styles.categoryDescription}>Register your grievance for prompt action</Text>
           </View>
           
           <View style={styles.categoryItem}>
-            <Text style={styles.categoryName}>📝 COMPLAINTS</Text>
+            <Text style={styles.categoryName}>COMPLAINTS</Text>
             <Text style={styles.categoryDescription}>File a complaint and track its status</Text>
           </View>
         </View>
@@ -605,16 +2103,17 @@ const SamvadScreen = ({ route, navigation }) => {
       )}
 
       {/* Content Area */}
-      {!activeMainTab ? (
-        renderWelcomeContent()
-      ) : !isUserLoggedIn && activeSubTab === 'ADD' ? (
-        renderLoginRequired()
-      ) : activeSubTab === 'ADD' ? (
-        <ScrollView 
-          contentContainerStyle={styles.contentArea} 
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
-        >
+     {!activeMainTab ? (
+  renderWelcomeContent()
+) : !isUserLoggedIn && activeSubTab === 'ADD' ? (
+  renderLoginRequired()
+) : activeSubTab === 'ADD' && userRole !== 'admin' ? (
+  // Only show ADD form for non-admin users
+  <ScrollView 
+    contentContainerStyle={styles.contentArea} 
+    keyboardShouldPersistTaps="handled"
+    showsVerticalScrollIndicator={false}
+  >
           <View style={styles.contentCard}>
             <Text style={styles.contentText}>{getFormHeader()}</Text>
 
@@ -673,37 +2172,13 @@ const SamvadScreen = ({ route, navigation }) => {
               true
             )}
 
-            {renderInputField(
-              'pincode',
-              'Pincode',
-              '6-digit pincode',
-              'numeric',
-              false,
-              true
-            )}
-
-            {renderInputField(
-              'postOffice',
-              'Post Office',
-              'Enter post office name',
-              'default',
-              false,
-              true
-            )}
-
-            {renderInputField(
-              'taluka',
-              'Taluka',
-              'Enter taluka name',
-              'default',
-              false,
-              true
-            )}
+            {/* Use pincode field with verification */}
+            {renderPincodeField()}
 
             {renderInputField(
               'district',
               'District',
-              'Enter district name',
+              'District will be auto-filled after pincode verification',
               'default',
               false,
               true
@@ -712,7 +2187,7 @@ const SamvadScreen = ({ route, navigation }) => {
             {renderInputField(
               'state',
               'State',
-              'Enter state name',
+              'State will be auto-filled after pincode verification',
               'default',
               false,
               true
@@ -721,562 +2196,92 @@ const SamvadScreen = ({ route, navigation }) => {
             {renderCheckbox()}
 
             <View style={styles.buttonContainer}>
-              <TouchableOpacity style={styles.cancelButton} onPress={handleCancel}>
-                <Text style={styles.buttonText}>Clear Form</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.submitButton} onPress={handleSubmit}>
-                <Text style={styles.buttonText}>Submit</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </ScrollView>
-      ) : (
-        <ScrollView 
-          contentContainerStyle={styles.contentArea}
-          showsVerticalScrollIndicator={false}
-        >
-          <View style={styles.contentCard}>
-            <Text style={styles.contentText}>Preview - {getFormHeader()}</Text>
-            <View style={styles.previewContainer}>
-              <Text style={styles.previewHeader}>Submitted Information:</Text>
-              
-              <View style={styles.previewRow}>
-                <Text style={styles.previewLabel}>Mobile Number:</Text>
-                <Text style={styles.previewValue}>{getCurrentFormData().mobile || 'Not provided'}</Text>
-              </View>
-              
-              <View style={styles.previewRow}>
-                <Text style={styles.previewLabel}>Name:</Text>
-                <Text style={styles.previewValue}>{getCurrentFormData().name || 'Not provided'}</Text>
-              </View>
-              
-              <View style={styles.previewRow}>
-                <Text style={styles.previewLabel}>Father/Husband's Name:</Text>
-                <Text style={styles.previewValue}>{getCurrentFormData().fatherHusbandName || 'Not provided'}</Text>
-              </View>
-              
-              <View style={styles.previewRow}>
-                <Text style={styles.previewLabel}>Address:</Text>
-                <Text style={styles.previewValue}>{getCurrentFormData().address || 'Not provided'}</Text>
-              </View>
-              
-              <View style={styles.previewRow}>
-                <Text style={styles.previewLabel}>Pincode:</Text>
-                <Text style={styles.previewValue}>{getCurrentFormData().pincode || 'Not provided'}</Text>
-              </View>
-              
-              <View style={styles.previewRow}>
-                <Text style={styles.previewLabel}>Post Office:</Text>
-                <Text style={styles.previewValue}>{getCurrentFormData().postOffice || 'Not provided'}</Text>
-              </View>
-              
-              <View style={styles.previewRow}>
-                <Text style={styles.previewLabel}>Taluka:</Text>
-                <Text style={styles.previewValue}>{getCurrentFormData().taluka || 'Not provided'}</Text>
-              </View>
-              
-              <View style={styles.previewRow}>
-                <Text style={styles.previewLabel}>District:</Text>
-                <Text style={styles.previewValue}>{getCurrentFormData().district || 'Not provided'}</Text>
-              </View>
-              
-              <View style={styles.previewRow}>
-                <Text style={styles.previewLabel}>State:</Text>
-                <Text style={styles.previewValue}>{getCurrentFormData().state || 'Not provided'}</Text>
-              </View>
-              
-              <View style={styles.previewRow}>
-                <Text style={styles.previewLabel}>{getPurposeLabel()}:</Text>
-                <Text style={styles.previewValue}>{getCurrentFormData().purpose || 'Not provided'}</Text>
-              </View>
-              
-              {activeMainTab === 'APPOINTMENT' && (
-                <View style={styles.previewRow}>
-                  <Text style={styles.previewLabel}>Requested Date:</Text>
-                  <Text style={styles.previewValue}>{getCurrentFormData().requestedDate || 'Not provided'}</Text>
-                </View>
-              )}
-              
-              <View style={styles.previewRow}>
-                <Text style={styles.previewLabel}>Declaration:</Text>
-                <Text style={[styles.previewValue, getCurrentFormData().declarationAccepted ? styles.accepted : styles.notAccepted]}>
-                  {getCurrentFormData().declarationAccepted ? 'Accepted ✓' : 'Not Accepted ✗'}
-                </Text>
-              </View>
-            </View>
-
-            <View style={styles.buttonContainer}>
               <TouchableOpacity 
                 style={styles.cancelButton} 
-                onPress={() => setActiveSubTab('ADD')}
+                onPress={handleCancel}
               >
-                <Text style={styles.buttonText}>Edit Form</Text>
+                <Text style={styles.buttonText}>Cancel</Text>
               </TouchableOpacity>
+              
               <TouchableOpacity 
-                style={styles.submitButton} 
-                onPress={() => {
-                  Alert.alert(
-                    'Confirmed',
-                    `Your ${activeMainTab.toLowerCase()} has been successfully recorded in the system.`,
-                    [
-                      {
-                        text: 'New Form',
-                        onPress: () => {
-                          handleCancel();
-                          setActiveSubTab('ADD');
-                        }
-                      },
-                      {
-                        text: 'Done',
-                        onPress: () => navigation.goBack()
-                      }
-                    ]
-                  );
-                }}
+                style={[styles.submitButton, isSubmitting && styles.disabledButton]} 
+                onPress={handleSubmit}
+                disabled={isSubmitting}
               >
-                <Text style={styles.buttonText}>Confirm</Text>
+                {isSubmitting ? (
+                  <View style={styles.loadingButtonContent}>
+                    <ActivityIndicator size="small" color="#fff" />
+                    <Text style={styles.buttonText}>Submitting...</Text>
+                  </View>
+                ) : (
+                  <Text style={styles.buttonText}>Submit</Text>
+                )}
               </TouchableOpacity>
             </View>
           </View>
         </ScrollView>
-      )}
+    ) : activeSubTab === 'PREVIEW' ? (
+  <ScrollView 
+    contentContainerStyle={styles.contentArea}
+    showsVerticalScrollIndicator={false}
+  >
+    <View style={styles.contentCard}>
+      <Text style={styles.contentText}>Preview - {getFormHeader()}</Text>
+      {renderSubmittedDataList()}
+      <View style={styles.buttonContainer}>
+        <TouchableOpacity 
+          style={styles.cancelButton} 
+          onPress={() => setActiveSubTab(userRole === 'admin' ? 'LIST' : 'ADD')}
+        >
+          <Text style={styles.buttonText}>
+            {userRole === 'admin' ? 'Back to List' : `New ${getRequestType()}`}
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity 
+          style={styles.submitButton} 
+          onPress={() => {
+            if (activeMainTab === 'APPOINTMENT') {
+              loadAppointments();
+            } else {
+              loadSubmittedData();
+            }
+          }}
+        >
+          <Text style={styles.buttonText}>Refresh</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  </ScrollView>
+) : activeSubTab === 'LIST' ? (
+  <ScrollView 
+    contentContainerStyle={styles.contentArea}
+    showsVerticalScrollIndicator={false}
+  >
+    <View style={styles.contentCard}>
+      <Text style={styles.contentText}>List - {getFormHeader()}</Text>
+      {renderListView()}
+      <View style={styles.buttonContainer}>
+        <TouchableOpacity 
+          style={styles.submitButton} 
+          onPress={() => {
+            if (activeMainTab === 'APPOINTMENT') {
+              loadAppointments();
+            } else {
+              loadSubmittedData();
+            }
+          }}
+        >
+          <Text style={styles.buttonText}>Refresh</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  </ScrollView>
+) : null}
+      
     </View>
   );
 };
 
-const styles = StyleSheet.create({
-  container: { 
-    flex: 1, 
-    backgroundColor: '#fef6f2' 
-  },
-  mainTabContainer: {
-    backgroundColor: '#f56c3aff',
-    paddingTop: 12,
-    paddingBottom: 8,
-    elevation: 4,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 3.84,
-  },
-  tabRow: { 
-    flexDirection: 'row', 
-    justifyContent: 'space-around' 
-  },
-  mainTabButton: {
-    paddingVertical: 12,
-    paddingHorizontal: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-    minWidth: width * 0.2,
-    position: 'relative',
-  },
-  activeMainTabButton: {},
-  mainTabText: {
-    color: '#ffffff',
-    fontSize: 14,
-    fontWeight: '600',
-    opacity: 0.8,
-    textAlign: 'center',
-  },
-  activeMainTabText: { 
-    color: '#ffffff', 
-    fontWeight: 'bold', 
-    opacity: 1 
-  },
-  underline: {
-    position: 'absolute',
-    bottom: 0,
-    left: '15%',
-    right: '15%',
-    height: 3,
-    backgroundColor: '#ffffff',
-    borderRadius: 2,
-  },
-  subTabContainer: {
-    backgroundColor: '#f17232',
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
-  },
-  subTabButton: {
-    paddingVertical: 10,
-    paddingHorizontal: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-    minWidth: width * 0.25,
-    position: 'relative',
-    borderRadius: 8,
-  },
-  activeSubTabButton: {
-    backgroundColor: 'rgba(255, 255, 255, 0.15)',
-  },
-  subTabText: { 
-    color: '#ffffff', 
-    fontSize: 12, 
-    fontWeight: '500', 
-    opacity: 0.9 
-  },
-  activeSubTabText: { 
-    color: '#ffffff', 
-    fontWeight: 'bold', 
-    opacity: 1 
-  },
-  subUnderline: {
-    position: 'absolute',
-    bottom: 2,
-    left: '25%',
-    right: '25%',
-    height: 2,
-    backgroundColor: '#ffffff',
-    borderRadius: 1,
-  },
-  contentArea: { 
-    flexGrow: 1, 
-    justifyContent: 'flex-start', 
-    alignItems: 'center', 
-    padding: 20,
-    paddingTop: 25,
-  },
-  contentCard: {
-    backgroundColor: '#ffffff',
-    borderRadius: 15,
-    padding: 25,
-    width: '100%',
-    maxWidth: 500,
-    alignItems: 'center',
-    elevation: 3,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    borderLeftWidth: 5,
-    borderLeftColor: '#FF6B35',
-  },
-  contentText: { 
-    fontSize: 20, 
-    color: '#333', 
-    textAlign: 'center', 
-    fontWeight: '600',
-    marginBottom: 25,
-  },
-  
-  // Success Banner Styles
-  successBanner: {
-    backgroundColor: '#d4edda',
-    borderColor: '#c3e6cb',
-    borderWidth: 1,
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 20,
-    width: '100%',
-    alignItems: 'center',
-  },
-  successText: {
-    color: '#155724',
-    fontSize: 18,
-    fontWeight: 'bold',
-    textAlign: 'center',
-    marginBottom: 4,
-  },
-  successSubText: {
-    color: '#155724',
-    fontSize: 14,
-    textAlign: 'center',
-  },
-  
-  // Login Required Styles
-  loginRequiredContainer: {
-    alignItems: 'center',
-    padding: 20,
-  },
-  loginRequiredTitle: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#e74c3c',
-    marginBottom: 15,
-    textAlign: 'center',
-  },
-  loginRequiredMessage: {
-    fontSize: 18,
-    color: '#333',
-    marginBottom: 10,
-    textAlign: 'center',
-    fontWeight: '600',
-  },
-  loginRequiredSubMessage: {
-    fontSize: 14,
-    color: '#666',
-    marginBottom: 30,
-    textAlign: 'center',
-    lineHeight: 20,
-  },
-  loginButton: {
-    backgroundColor: '#e16e2b',
-    paddingHorizontal: 30,
-    paddingVertical: 15,
-    borderRadius: 25,
-    marginBottom: 20,
-    elevation: 3,
-    shadowColor: '#e16e2b',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-  },
-  loginButtonText: {
-    color: '#ffffff',
-    fontSize: 16,
-    fontWeight: 'bold',
-    textAlign: 'center',
-  },
-  registerContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  registerText: {
-    fontSize: 14,
-    color: '#666',
-  },
-  registerLink: {
-    fontSize: 14,
-    color: '#e16e2b',
-    fontWeight: '600',
-    textDecorationLine: 'underline',
-  },
-  
-  // Welcome screen styles
-  welcomeTitle: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    color: '#FF6B35',
-    textAlign: 'center',
-    marginBottom: 15,
-  },
-  welcomeSubtitle: {
-    fontSize: 16,
-    color: '#666',
-    textAlign: 'center',
-    marginBottom: 30,
-    lineHeight: 22,
-  },
-  categoryContainer: {
-    width: '100%',
-    marginTop: 10,
-  },
-  categoryItem: {
-    backgroundColor: '#f8f9fa',
-    padding: 18,
-    marginBottom: 12,
-    borderRadius: 12,
-    borderLeftWidth: 4,
-    borderLeftColor: '#FF6B35',
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-  },
-  categoryName: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#333',
-    marginBottom: 5,
-  },
-  categoryDescription: {
-    fontSize: 14,
-    color: '#666',
-    lineHeight: 18,
-  },
-  
-  // Input Styles
-  inputContainer: {
-    width: '100%',
-    marginBottom: 16,
-  },
-  inputWrapper: {
-    borderWidth: 1.5,
-    borderColor: '#e0e0e0',
-    borderRadius: 12,
-    backgroundColor: '#ffffff',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 1,
-  },
-  inputWrapperFocused: {
-    borderColor: '#FF6B35',
-    borderWidth: 2,
-    shadowColor: '#FF6B35',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  inputWrapperFilled: {
-    borderColor: '#4CAF50',
-    backgroundColor: '#f8fff8',
-  },
-  input: {
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    fontSize: 16,
-    color: '#333',
-    fontWeight: '400',
-  },
-  inputFocused: {
-    color: '#000',
-  },
-  multilineInput: {
-    minHeight: 100,
-    maxHeight: 120,
-    textAlignVertical: 'top',
-    paddingTop: 14,
-  },
-  label: {
-    marginBottom: 8,
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#333',
-    letterSpacing: 0.3,
-  },
-  requiredLabel: {
-    color: '#2c3e50',
-  },
-  asterisk: {
-    color: '#e74c3c',
-    fontWeight: 'bold',
-  },
-  fieldNote: {
-    fontSize: 11,
-    color: '#666',
-    fontStyle: 'italic',
-    marginTop: 4,
-    lineHeight: 14,
-  },
-  
-  // Declaration with checkbox styles
-  declarationContainer: {
-    backgroundColor: '#f8f9fa',
-    padding: 16,
-    borderRadius: 10,
-    marginVertical: 20,
-    borderLeftWidth: 4,
-    borderLeftColor: '#FF6B35',
-  },
-  checkboxContainer: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    width: '100%',
-  },
-  checkbox: {
-    width: 25,
-    height: 25,
-    borderWidth: 2,
-    borderColor: '#ddd',
-    borderRadius: 6,
-    marginRight: 12,
-    marginTop: 2,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#fff',
-    flexShrink: 0,
-  },
-  checkboxChecked: {
-    backgroundColor: '#FF6B35',
-    borderColor: '#FF6B35',
-  },
-  checkmark: {
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: 'bold',
-  },
-  declarationTextContainer: {
-    flex: 1,
-    paddingRight: 4,
-  },
-  declarationText: {
-    fontSize: 13,
-    color: '#444',
-    textAlign: 'justify',
-    lineHeight: 20,
-    fontStyle: 'italic',
-  },
-  
-  buttonContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    width: '100%',
-    marginTop: 25,
-    gap: 15,
-  },
-  cancelButton: {
-    backgroundColor: '#95a5a6',
-    padding: 16,
-    borderRadius: 12,
-    flex: 1,
-    alignItems: 'center',
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 3,
-  },
-  submitButton: {
-    backgroundColor: '#FF6B35',
-    padding: 16,
-    borderRadius: 12,
-    flex: 1,
-    alignItems: 'center',
-    elevation: 2,
-    shadowColor: '#FF6B35',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 3,
-  },
-  buttonText: { 
-    color: '#fff', 
-    fontWeight: '600',
-    fontSize: 16,
-    letterSpacing: 0.5,
-  },
-  previewContainer: {
-    backgroundColor: '#f9f9f9',
-    padding: 16,
-    borderRadius: 10,
-    width: '100%',
-    marginTop: 15,
-  },
-  previewHeader: {
-    fontWeight: '600',
-    color: '#333',
-    marginBottom: 12,
-    fontSize: 16,
-  },
-  previewRow: {
-    flexDirection: 'row',
-    marginBottom: 8,
-    flexWrap: 'wrap',
-  },
-  previewLabel: {
-    fontWeight: '600',
-    color: '#333',
-    minWidth: '40%',
-    fontSize: 14,
-  },
-  previewValue: {
-    color: '#555',
-    flex: 1,
-    fontSize: 14,
-  },
-  accepted: {
-    color: '#27ae60',
-    fontWeight: '600',
-  },
-  notAccepted: {
-    color: '#e74c3c',
-    fontWeight: '600',
-  },
-});
+
 
 export default SamvadScreen;

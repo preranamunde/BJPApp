@@ -148,7 +148,7 @@ class ApiService {
     }
   }
 
-  // Authenticated request with token refresh capability
+  // ENHANCED: Authenticated request with better session handling
   static async authenticatedRequest(endpoint, options = {}) {
     try {
       // First attempt with current token
@@ -163,10 +163,23 @@ class ApiService {
           console.log('✅ Token refreshed, retrying request');
           result = await this.makeRequest(endpoint, options, true);
         } else {
-          console.log('❌ Token refresh failed');
+          console.log('❌ Token refresh failed - triggering session expiry');
+          
+          // IMPORTANT: Import AuthService here to avoid circular dependency
+          // We'll call the session expiry trigger
+          try {
+            const AuthService = require('../utils/AuthService').default;
+            if (AuthService && AuthService.triggerSessionExpiry) {
+              await AuthService.triggerSessionExpiry();
+            }
+          } catch (importError) {
+            console.warn('⚠️ Could not trigger session expiry from ApiService:', importError.message);
+          }
+          
           return {
             success: false,
             error: 'Authentication failed',
+            status: 401,
             message: 'Your session has expired. Please login again.',
           };
         }
@@ -183,7 +196,7 @@ class ApiService {
     }
   }
 
-  // Refresh token method
+  // ENHANCED: Refresh token method with better error handling
   static async refreshToken() {
     try {
       const refreshToken = await AsyncStorage.getItem('refresh_token');
@@ -210,12 +223,41 @@ class ApiService {
         await AsyncStorage.setItem('refresh_token', newRefreshToken);
 
         console.log('✅ Tokens refreshed successfully');
-        return { success: true, tokens: { accessToken: newAccessToken, refreshToken: newRefreshToken } };
+        return { 
+          success: true, 
+          tokens: { 
+            accessToken: newAccessToken, 
+            refreshToken: newRefreshToken 
+          } 
+        };
       } else {
-        throw new Error('Invalid response from refresh token endpoint');
+        console.error('❌ Invalid response from refresh token endpoint:', result);
+        
+        // IMPORTANT: Trigger session expiry when refresh fails
+        try {
+          const AuthService = require('../utils/AuthService').default;
+          if (AuthService && AuthService.triggerSessionExpiry) {
+            await AuthService.triggerSessionExpiry();
+          }
+        } catch (importError) {
+          console.warn('⚠️ Could not trigger session expiry from refreshToken:', importError.message);
+        }
+        
+        throw new Error(result.message || 'Invalid response from refresh token endpoint');
       }
     } catch (error) {
       console.error('❌ Token refresh error:', error);
+      
+      // IMPORTANT: Always trigger session expiry when refresh token fails
+      try {
+        const AuthService = require('../utils/AuthService').default;
+        if (AuthService && AuthService.triggerSessionExpiry) {
+          await AuthService.triggerSessionExpiry();
+        }
+      } catch (importError) {
+        console.warn('⚠️ Could not trigger session expiry from refreshToken catch:', importError.message);
+      }
+      
       return { success: false, error: error.message };
     }
   }

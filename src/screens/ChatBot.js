@@ -10,19 +10,26 @@ import {
   KeyboardAvoidingView,
   Platform,
   Keyboard,
+  Alert,
+  PermissionsAndroid,
 } from 'react-native';
 import IonIcon from 'react-native-vector-icons/Ionicons';
 import { Linking } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
+import speechToTextService from '../components/SpeechToText';
+
+// Message ID counter to ensure unique keys
+let messageIdCounter = 0;
 
 const ChatBot = ({ navigation }) => {
   const [messages, setMessages] = useState([
     {
-      id: '1',
+      id: `bot_${Date.now()}_${++messageIdCounter}`,
       text: "Namaste! I'm your LokSahayak.\nHow can I help you?",
       sender: 'bot',
     },
     {
-      id: '2',
+      id: `bot_${Date.now()}_${++messageIdCounter}`,
       text: 'Choose one of the following options:',
       sender: 'bot',
       replies: [
@@ -41,18 +48,121 @@ const ChatBot = ({ navigation }) => {
 
   const [input, setInput] = useState('');
   const [voiceEnabled, setVoiceEnabled] = useState(false);
+  const [isListening, setIsListening] = useState(false);
   const flatListRef = useRef();
+  const isMountedRef = useRef(true);
+  const isNavigatingRef = useRef(false);
 
-  // Function to reset messages
+  // Handle speech results only if component is mounted and not navigating
+  const handleSpeechResults = (spokenText) => {
+    console.log('Speech result:', spokenText);
+    
+    if (!isMountedRef.current || isNavigatingRef.current) {
+      console.log('Component unmounted or navigating, ignoring speech result');
+      return;
+    }
+
+    setInput(spokenText);
+    setIsListening(false);
+    
+    // Small delay to ensure UI updates before processing
+    setTimeout(() => {
+      if (isMountedRef.current && !isNavigatingRef.current) {
+        handleUserInput(spokenText);
+      }
+    }, 100);
+  };
+
+  // Initialize speech service with focus effect
+  useFocusEffect(
+    React.useCallback(() => {
+      isMountedRef.current = true;
+      isNavigatingRef.current = false;
+
+      const initializeSpeech = async () => {
+        // Check permissions for Android
+        if (Platform.OS === 'android') {
+          const granted = await PermissionsAndroid.request(
+            PermissionsAndroid.PERMISSIONS.RECORD_AUDIO,
+            {
+              title: 'Microphone Permission',
+              message: 'This app needs access to your microphone to use voice commands.',
+              buttonNeutral: 'Ask Me Later',
+              buttonNegative: 'Cancel',
+              buttonPositive: 'OK',
+            }
+          );
+          
+          if (granted !== PermissionsAndroid.RESULTS.GRANTED) {
+            Alert.alert('Permission Denied', 'Microphone permission is required for voice commands.');
+            return;
+          }
+        }
+
+        // Set up speech service callbacks - NO ERROR CALLBACK
+        speechToTextService.setOnSpeechResults(handleSpeechResults);
+
+        speechToTextService.setOnSpeechStart(() => {
+          console.log('Speech started');
+          if (isMountedRef.current) {
+            setIsListening(true);
+          }
+        });
+
+        speechToTextService.setOnSpeechEnd(() => {
+          console.log('Speech ended');
+          if (isMountedRef.current) {
+            setIsListening(false);
+          }
+        });
+      };
+
+      initializeSpeech();
+
+      // Cleanup when screen loses focus
+      return () => {
+        console.log('ChatBot losing focus, stopping speech and cleaning up');
+        isMountedRef.current = false;
+        
+        // Stop any ongoing speech recognition
+        if (speechToTextService.getIsListening()) {
+          speechToTextService.stopListening();
+        }
+        
+        // Clear callbacks to prevent processing results after navigation
+        speechToTextService.setOnSpeechResults(null);
+        speechToTextService.setOnSpeechStart(null);
+        speechToTextService.setOnSpeechEnd(null);
+        
+        setIsListening(false);
+      };
+    }, [])
+  );
+
+  // Component unmount cleanup
+  useEffect(() => {
+    return () => {
+      console.log('ChatBot component unmounting');
+      isMountedRef.current = false;
+      
+      // Stop speech recognition and cleanup
+      if (speechToTextService.getIsListening()) {
+        speechToTextService.stopListening();
+      }
+    };
+  }, []);
+
+  // Function to reset messages with unique keys
   const resetMessages = () => {
+    messageIdCounter = 0; // Reset counter
     setMessages([
       {
-        id: '1',
+        id: `bot_${Date.now()}_${++messageIdCounter}`,
         text: "Namaste! I'm your LokSahayak.\nHow can I help you?",
         sender: 'bot',
       },
       {
-        id: '2',
+        id: `bot_${Date.now()}_${++messageIdCounter}`,
         text: 'Choose one of the following options:',
         sender: 'bot',
         replies: [
@@ -78,6 +188,29 @@ const ChatBot = ({ navigation }) => {
   // Function to toggle voice
   const toggleVoice = () => {
     setVoiceEnabled(!voiceEnabled);
+  };
+
+  // Function to handle voice input
+  const handleVoiceInput = async () => {
+    if (!isMountedRef.current || isNavigatingRef.current) {
+      return;
+    }
+
+    if (isListening) {
+      // Stop listening
+      const stopped = await speechToTextService.stopListening();
+      if (stopped && isMountedRef.current) {
+        setIsListening(false);
+      }
+    } else {
+      // Start listening - no error handling
+      const started = await speechToTextService.startListening();
+      if (started && isMountedRef.current) {
+        addBotMessage("I'm listening... Speak now!");
+        setIsListening(true);
+      }
+      // No else clause - no error messages
+    }
   };
 
   // Set up header options when component mounts
@@ -123,8 +256,10 @@ const ChatBot = ({ navigation }) => {
   }, [navigation, voiceEnabled]);
 
   const addBotMessage = (text, replies = null) => {
+    if (!isMountedRef.current) return;
+
     const newMessage = {
-      id: Date.now().toString(),
+      id: `bot_${Date.now()}_${++messageIdCounter}`, // Guaranteed unique key
       text,
       sender: 'bot',
       ...(replies ? { replies } : {}),
@@ -134,12 +269,24 @@ const ChatBot = ({ navigation }) => {
     
     // Scroll after delay
     setTimeout(() => {
-      flatListRef.current?.scrollToEnd({ animated: true });
+      if (isMountedRef.current) {
+        flatListRef.current?.scrollToEnd({ animated: true });
+      }
     }, 100);
   };
 
   const handleUserInput = (text) => {
+    if (!isMountedRef.current) return;
+
     const lowerText = text.trim().toLowerCase();
+
+    // Add user message first with unique key
+    const newMessage = {
+      id: `user_${Date.now()}_${++messageIdCounter}`, // Guaranteed unique key
+      text: text,
+      sender: 'user',
+    };
+    setMessages((prev) => [...prev, newMessage]);
 
     let navigateTo = null;
     let response = '';
@@ -199,21 +346,25 @@ const ChatBot = ({ navigation }) => {
     addBotMessage(response);
 
     if (navigateTo) {
-      setTimeout(() => navigation.navigate(navigateTo, params), 800);
+      // Set navigation flag to prevent further speech processing
+      isNavigatingRef.current = true;
+      
+      // Stop any ongoing speech recognition before navigating
+      if (speechToTextService.getIsListening()) {
+        speechToTextService.stopListening();
+      }
+      
+      setTimeout(() => {
+        if (isMountedRef.current) {
+          navigation.navigate(navigateTo, params);
+        }
+      }, 800);
     }
   };
 
   const handleSend = () => {
-    if (!input.trim()) return;
+    if (!input.trim() || !isMountedRef.current) return;
 
-    const newMessage = {
-      id: Date.now().toString(),
-      text: input,
-      sender: 'user',
-    };
-
-    setMessages((prev) => [...prev, newMessage]);
-    
     // Process user input for navigation
     handleUserInput(input);
     
@@ -221,25 +372,23 @@ const ChatBot = ({ navigation }) => {
     Keyboard.dismiss();
 
     setTimeout(() => {
-      flatListRef.current?.scrollToEnd({ animated: true });
+      if (isMountedRef.current) {
+        flatListRef.current?.scrollToEnd({ animated: true });
+      }
     }, 100);
   };
 
   const handleQuickReply = (text) => {
-    const newMessage = {
-      id: Date.now().toString(),
-      text,
-      sender: 'user',
-    };
-
-    setMessages((prev) => [...prev, newMessage]);
+    if (!isMountedRef.current) return;
 
     // Process user input for navigation
     handleUserInput(text);
 
     // Scroll after delay
     setTimeout(() => {
-      flatListRef.current?.scrollToEnd({ animated: true });
+      if (isMountedRef.current) {
+        flatListRef.current?.scrollToEnd({ animated: true });
+      }
     }, 100);
   };
 
@@ -255,7 +404,7 @@ const ChatBot = ({ navigation }) => {
         <View style={styles.repliesContainer}>
           {item.replies.map((reply, index) => (
             <TouchableOpacity
-              key={index}
+              key={`reply_${item.id}_${index}`} // Unique key for reply buttons
               style={styles.replyButton}
               onPress={() => handleQuickReply(reply)}
             >
@@ -283,15 +432,31 @@ const ChatBot = ({ navigation }) => {
             renderItem={renderMessage}
             contentContainerStyle={styles.chatContainer}
             style={styles.messagesList}
-            onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
+            onContentSizeChange={() => {
+              if (isMountedRef.current) {
+                flatListRef.current?.scrollToEnd({ animated: true });
+              }
+            }}
             showsVerticalScrollIndicator={false}
           />
 
           {/* Input Container */}
           <View style={styles.inputContainer}>
-            <IonIcon name="mic" size={24} color="#e16e2b" style={styles.micIcon} />
+            <TouchableOpacity 
+              onPress={handleVoiceInput}
+              style={[
+                styles.micButton,
+                isListening && styles.micButtonActive
+              ]}
+            >
+              <IonIcon 
+                name={isListening ? "mic" : "mic-outline"} 
+                size={24} 
+                color={isListening ? "#fff" : "#e16e2b"} 
+              />
+            </TouchableOpacity>
             <TextInput
-              placeholder="Type your message"
+              placeholder="Type your message or use voice"
               placeholderTextColor="#999"
               value={input}
               onChangeText={setInput}
@@ -371,8 +536,17 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 4,
   },
-  micIcon: {
-    marginHorizontal: 6
+  micButton: {
+    marginHorizontal: 6,
+    padding: 8,
+    borderRadius: 20,
+    borderWidth: 2,
+    borderColor: '#e16e2b',
+    backgroundColor: '#fff',
+  },
+  micButtonActive: {
+    backgroundColor: '#e16e2b',
+    borderColor: '#e16e2b',
   },
   input: {
     flex: 1,

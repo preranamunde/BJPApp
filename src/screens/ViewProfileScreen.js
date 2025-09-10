@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -13,6 +13,8 @@ import Icon from 'react-native-vector-icons/MaterialIcons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import EncryptedStorage from 'react-native-encrypted-storage';
 import AuthService from '../utils/AuthService';
+import ConfigService from '../services/ConfigService';
+import ApiService from '../services/ApiService';
 
 // Enhanced Logging Service
 class LoggingService {
@@ -26,11 +28,11 @@ class LoggingService {
   static currentLogLevel = __DEV__ ? this.LOG_LEVELS.DEBUG : this.LOG_LEVELS.INFO;
 
   static colors = {
-    DEBUG: '\x1b[36m', // Cyan
-    INFO: '\x1b[32m',  // Green
-    WARN: '\x1b[33m',  // Yellow
-    ERROR: '\x1b[31m', // Red
-    RESET: '\x1b[0m',  // Reset
+    DEBUG: '\x1b[36m',
+    INFO: '\x1b[32m',
+    WARN: '\x1b[33m',
+    ERROR: '\x1b[31m',
+    RESET: '\x1b[0m',
   };
 
   static log(level, category, message, data = null) {
@@ -54,24 +56,17 @@ class LoggingService {
   static warn(category, message, data) { this.log('WARN', category, message, data); }
   static error(category, message, data) { this.log('ERROR', category, message, data); }
 
-  // Profile-specific methods
   static profileDebug(message, data) { this.debug('PROFILE', message, data); }
   static profileInfo(message, data) { this.info('PROFILE', message, data); }
   static profileWarn(message, data) { this.warn('PROFILE', message, data); }
   static profileError(message, data) { this.error('PROFILE', message, data); }
 }
 
-// Image Service for handling image URLs
+// Updated Image Service
 class ImageService {
-  static baseUrls = [
-    'http://192.168.1.104:5000/',
-    'http://localhost:5000/',
-    'http://10.0.2.2:5000/', // Android emulator
-  ];
-  
   static async testImageUrl(imageUrl) {
     try {
-      LoggingService.profileDebug('🧪 Testing image URL accessibility', { url: imageUrl });
+      LoggingService.profileDebug('Testing image URL accessibility', { url: imageUrl });
       
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 5000);
@@ -100,71 +95,74 @@ class ImageService {
   }
   
   static async getWorkingImageUrl(relativePath) {
-    if (!relativePath) return null;
+    if (!relativePath || relativePath === 'placeholder') {
+      LoggingService.profileWarn('No valid image path provided', { relativePath });
+      return null;
+    }
     
-    // Clean the path - handle both Windows and Unix separators
-    const cleanPath = relativePath
-      .replace(/\\/g, '/')
-      .replace(/^\/+|\/+$/g, '');
-    
-    LoggingService.profileDebug('Cleaning image path', {
-      original: relativePath,
-      cleaned: cleanPath
-    });
-    
-    for (const baseUrl of this.baseUrls) {
-      const fullUrl = `${baseUrl}${cleanPath}`;
-      const isAccessible = await this.testImageUrl(fullUrl);
+    try {
+      const imageUrl = await ConfigService.getProfileImageUrl(relativePath);
       
-      if (isAccessible) {
-        LoggingService.profileInfo('✅ Found working image URL', { url: fullUrl });
-        return fullUrl;
+      LoggingService.profileDebug('Testing ConfigService image URL', {
+        relativePath,
+        constructedUrl: imageUrl
+      });
+      
+      if (imageUrl) {
+        const isAccessible = await this.testImageUrl(imageUrl);
+        
+        if (isAccessible) {
+          LoggingService.profileInfo('ConfigService image URL is working', { url: imageUrl });
+          return imageUrl;
+        } else {
+          LoggingService.profileWarn('ConfigService image URL not accessible', { url: imageUrl });
+        }
       }
+      
+      const baseUrl = await ConfigService.getBaseUrl();
+      const cleanPath = relativePath.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '');
+      
+      const fallbackPaths = [
+        `${baseUrl}/uploads/profile_images/${cleanPath}`,
+        `${baseUrl}/uploads/${cleanPath}`,
+        `${baseUrl}/${cleanPath}`,
+      ];
+      
+      for (const fallbackUrl of fallbackPaths) {
+        const isAccessible = await this.testImageUrl(fallbackUrl);
+        if (isAccessible) {
+          LoggingService.profileInfo('Found working fallback image URL', { url: fallbackUrl });
+          return fallbackUrl;
+        }
+      }
+      
+      LoggingService.profileWarn('No accessible image URL found', { relativePath, testedUrls: fallbackPaths });
+      return null;
+      
+    } catch (error) {
+      LoggingService.profileError('Error in getWorkingImageUrl', {
+        error: error.message,
+        relativePath
+      });
+      return null;
     }
-    
-    LoggingService.profileWarn('❌ No accessible image URL found for path', { relativePath });
-    return null;
-  }
-  
-  static constructImageUrl(imagePath, baseUrl = 'http://192.168.1.104:5000/') {
-    if (!imagePath) return null;
-    
-    // If already a full URL, return as is
-    if (imagePath.startsWith('http://') || imagePath.startsWith('https://')) {
-      return imagePath;
-    }
-    
-    // Clean path and construct URL
-    const cleanPath = imagePath.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '');
-    const finalUrl = `${baseUrl}${cleanPath}`;
-    
-    LoggingService.profileDebug('Constructing image URL', {
-      originalPath: imagePath,
-      baseUrl: baseUrl,
-      finalUrl: finalUrl
-    });
-    
-    return finalUrl;
   }
 }
 
-// Enhanced Admin Service for handling admin verification
+// Enhanced Admin Service
 class AdminService {
   static async checkIfUserIsAdmin(userEmail) {
     try {
-      LoggingService.profileInfo('🔍 Checking if user is admin', { userEmail });
+      LoggingService.profileInfo('Checking if user is admin', { userEmail });
       
-      // Get AppOwnerInfo from encrypted storage
       const appOwnerInfoStr = await EncryptedStorage.getItem('AppOwnerInfo');
       
       if (!appOwnerInfoStr) {
-        LoggingService.profileWarn('⚠️ No AppOwnerInfo found in storage');
+        LoggingService.profileWarn('No AppOwnerInfo found in storage');
         return { isAdmin: false, ownerEmail: null };
       }
       
       const appOwnerInfo = JSON.parse(appOwnerInfoStr);
-      
-      // Extract owner email from different possible fields
       const ownerEmail = appOwnerInfo.emailid || appOwnerInfo.email || appOwnerInfo.email_id;
       
       LoggingService.profileDebug('Owner email comparison', {
@@ -174,14 +172,13 @@ class AdminService {
       });
       
       if (!ownerEmail) {
-        LoggingService.profileWarn('⚠️ No owner email found in AppOwnerInfo');
+        LoggingService.profileWarn('No owner email found in AppOwnerInfo');
         return { isAdmin: false, ownerEmail: null };
       }
       
-      // Compare emails (case-insensitive)
       const isAdmin = userEmail?.toLowerCase() === ownerEmail?.toLowerCase();
       
-      LoggingService.profileInfo(`${isAdmin ? '👑' : '👤'} Admin check result`, {
+      LoggingService.profileInfo(`Admin check result: ${isAdmin ? 'Admin' : 'User'}`, {
         isAdmin,
         userEmail,
         ownerEmail,
@@ -195,7 +192,7 @@ class AdminService {
       };
       
     } catch (error) {
-      LoggingService.profileError('❌ Error checking admin status', {
+      LoggingService.profileError('Error checking admin status', {
         error: error.message,
         userEmail
       });
@@ -206,8 +203,6 @@ class AdminService {
   static async getUserRoleInfo(userEmail) {
     try {
       const adminCheck = await this.checkIfUserIsAdmin(userEmail);
-      
-      // Also check stored user role for additional verification
       const storedRole = await EncryptedStorage.getItem('USER_ROLE') || 'user';
       
       LoggingService.profileDebug('Complete user role info', {
@@ -225,7 +220,7 @@ class AdminService {
       };
       
     } catch (error) {
-      LoggingService.profileError('❌ Error getting user role info', error);
+      LoggingService.profileError('Error getting user role info', error);
       return {
         isAdmin: false,
         userRole: 'user',
@@ -236,118 +231,67 @@ class AdminService {
   }
 }
 
-// Enhanced Profile API Class
+// Updated Profile API Class
 class ProfileAPI {
-  static baseURL = 'http://192.168.1.104:5000/api/profile';
-  static imageBaseURL = 'http://192.168.1.104:5000/';
-
   static async getProfile() {
-    LoggingService.profileInfo('🚀 Starting profile fetch from API');
+    LoggingService.profileInfo('Starting profile fetch from API using ConfigService');
     
     try {
-      // Get proper auth headers
-      const headers = await AuthService.getAuthHeaders();
+      const endpoints = await ConfigService.getApiEndpoints();
+      const profileEndpoint = endpoints.user.profile;
       
-      LoggingService.profileDebug('Auth headers prepared', { 
-        hasAuthorization: !!headers.Authorization,
-        authorizationPreview: headers.Authorization ? `${headers.Authorization.slice(0, 20)}...` : 'Missing',
-        contentType: headers['Content-Type']
+      LoggingService.profileDebug('Profile endpoint from ConfigService', { 
+        endpoint: profileEndpoint 
       });
 
-      // Add timeout and better error handling
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 seconds timeout
-
-      const response = await fetch(this.baseURL, {
-        method: 'GET',
-        headers: headers,
-        signal: controller.signal,
-      });
-
-      clearTimeout(timeoutId);
-
-      LoggingService.profileDebug('API Response received', {
-        status: response.status,
-        statusText: response.statusText,
-        ok: response.ok,
-        headers: Object.fromEntries(response.headers.entries())
-      });
-
-      // Handle different response types
-      let data;
-      const contentType = response.headers.get('content-type');
+      const result = await ApiService.authGet(profileEndpoint);
       
-      if (contentType && contentType.includes('application/json')) {
-        data = await response.json();
-      } else {
-        const text = await response.text();
-        LoggingService.profileError('Non-JSON response received', {
-          contentType,
-          responseText: text.substring(0, 500) // First 500 chars
-        });
-        
-        // Try to parse as JSON anyway
-        try {
-          data = JSON.parse(text);
-        } catch (parseError) {
-          return {
-            success: false,
-            message: 'Server returned invalid response format',
-          };
-        }
-      }
-      
-      LoggingService.profileDebug('Raw API response data', {
-        status: response.status,
-        ok: response.ok,
-        dataKeys: data ? Object.keys(data) : [],
-        dataStructure: data,
-        hasFormattedData: !!data?.formattedData,
-        hasUser: !!data?.user,
-        hasData: !!data?.data
+      LoggingService.profileDebug('Raw API response from ApiService', {
+        success: result.success,
+        status: result.status,
+        hasData: !!result.data,
+        dataStructure: result.data ? Object.keys(result.data) : []
       });
 
-      if (response.ok) {
-        // Handle the correct response structure from your API
+      if (result.success && result.data) {
         let userData;
         
-        // Check different possible response structures
-        if (data.formattedData) {
-          userData = data.formattedData;
-          LoggingService.profileDebug('✅ Using formattedData structure', { userData });
-        } else if (data.user) {
-          userData = data.user;
-          LoggingService.profileDebug('✅ Using user structure', { userData });
-        } else if (data.data) {
-          userData = data.data;
-          LoggingService.profileDebug('✅ Using data structure', { userData });
-        } else if (data._id || data.email) {
-          // Direct user object (fallback)
-          userData = data;
-          LoggingService.profileDebug('✅ Using direct data structure', { userData });
+        if (result.data.formattedData) {
+          userData = result.data.formattedData;
+          LoggingService.profileDebug('Using formattedData structure', { userData });
+        } else if (result.data.user) {
+          userData = result.data.user;
+          LoggingService.profileDebug('Using user structure', { userData });
+        } else if (result.data.data) {
+          userData = result.data.data;
+          LoggingService.profileDebug('Using data structure', { userData });
+        } else if (result.data._id || result.data.email) {
+          userData = result.data;
+          LoggingService.profileDebug('Using direct data structure', { userData });
         } else {
-          LoggingService.profileError('❌ No user data found in response', { data });
+          LoggingService.profileError('No user data found in response', { data: result.data });
           return {
             success: false,
             message: 'No profile data found in server response',
           };
         }
 
-        // Better image URL handling
         if (userData.profile_image) {
           const workingImageUrl = await ImageService.getWorkingImageUrl(userData.profile_image);
           
           if (workingImageUrl) {
             userData.profile_image = workingImageUrl;
-            LoggingService.profileInfo('✅ Profile image URL resolved', { url: workingImageUrl });
+            LoggingService.profileInfo('Profile image URL resolved using ConfigService', { 
+              url: workingImageUrl 
+            });
           } else {
-            // Fallback: try direct construction
-            userData.profile_image = ImageService.constructImageUrl(userData.profile_image, this.imageBaseURL);
-            LoggingService.profileWarn('⚠️ Using fallback image URL', { url: userData.profile_image });
+            LoggingService.profileWarn('Could not resolve profile image URL', { 
+              originalPath: userData.profile_image 
+            });
           }
         }
 
-        LoggingService.profileInfo('✅ Profile fetch successful', {
+        LoggingService.profileInfo('Profile fetch successful', {
           userId: userData._id,
           userName: userData.name,
           userEmail: userData.email,
@@ -361,47 +305,20 @@ class ProfileAPI {
           data: userData,
         };
       } else {
-        // Better error handling for different status codes
-        let errorMessage = 'Failed to fetch profile';
-        
-        if (response.status === 401) {
-          errorMessage = 'Authentication failed. Please login again.';
-        } else if (response.status === 403) {
-          errorMessage = 'Access denied. You do not have permission to view this profile.';
-        } else if (response.status === 404) {
-          errorMessage = 'Profile not found.';
-        } else if (response.status >= 500) {
-          errorMessage = 'Server error. Please try again later.';
-        } else {
-          errorMessage = data.message || data.error || errorMessage;
-        }
-        
-        LoggingService.profileError('❌ Profile fetch failed - Server error', {
-          status: response.status,
-          statusText: response.statusText,
-          message: errorMessage,
-          fullResponse: data
+        LoggingService.profileError('Profile fetch failed', {
+          success: result.success,
+          message: result.message,
+          status: result.status
         });
         
         return {
           success: false,
-          message: errorMessage,
-          status: response.status
+          message: result.message || 'Failed to fetch profile',
+          status: result.status
         };
       }
     } catch (error) {
-      // Better error categorization
-      let errorMessage = 'Network error. Please check your connection and try again.';
-      
-      if (error.name === 'AbortError') {
-        errorMessage = 'Request timeout. Please try again.';
-      } else if (error.message.includes('Network request failed')) {
-        errorMessage = 'Network error. Please check your internet connection.';
-      } else if (error.message.includes('Authentication failed')) {
-        errorMessage = 'Authentication failed. Please login again.';
-      }
-      
-      LoggingService.profileError('💥 Profile API network error', {
+      LoggingService.profileError('Profile API error', {
         errorMessage: error.message,
         errorName: error.name,
         errorStack: error.stack
@@ -409,12 +326,13 @@ class ProfileAPI {
       
       return {
         success: false,
-        message: errorMessage,
+        message: 'Network error. Please check your connection and try again.',
       };
     }
   }
 }
 
+// UPDATED ViewProfileScreen component with FIXED session management
 const ViewProfileScreen = ({ navigation, route }) => {
   const [userProfile, setUserProfile] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -425,105 +343,137 @@ const ViewProfileScreen = ({ navigation, route }) => {
   const [imageError, setImageError] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
   const [adminInfo, setAdminInfo] = useState(null);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
+  
+  // Add ref to track navigation state
+  const navigationRef = useRef(null);
+  const sessionExpiryHandled = useRef(false);
 
   useEffect(() => {
-    LoggingService.profileInfo('🔄 ViewProfileScreen mounted, starting session check');
+    LoggingService.profileInfo('ViewProfileScreen mounted, starting session check');
+    
+    // Reset session expiry handled flag
+    sessionExpiryHandled.current = false;
+    
+    // Set up session expiry callback
+    AuthService.setSessionExpiryCallback(handleSessionExpiry);
+    
     checkSessionAndLoadProfile();
     
-    // Check if user just registered
     if (route?.params?.justRegistered) {
-      LoggingService.profileInfo('👤 User just registered flag detected');
+      LoggingService.profileInfo('User just registered flag detected');
       setJustRegistered(true);
     }
+
+    // Cleanup function
+    return () => {
+      AuthService.setSessionExpiryCallback(null);
+      sessionExpiryHandled.current = false;
+    };
   }, []);
 
-  const checkAdminStatus = async (userEmail) => {
-    try {
-      LoggingService.profileInfo('🔍 === CHECKING ADMIN STATUS ===');
-      
-      if (!userEmail) {
-        LoggingService.profileWarn('⚠️ No user email provided for admin check');
-        return { isAdmin: false };
-      }
-
-      const roleInfo = await AdminService.getUserRoleInfo(userEmail);
-      
-      LoggingService.profileInfo(`${roleInfo.isAdmin ? '👑' : '👤'} Admin status determined`, {
-        userEmail: userEmail,
-        isAdmin: roleInfo.isAdmin,
-        userRole: roleInfo.userRole,
-        ownerEmail: roleInfo.ownerEmail
-      });
-
-      setIsAdmin(roleInfo.isAdmin);
-      setAdminInfo(roleInfo);
-      
-      return roleInfo;
-      
-    } catch (error) {
-      LoggingService.profileError('❌ Error checking admin status', error);
-      setIsAdmin(false);
-      setAdminInfo(null);
-      return { isAdmin: false };
+  // FIXED session expiry handler
+  const handleSessionExpiry = async () => {
+    // Prevent multiple executions
+    if (sessionExpiryHandled.current) {
+      LoggingService.profileWarn('Session expiry already being handled, skipping');
+      return;
     }
-  };
-
-  const enhanceUserProfileWithAdminStatus = async (userData) => {
+    
+    sessionExpiryHandled.current = true;
+    
     try {
-      LoggingService.profileInfo('🔧 === ENHANCING PROFILE WITH ADMIN STATUS ===');
+      LoggingService.profileWarn('Session expired - starting automatic logout process');
+      setIsLoggingOut(true);
       
-      const adminStatus = await checkAdminStatus(userData.email);
+      // Perform logout
+      await AuthService.logout();
       
-      // Clone userData to avoid mutations
-      const enhancedProfile = { ...userData };
+      // Update UI state immediately
+      setIsUserLoggedIn(false);
+      setUserProfile(null);
+      setSessionExpired(true);
+      setIsLoggingOut(false);
       
-      // If user is admin, automatically set email as verified
-      if (adminStatus.isAdmin) {
-        LoggingService.profileInfo('👑 User is admin - auto-verifying email', {
-          email: userData.email,
-          originalEmailVerified: userData.emailVerified
-        });
-        
-        enhancedProfile.emailVerified = true;
-        enhancedProfile.isAdmin = true;
-        enhancedProfile.userRole = 'admin';
-        
-        // Add admin-specific info if available
-        if (adminStatus.appOwnerInfo) {
-          enhancedProfile.adminInfo = {
-            ownerEmail: adminStatus.ownerEmail,
-            mobile: adminStatus.appOwnerInfo.mobile_no || adminStatus.appOwnerInfo.mobile_number,
-            // Add other owner info if needed
-          };
+      // Show alert with proper navigation handling
+      Alert.alert(
+        'Session Expired',
+        'Your session has expired for security reasons. Please login again to continue.',
+        [
+          {
+            text: 'OK',
+            onPress: () => {
+              // Navigate immediately without delay
+              try {
+                LoggingService.profileInfo('Navigating to Login after session expiry confirmation');
+                
+                // Reset navigation stack to Login screen
+                navigation.reset({
+                  index: 0,
+                  routes: [{ name: 'Login' }],
+                });
+                
+                // Reset the flag after successful navigation
+                setTimeout(() => {
+                  sessionExpiryHandled.current = false;
+                }, 1000);
+                
+              } catch (navError) {
+                LoggingService.profileError('Navigation error after session expiry', navError);
+                
+                // Fallback navigation
+                try {
+                  navigation.navigate('Login');
+                } catch (fallbackError) {
+                  LoggingService.profileError('Fallback navigation also failed', fallbackError);
+                }
+                
+                // Reset flag even if navigation fails
+                setTimeout(() => {
+                  sessionExpiryHandled.current = false;
+                }, 1000);
+              }
+            },
+          },
+        ],
+        { 
+          cancelable: false,
+          onDismiss: () => {
+            // This ensures dialog is properly dismissed
+            LoggingService.profileDebug('Session expiry dialog dismissed');
+          }
         }
-        
-        LoggingService.profileInfo('✅ Profile enhanced for admin user', {
-          emailVerified: enhancedProfile.emailVerified,
-          isAdmin: enhancedProfile.isAdmin,
-          userRole: enhancedProfile.userRole
-        });
-      } else {
-        LoggingService.profileInfo('👤 Regular user - keeping original email verification status', {
-          email: userData.email,
-          emailVerified: userData.emailVerified
-        });
-        
-        enhancedProfile.isAdmin = false;
-        enhancedProfile.userRole = 'user';
-      }
-      
-      return enhancedProfile;
+      );
       
     } catch (error) {
-      LoggingService.profileError('❌ Error enhancing profile with admin status', error);
-      // Return original data if enhancement fails
-      return userData;
+      LoggingService.profileError('Error during automatic logout', error);
+      
+      // Even if logout fails, still reset states and navigate
+      setIsLoggingOut(false);
+      setIsUserLoggedIn(false);
+      setUserProfile(null);
+      
+      // Force navigation to login
+      try {
+        navigation.reset({
+          index: 0,
+          routes: [{ name: 'Login' }],
+        });
+      } catch (navError) {
+        LoggingService.profileError('Emergency navigation failed', navError);
+        navigation.navigate('Login');
+      }
+      
+      // Reset flag
+      setTimeout(() => {
+        sessionExpiryHandled.current = false;
+      }, 1000);
     }
   };
 
   const checkSessionAndLoadProfile = async () => {
     try {
-      LoggingService.profileInfo('🔍 === STARTING SESSION CHECK ===');
+      LoggingService.profileInfo('=== STARTING SESSION CHECK ===');
       setLoading(true);
       setSessionExpired(false);
       
@@ -538,7 +488,7 @@ const ViewProfileScreen = ({ navigation, route }) => {
       });
       
       if (!isLoggedIn) {
-        LoggingService.profileWarn('❌ User not logged in - showing login required screen');
+        LoggingService.profileWarn('User not logged in - showing login required screen');
         setIsUserLoggedIn(false);
         setLoading(false);
         return;
@@ -555,58 +505,131 @@ const ViewProfileScreen = ({ navigation, route }) => {
       });
 
       if (!accessToken && !refreshToken) {
-        LoggingService.profileWarn('⚠️ No tokens found');
+        LoggingService.profileWarn('No tokens found');
         
-        // Special case: If user just registered, they might not have JWT tokens yet
         if (justRegistered) {
-          LoggingService.profileInfo('🆕 User just registered, attempting local profile load');
+          LoggingService.profileInfo('User just registered, attempting local profile load');
           setIsUserLoggedIn(true);
           await loadLocalUserProfile();
           return;
         }
         
-        LoggingService.profileWarn('🔐 User needs to login');
+        LoggingService.profileWarn('User needs to login');
         setIsUserLoggedIn(false);
         setLoading(false);
         return;
       }
 
-      // Validate JWT token
-      LoggingService.profileDebug('🔑 Starting token validation');
+      // Validate JWT token - The AuthService will handle automatic logout if needed
+      LoggingService.profileDebug('Starting token validation');
       const tokenValidation = await AuthService.validateAndRefreshToken();
       LoggingService.profileDebug('Token validation result', tokenValidation);
       
       if (!tokenValidation.valid) {
-        if (tokenValidation.expired) {
-          LoggingService.profileWarn('⏰ Tokens expired - showing session expired screen');
-          setSessionExpired(true);
-          setIsUserLoggedIn(false);
-        } else {
-          LoggingService.profileWarn('❌ Token validation failed - user not logged in');
-          setIsUserLoggedIn(false);
-        }
+        // Session expiry is already handled by AuthService callback
+        // Just update local state
+        LoggingService.profileWarn('Token validation failed - session handled by AuthService');
         setLoading(false);
         return;
       }
 
       // Token is valid, fetch profile from API
-      LoggingService.profileInfo('✅ Tokens valid - fetching profile from API');
+      LoggingService.profileInfo('Tokens valid - fetching profile from API');
       setIsUserLoggedIn(true);
       await fetchProfileFromAPI();
       
     } catch (error) {
-      LoggingService.profileError('💥 Error during session check', {
+      LoggingService.profileError('Error during session check', {
         errorMessage: error.message,
         errorName: error.name
       });
-      setIsUserLoggedIn(false);
+      
+      // Error handling is now managed by AuthService
       setLoading(false);
+    }
+  };
+
+  const checkAdminStatus = async (userEmail) => {
+    try {
+      LoggingService.profileInfo('=== CHECKING ADMIN STATUS ===');
+      
+      if (!userEmail) {
+        LoggingService.profileWarn('No user email provided for admin check');
+        return { isAdmin: false };
+      }
+
+      const roleInfo = await AdminService.getUserRoleInfo(userEmail);
+      
+      LoggingService.profileInfo(`Admin status determined: ${roleInfo.isAdmin ? 'Admin' : 'User'}`, {
+        userEmail: userEmail,
+        isAdmin: roleInfo.isAdmin,
+        userRole: roleInfo.userRole,
+        ownerEmail: roleInfo.ownerEmail
+      });
+
+      setIsAdmin(roleInfo.isAdmin);
+      setAdminInfo(roleInfo);
+      
+      return roleInfo;
+      
+    } catch (error) {
+      LoggingService.profileError('Error checking admin status', error);
+      setIsAdmin(false);
+      setAdminInfo(null);
+      return { isAdmin: false };
+    }
+  };
+
+  const enhanceUserProfileWithAdminStatus = async (userData) => {
+    try {
+      LoggingService.profileInfo('=== ENHANCING PROFILE WITH ADMIN STATUS ===');
+      
+      const adminStatus = await checkAdminStatus(userData.email);
+      const enhancedProfile = { ...userData };
+      
+      if (adminStatus.isAdmin) {
+        LoggingService.profileInfo('User is admin - auto-verifying email', {
+          email: userData.email,
+          originalEmailVerified: userData.emailVerified
+        });
+        
+        enhancedProfile.emailVerified = true;
+        enhancedProfile.isAdmin = true;
+        enhancedProfile.userRole = 'admin';
+        
+        if (adminStatus.appOwnerInfo) {
+          enhancedProfile.adminInfo = {
+            ownerEmail: adminStatus.ownerEmail,
+            mobile: adminStatus.appOwnerInfo.mobile_no || adminStatus.appOwnerInfo.mobile_number,
+          };
+        }
+        
+        LoggingService.profileInfo('Profile enhanced for admin user', {
+          emailVerified: enhancedProfile.emailVerified,
+          isAdmin: enhancedProfile.isAdmin,
+          userRole: enhancedProfile.userRole
+        });
+      } else {
+        LoggingService.profileInfo('Regular user - keeping original email verification status', {
+          email: userData.email,
+          emailVerified: userData.emailVerified
+        });
+        
+        enhancedProfile.isAdmin = false;
+        enhancedProfile.userRole = 'user';
+      }
+      
+      return enhancedProfile;
+      
+    } catch (error) {
+      LoggingService.profileError('Error enhancing profile with admin status', error);
+      return userData;
     }
   };
 
   const fetchProfileFromAPI = async () => {
     try {
-      LoggingService.profileInfo('📡 === FETCHING PROFILE FROM API ===');
+      LoggingService.profileInfo('=== FETCHING PROFILE FROM API USING CONFIGSERVICE ===');
       
       const result = await ProfileAPI.getProfile();
       
@@ -617,17 +640,16 @@ const ViewProfileScreen = ({ navigation, route }) => {
       });
       
       if (result.success && result.data) {
-        LoggingService.profileInfo('✅ Profile data received, enhancing with admin status', {
+        LoggingService.profileInfo('Profile data received, enhancing with admin status', {
           profileId: result.data._id,
           profileName: result.data.name,
           profileEmail: result.data.email,
           profileImage: result.data.profile_image
         });
         
-        // Enhance profile with admin status and email verification logic
         const enhancedProfile = await enhanceUserProfileWithAdminStatus(result.data);
         
-        LoggingService.profileInfo('✅ Setting enhanced user profile', {
+        LoggingService.profileInfo('Setting enhanced user profile', {
           profileId: enhancedProfile._id,
           profileName: enhancedProfile.name,
           isAdmin: enhancedProfile.isAdmin,
@@ -637,41 +659,51 @@ const ViewProfileScreen = ({ navigation, route }) => {
         
         setUserProfile(enhancedProfile);
         
-        // Also save enhanced profile to local storage for backup
         try {
           await AsyncStorage.setItem('userData', JSON.stringify(enhancedProfile));
-          LoggingService.profileDebug('💾 Enhanced profile saved to local storage successfully');
+          LoggingService.profileDebug('Enhanced profile saved to local storage successfully');
         } catch (saveError) {
           LoggingService.profileError('Failed to save profile to local storage', saveError);
         }
         
       } else {
-        LoggingService.profileError('❌ API returned failure or no data', {
+        // Check if the error is due to session expiry (401 status)
+        if (result.status === 401) {
+          LoggingService.profileWarn('API returned 401 - session will be handled by AuthService');
+          return; // AuthService callback will handle this
+        }
+        
+        LoggingService.profileError('API returned failure or no data', {
           success: result.success,
           message: result.message
         });
         
         Alert.alert('Error', result.message || 'Failed to load profile');
-        // Fallback to local storage if API fails
         await loadLocalUserProfile();
       }
     } catch (error) {
-      LoggingService.profileError('💥 Error during API fetch', {
+      LoggingService.profileError('Error during API fetch', {
         errorMessage: error.message,
         errorName: error.name
       });
+      
+      // Check if error indicates session expiry
+      if (error.message && error.message.includes('401')) {
+        // AuthService callback will handle this
+        return;
+      }
+      
       Alert.alert('Error', 'Failed to load profile from server. Loading local data.');
-      // Fallback to local storage
       await loadLocalUserProfile();
     } finally {
-      LoggingService.profileInfo('🏁 Profile fetch process completed');
+      LoggingService.profileInfo('Profile fetch process completed');
       setLoading(false);
     }
   };
 
   const loadLocalUserProfile = async () => {
     try {
-      LoggingService.profileInfo('📂 Loading profile from local storage');
+      LoggingService.profileInfo('Loading profile from local storage');
       
       const userData = await AsyncStorage.getItem('userData');
       LoggingService.profileDebug('Local storage data check', {
@@ -682,15 +714,16 @@ const ViewProfileScreen = ({ navigation, route }) => {
       if (userData) {
         const parsedData = JSON.parse(userData);
         
-        // Fix image URL if it exists in local data
         if (parsedData.profile_image) {
-          parsedData.profile_image = ImageService.constructImageUrl(parsedData.profile_image);
+          const workingImageUrl = await ImageService.getWorkingImageUrl(parsedData.profile_image);
+          if (workingImageUrl) {
+            parsedData.profile_image = workingImageUrl;
+          }
         }
         
-        // Enhance local profile with admin status too
         const enhancedLocalProfile = await enhanceUserProfileWithAdminStatus(parsedData);
         
-        LoggingService.profileInfo('✅ Local profile loaded and enhanced successfully', {
+        LoggingService.profileInfo('Local profile loaded and enhanced successfully', {
           profileId: enhancedLocalProfile._id || enhancedLocalProfile.id,
           profileName: enhancedLocalProfile.name,
           isAdmin: enhancedLocalProfile.isAdmin,
@@ -699,33 +732,18 @@ const ViewProfileScreen = ({ navigation, route }) => {
         });
         setUserProfile(enhancedLocalProfile);
       } else {
-        LoggingService.profileWarn('⚠️ No local profile data found');
+        LoggingService.profileWarn('No local profile data found');
       }
     } catch (error) {
-      LoggingService.profileError('💥 Error loading local profile', {
+      LoggingService.profileError('Error loading local profile', {
         errorMessage: error.message,
         errorName: error.name
       });
     }
   };
 
-  const handleSessionExpiredLogin = () => {
-    Alert.alert(
-      'Session Expired',
-      'Your session has expired. Please login again to continue.',
-      [
-        {
-          text: 'OK',
-          onPress: () => {
-            AuthService.logout(navigation);
-          },
-        },
-      ]
-    );
-  };
-
   const handleEditProfile = () => {
-    LoggingService.profileInfo('✏️ Edit profile requested');
+    LoggingService.profileInfo('Edit profile requested');
     Alert.alert(
       'Edit Profile',
       'Do you want to edit your profile?',
@@ -745,12 +763,12 @@ const ViewProfileScreen = ({ navigation, route }) => {
   };
 
   const handleLoginRedirect = () => {
-    LoggingService.profileInfo('🔐 Redirecting to login screen');
+    LoggingService.profileInfo('Redirecting to login screen');
     navigation.navigate('Login');
   };
 
   const handleRefresh = () => {
-    LoggingService.profileInfo('🔄 Manual refresh triggered');
+    LoggingService.profileInfo('Manual refresh triggered');
     setImageError(false);
     checkSessionAndLoadProfile();
   };
@@ -758,7 +776,7 @@ const ViewProfileScreen = ({ navigation, route }) => {
   const renderProfileImage = () => {
     const imageUri = userProfile?.profile_image || userProfile?.photo;
     
-    LoggingService.profileDebug('🖼️ Rendering profile image', {
+    LoggingService.profileDebug('Rendering profile image', {
       imageUri: imageUri,
       imageError: imageError,
       imageLoading: imageLoading
@@ -771,18 +789,18 @@ const ViewProfileScreen = ({ navigation, route }) => {
             source={{ uri: imageUri }}
             style={styles.profileImage}
             onLoadStart={() => {
-              LoggingService.profileDebug('📡 Profile image loading started');
+              LoggingService.profileDebug('Profile image loading started');
               setImageLoading(true);
             }}
             onLoad={() => {
-              LoggingService.profileInfo('✅ Profile image loaded successfully', {
+              LoggingService.profileInfo('Profile image loaded successfully', {
                 uri: imageUri
               });
               setImageLoading(false);
               setImageError(false);
             }}
             onError={(error) => {
-              LoggingService.profileError('❌ Profile image load failed', {
+              LoggingService.profileError('Profile image load failed', {
                 uri: imageUri,
                 error: error.nativeEvent?.error || 'Unknown error'
               });
@@ -790,7 +808,7 @@ const ViewProfileScreen = ({ navigation, route }) => {
               setImageError(true);
             }}
             onLoadEnd={() => {
-              LoggingService.profileDebug('🏁 Profile image load ended');
+              LoggingService.profileDebug('Profile image load ended');
               setImageLoading(false);
             }}
           />
@@ -803,7 +821,7 @@ const ViewProfileScreen = ({ navigation, route }) => {
       );
     }
     
-    LoggingService.profileWarn('📷 Showing profile image placeholder', {
+    LoggingService.profileWarn('Showing profile image placeholder', {
       reason: !imageUri ? 'No image URI' : imageError ? 'Image load error' : 'Placeholder URI'
     });
     
@@ -830,42 +848,14 @@ const ViewProfileScreen = ({ navigation, route }) => {
     );
   };
 
-  // Loading State
-  if (loading) {
+  // Loading State (including logout process)
+  if (loading || isLoggingOut) {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color="#e16e2b" />
-        <Text style={styles.loadingText}>Loading Profile...</Text>
-      </View>
-    );
-  }
-
-  // Session Expired State
-  if (sessionExpired) {
-    return (
-      <View style={styles.sessionExpiredContainer}>
-        <View style={styles.sessionExpiredContent}>
-          <Icon name="access-time" size={80} color="#e16e2b" />
-          
-          <Text style={styles.sessionExpiredTitle}>⏰ Session Expired</Text>
-          <Text style={styles.sessionExpiredMessage}>
-            Your session has expired for security reasons. Please login again to continue using the app.
-          </Text>
-          
-          <TouchableOpacity 
-            style={styles.loginButton} 
-            onPress={handleSessionExpiredLogin}
-          >
-            <Text style={styles.loginButtonText}>Login Again</Text>
-          </TouchableOpacity>
-          
-          <TouchableOpacity 
-            style={styles.retryButton}
-            onPress={handleRefresh}
-          >
-            <Text style={styles.retryButtonText}>Retry</Text>
-          </TouchableOpacity>
-        </View>
+        <Text style={styles.loadingText}>
+          {isLoggingOut ? 'Logging out...' : 'Loading Profile...'}
+        </Text>
       </View>
     );
   }
@@ -877,7 +867,8 @@ const ViewProfileScreen = ({ navigation, route }) => {
         <View style={styles.loginRequiredContent}>
           <Icon name="lock-outline" size={80} color="#e16e2b" />
           
-          <Text style={styles.loginRequiredTitle}>🔒 Login Required</Text>
+          <Text style={styles.loginRequiredTitle}>Login Required</Text>
+
           <Text style={styles.loginRequiredMessage}>
             {justRegistered 
               ? "Great! Your account has been created successfully."
@@ -913,6 +904,7 @@ const ViewProfileScreen = ({ navigation, route }) => {
       <View style={styles.errorContainer}>
         <Icon name="error" size={50} color="#e16e2b" />
         <Text style={styles.errorText}>Profile not found</Text>
+
         <TouchableOpacity 
           style={styles.retryButton}
           onPress={handleRefresh}
@@ -999,51 +991,6 @@ const ViewProfileScreen = ({ navigation, route }) => {
 
       {/* PROFILE INFORMATION SECTION */}
       <View style={styles.infoContainer}>
-        
-        {/* Account Status Section (New) */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Account Status</Text>
-          
-          {/* User Role */}
-          <View style={styles.infoRow}>
-            <View style={styles.infoIconContainer}>
-              <Icon 
-                name={userProfile.isAdmin ? "admin-panel-settings" : "person"} 
-                size={20} 
-                color="#e16e2b" 
-              />
-            </View>
-            <View style={styles.infoContent}>
-              <Text style={styles.infoLabel}>Account Type</Text>
-              <Text style={[styles.infoValue, userProfile.isAdmin && styles.adminText]}>
-                {userProfile.isAdmin ? 'Administrator (Owner)' : 'Standard User'}
-              </Text>
-            </View>
-          </View>
-
-          {/* Email Verification Status */}
-          <View style={styles.infoRow}>
-            <View style={styles.infoIconContainer}>
-              <Icon 
-                name={userProfile.emailVerified ? "verified" : "error"} 
-                size={20} 
-                color={userProfile.emailVerified ? "#4CAF50" : "#FF5722"} 
-              />
-            </View>
-            <View style={styles.infoContent}>
-              <Text style={styles.infoLabel}>Email Verification</Text>
-              <Text style={[styles.infoValue, 
-                userProfile.emailVerified ? styles.verifiedText : styles.unverifiedText
-              ]}>
-                {userProfile.emailVerified 
-                  ? (userProfile.isAdmin ? 'Verified (Auto - Admin)' : 'Verified') 
-                  : 'Not Verified'
-                }
-              </Text>
-            </View>
-          </View>
-        </View>
-
         {/* Personal Information */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Personal Information</Text>
@@ -1060,26 +1007,12 @@ const ViewProfileScreen = ({ navigation, route }) => {
           {renderInfoRow('City', userProfile.city, 'location-city')}
           {renderInfoRow('State', userProfile.state, 'public')}
         </View>
-        
-        {/* Account Information */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Account Information</Text>
-          {userProfile.createdAt && renderInfoRow(
-            'Member Since', 
-            new Date(userProfile.createdAt).toLocaleDateString('en-IN', {
-              year: 'numeric',
-              month: 'long',
-              day: 'numeric'
-            }), 
-            'calendar-today'
-          )}
-        </View>
 
         {/* Admin Information Section (Only for Admins) */}
         {userProfile.isAdmin && adminInfo && (
           <View style={styles.section}>
             <Text style={[styles.sectionTitle, styles.adminSectionTitle]}>
-              👑 Administrator Information
+              Administrator Information
             </Text>
             {renderInfoRow('Owner Email', adminInfo.ownerEmail, 'admin-panel-settings')}
             {adminInfo.appOwnerInfo?.mobile_no && renderInfoRow(
@@ -1097,44 +1030,6 @@ const ViewProfileScreen = ({ navigation, route }) => {
             </View>
           </View>
         )}
-
-        {/* Debug Information (Development Only) */}
-        {__DEV__ && userProfile && (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>🔧 Debug Info</Text>
-            {renderInfoRow('User ID', userProfile._id, 'fingerprint')}
-            {renderInfoRow('Image Path', userProfile.profile_image, 'image')}
-            {renderInfoRow('Is Admin', userProfile.isAdmin ? 'Yes' : 'No', 'admin-panel-settings')}
-            {renderInfoRow('Email Verified', userProfile.emailVerified ? 'Yes' : 'No', 'verified')}
-            {renderInfoRow('User Role', userProfile.userRole, 'person')}
-            
-            <TouchableOpacity 
-              style={styles.debugButton}
-              onPress={() => {
-                console.log('🔍 Full User Profile:', JSON.stringify(userProfile, null, 2));
-                console.log('🔍 Admin Info:', JSON.stringify(adminInfo, null, 2));
-                Alert.alert('Debug', 'Check console for full profile data');
-              }}
-            >
-              <Text style={styles.debugButtonText}>Log Full Profile Data</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity 
-              style={styles.debugButton}
-              onPress={async () => {
-                console.log('🧪 Testing Admin Check for current user...');
-                const adminCheck = await AdminService.checkIfUserIsAdmin(userProfile.email);
-                console.log('🧪 Admin Check Result:', adminCheck);
-                Alert.alert(
-                  'Admin Check Result',
-                  `Is Admin: ${adminCheck.isAdmin}\nOwner Email: ${adminCheck.ownerEmail}`
-                );
-              }}
-            >
-              <Text style={styles.debugButtonText}>Test Admin Check</Text>
-            </TouchableOpacity>
-          </View>
-        )}
       </View>
     </ScrollView>
   );
@@ -1148,10 +1043,6 @@ const styles = StyleSheet.create({
   errorText: { fontSize: 18, color: '#666', marginTop: 15, marginBottom: 20, textAlign: 'center' },
   retryButton: { backgroundColor: '#666', paddingHorizontal: 20, paddingVertical: 10, borderRadius: 8, marginTop: 10 },
   retryButtonText: { color: '#fff', fontSize: 16, fontWeight: '600' },
-  sessionExpiredContainer: { flex: 1, backgroundColor: '#f5f5f5', justifyContent: 'center', alignItems: 'center', padding: 20 },
-  sessionExpiredContent: { backgroundColor: '#fff', borderRadius: 20, padding: 30, alignItems: 'center', elevation: 5, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.25, shadowRadius: 3.84, width: '100%', maxWidth: 350 },
-  sessionExpiredTitle: { fontSize: 24, fontWeight: 'bold', color: '#333', marginTop: 20, marginBottom: 15, textAlign: 'center' },
-  sessionExpiredMessage: { fontSize: 16, color: '#666', textAlign: 'center', lineHeight: 24, marginBottom: 25 },
   loginRequiredContainer: { flex: 1, backgroundColor: '#f5f5f5', justifyContent: 'center', alignItems: 'center', padding: 20 },
   loginRequiredContent: { backgroundColor: '#fff', borderRadius: 20, padding: 30, alignItems: 'center', elevation: 5, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.25, shadowRadius: 3.84, width: '100%', maxWidth: 350 },
   loginRequiredTitle: { fontSize: 24, fontWeight: 'bold', color: '#333', marginTop: 20, marginBottom: 15, textAlign: 'center' },
@@ -1165,7 +1056,7 @@ const styles = StyleSheet.create({
   editIconButton: { position: 'absolute', top: 20, right: 20, width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(255,255,255,0.2)', justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.3)', zIndex: 1 },
   refreshIconButton: { position: 'absolute', top: 20, left: 20, width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(255,255,255,0.2)', justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.3)', zIndex: 1 },
   
-  // New Admin Badge Style
+  // Admin Badge Style
   adminBadge: {
     position: 'absolute',
     top: 20,
@@ -1198,7 +1089,7 @@ const styles = StyleSheet.create({
   verifiedBadgeHeader: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(76, 175, 80, 0.2)', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12, borderWidth: 1, borderColor: 'rgba(76, 175, 80, 0.5)' },
   verifiedTextHeader: { color: '#4CAF50', fontSize: 10, fontWeight: '600', marginLeft: 3 },
   
-  // New Admin Auto Verify Style
+  // Admin Auto Verify Style
   adminAutoVerifyText: { color: '#FFD700', fontSize: 10, fontWeight: '600', marginLeft: 3 },
 
   // Role Container Style

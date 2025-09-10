@@ -3,19 +3,22 @@ import { NavigationContainer } from '@react-navigation/native';
 import { Alert } from 'react-native';
 import SplashScreen from 'react-native-splash-screen';
 import EncryptedStorage from 'react-native-encrypted-storage';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
 import DeviceService from './src/services/DeviceService';
-import ConfigService from './src/services/ConfigService'; // Added ConfigService import
+import ConfigService from './src/services/ConfigService';
 import StaticBannerSplash from './src/components/StaticBannerSplash';
 import LogoSplash from './src/components/LogoSplash';
 import YouTubeSplash from './src/components/YouTubeSplash';
 import AppNavigator from './src/navigation/AppNavigator';
 import { generateAppKey } from './src/utils/generateAppKey';
 
-// Global variables for user state
+// Global variables for user state - Centralized Management
 let loggedin_email = '';
 let owner_emailid = '';
+let owner_mobile = '';
 let userRole = 'user';
+let isAppBootstrapped = false;
 
 const App = () => {
   const [stage, setStage] = useState('static');
@@ -64,74 +67,214 @@ const App = () => {
     }
   };
 
-  // Enhanced function to set up global variables and admin role
-  const setupUserRoleAndGlobals = async (appOwnerInfo) => {
-    try {
-      console.log('🔧 Setting up user role and global variables...');
+  // Enhanced function to set up global variables and determine initial admin role
+// Add this temporary debugging code to your setupGlobalVariablesFromBootstrap function
+// Place it right after the line: console.log('🔧 Setting up global variables from bootstrap...');
+
+const setupGlobalVariablesFromBootstrap = async (appOwnerInfo) => {
+  try {
+    console.log('🔧 Setting up global variables from bootstrap...');
+    
+    // ===== DETAILED DEBUG LOGGING =====
+    console.log('🐛 === DEBUGGING APPOWNERINFO ===');
+    console.log('📋 AppOwnerInfo type:', typeof appOwnerInfo);
+    console.log('📋 AppOwnerInfo is null/undefined:', appOwnerInfo == null);
+    console.log('📋 AppOwnerInfo raw object:', appOwnerInfo);
+    console.log('📋 AppOwnerInfo JSON:', JSON.stringify(appOwnerInfo, null, 2));
+    
+    if (appOwnerInfo && typeof appOwnerInfo === 'object') {
+      console.log('📋 Available keys in AppOwnerInfo:', Object.keys(appOwnerInfo));
+      console.log('📋 Number of keys:', Object.keys(appOwnerInfo).length);
       
-      // Extract owner email from AppOwnerInfo
-      owner_emailid = appOwnerInfo.emailid || appOwnerInfo.email || appOwnerInfo.email_id || '';
-      
-      // Store owner email globally
-      await EncryptedStorage.setItem('OWNER_EMAIL', owner_emailid);
-      
-      // Store mobile number globally
-      const mobileNo = appOwnerInfo.mobile_no || appOwnerInfo.mobile_number || appOwnerInfo.phone || '';
-      if (mobileNo) {
-        await EncryptedStorage.setItem('MOBILE_NUMBER', mobileNo);
-      }
-      
-      // Check if user is already logged in
-      const storedLoginEmail = await EncryptedStorage.getItem('LOGGED_IN_EMAIL');
-      const accessToken = await EncryptedStorage.getItem('ACCESS_TOKEN');
-      
-      if (storedLoginEmail && accessToken) {
-        // User is logged in
-        loggedin_email = storedLoginEmail;
+      // Log each field with its type and value
+      console.log('📋 === ALL APPOWNERINFO FIELDS ===');
+      Object.keys(appOwnerInfo).forEach(key => {
+        const value = appOwnerInfo[key];
+        const type = typeof value;
+        console.log(`   ${key}: (${type}) = ${value}`);
         
-        // Check if logged in user is the owner (admin)
-        if (owner_emailid && loggedin_email === owner_emailid) {
-          userRole = 'admin';
-          console.log('👑 User identified as ADMIN (owner logged in)');
-        } else {
-          userRole = 'user';
-          console.log('👤 User identified as regular USER (logged in but not owner)');
+        // Special check for email-like fields
+        if (typeof value === 'string' && (
+          key.toLowerCase().includes('email') || 
+          key.toLowerCase().includes('mail') ||
+          value.includes('@')
+        )) {
+          console.log(`   🎯 POTENTIAL EMAIL FIELD FOUND: ${key} = ${value}`);
         }
-      } else {
-        // User is not logged in, default role
-        loggedin_email = '';
-        userRole = 'user';
-        console.log('🔓 No user logged in, default role: USER');
-      }
-      
-      // Store user role globally
-      await EncryptedStorage.setItem('USER_ROLE', userRole);
-      
-      // Store global variables for access throughout app
-      global.loggedin_email = loggedin_email;
-      global.owner_emailid = owner_emailid;
-      global.userRole = userRole;
-      
-      console.log('✅ Global variables set:');
-      console.log('   📧 Owner Email:', owner_emailid);
-      console.log('   👤 Logged In Email:', loggedin_email);
-      console.log('   🔑 User Role:', userRole);
-      
-      return {
-        loggedin_email,
-        owner_emailid,
-        userRole
-      };
-      
-    } catch (error) {
-      console.error('❌ Error setting up user role and globals:', error);
-      // Set defaults on error
-      userRole = 'user';
-      loggedin_email = '';
-      await EncryptedStorage.setItem('USER_ROLE', 'user');
-      return { loggedin_email: '', owner_emailid: '', userRole: 'user' };
+      });
+    } else {
+      console.log('❌ AppOwnerInfo is not a valid object!');
     }
-  };
+    
+    // ===== CONTINUE WITH ENHANCED EMAIL EXTRACTION =====
+    
+    // All possible email field names (expanded list)
+    const possibleEmailFields = [
+      'emailid', 'email', 'email_id', 'owner_email', 'ownerEmail',
+      'Email', 'EmailId', 'EMAILID', 'EMAIL', 'userEmail', 'adminEmail',
+      'mail', 'Mail', 'MAIL', 'e_mail', 'eMail', 'emailAddress',
+      'email_address', 'EmailAddress', 'owner_mail', 'ownerMail',
+      'user_email', 'admin_email', 'login_email', 'loginEmail',
+      'contact_email', 'contactEmail', 'primary_email', 'primaryEmail'
+    ];
+    
+    let extractedOwnerEmail = '';
+    let foundEmailField = '';
+    
+    // Try to find email in any field
+    for (const field of possibleEmailFields) {
+      if (appOwnerInfo[field] && typeof appOwnerInfo[field] === 'string') {
+        const emailValue = appOwnerInfo[field].trim();
+        if (emailValue.includes('@')) { // Basic email validation
+          extractedOwnerEmail = emailValue.toLowerCase();
+          foundEmailField = field;
+          console.log(`✅ FOUND OWNER EMAIL in field '${field}': ${extractedOwnerEmail}`);
+          break;
+        }
+      }
+    }
+    
+    // If still no email found, check all string fields for @ symbol
+    if (!extractedOwnerEmail && appOwnerInfo) {
+      console.log('🔍 Searching ALL string fields for email addresses...');
+      Object.keys(appOwnerInfo).forEach(key => {
+        const value = appOwnerInfo[key];
+        if (typeof value === 'string' && value.includes('@') && value.includes('.')) {
+          console.log(`🎯 FOUND EMAIL-LIKE VALUE in '${key}': ${value}`);
+          if (!extractedOwnerEmail) {
+            extractedOwnerEmail = value.trim().toLowerCase();
+            foundEmailField = key;
+          }
+        }
+      });
+    }
+    
+    if (!extractedOwnerEmail) {
+      console.error('❌ === NO OWNER EMAIL FOUND ===');
+      console.error('❌ Searched fields:', possibleEmailFields);
+      console.error('❌ Available fields:', appOwnerInfo ? Object.keys(appOwnerInfo) : 'AppOwnerInfo is null');
+      console.error('❌ This will prevent admin role detection!');
+      
+      // Show alert to help with debugging
+      Alert.alert(
+        '⚠️ Debug: No Owner Email Found',
+        `AppOwnerInfo received but no email field found.\n\n` +
+        `Available fields: ${appOwnerInfo ? Object.keys(appOwnerInfo).join(', ') : 'None'}\n\n` +
+        `Please check your API response structure.`,
+        [{ text: 'Continue' }]
+      );
+    } else {
+      console.log(`🎉 EMAIL EXTRACTION SUCCESSFUL!`);
+      console.log(`   Field used: ${foundEmailField}`);
+      console.log(`   Email found: ${extractedOwnerEmail}`);
+    }
+    
+    owner_emailid = extractedOwnerEmail;
+    
+    // Continue with rest of your existing mobile extraction code...
+    const possibleMobileFields = [
+  'mobile_no', 'mobile_number', 'phone', 'mobileNo', 'regdMobileNo',
+  'Mobile', 'MobileNo', 'MOBILE', 'phoneNumber', 'contactNumber',
+  'mobile', 'cell', 'cellular', 'contact', 'phone_number',
+  'client_mobile'   // ✅ add this
+];
+
+    let extractedOwnerMobile = '';
+    for (const field of possibleMobileFields) {
+      if (appOwnerInfo[field] && (typeof appOwnerInfo[field] === 'string' || typeof appOwnerInfo[field] === 'number')) {
+        extractedOwnerMobile = String(appOwnerInfo[field]).trim();
+        console.log(`✅ Found owner mobile in field '${field}': ${extractedOwnerMobile}`);
+        break;
+      }
+    }
+    
+    owner_mobile = extractedOwnerMobile;
+    
+    // Store owner information in encrypted storage
+    if (owner_emailid) {
+      await EncryptedStorage.setItem('OWNER_EMAIL', owner_emailid);
+      console.log('💾 Owner email stored:', owner_emailid);
+    } else {
+      console.error('❌ Cannot store owner email - not found in AppOwnerInfo');
+      // Store empty string to avoid undefined errors
+      await EncryptedStorage.setItem('OWNER_EMAIL', '');
+    }
+    
+    if (owner_mobile) {
+      await EncryptedStorage.setItem('OWNER_MOBILE', owner_mobile);
+      console.log('💾 Owner mobile stored:', owner_mobile);
+    }
+
+    // Store complete AppOwnerInfo for future reference
+    await EncryptedStorage.setItem('AppOwnerInfo', JSON.stringify(appOwnerInfo));
+    console.log('💾 Complete AppOwnerInfo stored');
+    
+    // Continue with the rest of your existing login check code...
+    const storedLoginEmail = await AsyncStorage.getItem('userEmail') || 
+                            await EncryptedStorage.getItem('LOGGED_IN_EMAIL');
+    const accessToken = await AsyncStorage.getItem('userAccessToken') ||
+                       await EncryptedStorage.getItem('ACCESS_TOKEN');
+    
+    console.log('🔍 Checking existing login status...');
+    console.log('   📧 Stored login email:', storedLoginEmail);
+    console.log('   🔑 Access token exists:', !!accessToken);
+    
+    if (storedLoginEmail && accessToken) {
+      const processedLoginEmail = storedLoginEmail.trim().toLowerCase();
+      loggedin_email = processedLoginEmail;
+      
+      console.log('🔍 ADMIN CHECK:');
+      console.log('   Login Email:', processedLoginEmail);
+      console.log('   Owner Email:', owner_emailid);
+      console.log('   Emails match:', processedLoginEmail === owner_emailid);
+      
+      if (owner_emailid && processedLoginEmail === owner_emailid) {
+        userRole = 'admin';
+        console.log('👑 ADMIN IDENTIFIED - Owner is logged in');
+      } else {
+        userRole = 'user';
+        console.log('👤 Regular USER identified');
+        if (!owner_emailid) {
+          console.log('   Reason: No owner email found in AppOwnerInfo');
+        }
+      }
+    } else {
+      loggedin_email = '';
+      userRole = 'user';
+      console.log('🔓 No user logged in - Default role: USER');
+    }
+    
+    // Store current user role
+    await EncryptedStorage.setItem('USER_ROLE', userRole);
+    
+    // Set global variables
+    global.loggedin_email = loggedin_email;
+    global.owner_emailid = owner_emailid;
+    global.owner_mobile = owner_mobile;
+    global.userRole = userRole;
+    global.isAppBootstrapped = true;
+    isAppBootstrapped = true;
+    
+    console.log('✅ Global variables initialized:');
+    console.log('   📧 Owner Email:', owner_emailid);
+    console.log('   📱 Owner Mobile:', owner_mobile);
+    console.log('   👤 Logged In Email:', loggedin_email);
+    console.log('   🔑 User Role:', userRole);
+    console.log('   🚀 App Bootstrapped:', isAppBootstrapped);
+    
+    return {
+      loggedin_email,
+      owner_emailid,
+      owner_mobile,
+      userRole,
+      isBootstrapped: true
+    };
+    
+  } catch (error) {
+    console.error('❌ Error setting up global variables:', error);
+    // ... rest of your error handling code
+  }
+};
 
   // Improved bootstrap API call function with ConfigService integration
   const callBootstrapAPI = async (appKey) => {
@@ -160,7 +303,6 @@ const App = () => {
       
       if (!isServerReachable) {
         console.warn('⚠️ Server connectivity test failed, but attempting bootstrap anyway...');
-        // Continue with the bootstrap call as the health endpoint might not exist
       } else {
         console.log('✅ Server is reachable');
       }
@@ -175,7 +317,7 @@ const App = () => {
         timeout: 10000 // 10 seconds timeout
       });
 
-      console.log('✅ API Request Successful!');
+      console.log('✅ Bootstrap API Request Successful!');
       console.log('📊 Response Status:', response.status);
       console.log('📊 Response Status Text:', response.statusText);
       console.log('📋 Response Headers:', JSON.stringify(response.headers, null, 2));
@@ -187,39 +329,32 @@ const App = () => {
       if (validation.isValid) {
         console.log('✅ Response validation passed:', validation.message);
         
-        // Store AppOwnerInfo securely
-        try {
-          await EncryptedStorage.setItem('AppOwnerInfo', JSON.stringify(response.data.AppOwnerInfo));
-          console.log('✅ AppOwnerInfo stored securely in EncryptedStorage');
-          
-          // Setup user role and global variables based on AppOwnerInfo
-          const userSetup = await setupUserRoleAndGlobals(response.data.AppOwnerInfo);
-          
-          // Show success alert with admin status
-          Alert.alert(
-            '🎉 Bootstrap Success!',
-            `✅ API called successfully!\n\n` +
-            `Status: ${response.status}\n` +
-            `Base URL: ${baseUrl}\n` +
-            `Device: ${deviceInfo}\n` +
-            `AppOwnerInfo: Received and stored\n` +
-            `Owner Email: ${userSetup.owner_emailid}\n` +
-            `Logged In: ${userSetup.loggedin_email || 'None'}\n` +
-            `Role: ${userSetup.userRole.toUpperCase()}\n` +
-            `Keys: ${Object.keys(response.data.AppOwnerInfo).join(', ')}`,
-            [{ text: 'Continue', onPress: () => setStage('app') }]
-          );
-          
-          return { success: true, data: response.data, userSetup };
-        } catch (storageError) {
-          console.error('❌ Failed to store AppOwnerInfo:', storageError.message);
-          Alert.alert(
-            '⚠️ Storage Warning',
-            `API call successful but storage failed:\n${storageError.message}`,
-            [{ text: 'Continue', onPress: () => setStage('app') }]
-          );
-          return { success: false, error: 'Storage failed', data: response.data };
-        }
+        // Setup global variables and determine user role
+        const globalSetup = await setupGlobalVariablesFromBootstrap(response.data.AppOwnerInfo);
+        
+        // Show success alert with role status
+        const roleMessage = globalSetup.userRole === 'admin' 
+          ? `👑 ADMIN STATUS DETECTED\n(Owner logged in: ${globalSetup.loggedin_email})`
+          : globalSetup.loggedin_email 
+            ? `👤 USER STATUS\n(Logged in: ${globalSetup.loggedin_email})`
+            : `🔓 NO USER LOGGED IN\n(Default: user role)`;
+        
+        Alert.alert(
+          '🎉 Bootstrap Success!',
+          `✅ App initialized successfully!\n\n` +
+          `Status: ${response.status}\n` +
+          `Base URL: ${baseUrl}\n` +
+          `Device: ${deviceInfo}\n\n` +
+          `🏛️ APP OWNER INFO:\n` +
+          `Owner Email: ${globalSetup.owner_emailid}\n` +
+          `Owner Mobile: ${globalSetup.owner_mobile}\n\n` +
+          `👤 CURRENT USER STATUS:\n${roleMessage}\n\n` +
+          `🔧 AppOwnerInfo Keys: ${Object.keys(response.data.AppOwnerInfo).join(', ')}`,
+          [{ text: 'Continue', onPress: () => setStage('app') }]
+        );
+        
+        return { success: true, data: response.data, globalSetup };
+        
       } else {
         console.log('❌ Response validation failed:', validation.message);
         Alert.alert(
@@ -231,7 +366,7 @@ const App = () => {
       }
 
     } catch (error) {
-      console.log('❌ API Request Failed!');
+      console.log('❌ Bootstrap API Request Failed!');
       
       if (error.response) {
         // Server responded with error status
@@ -257,6 +392,7 @@ const App = () => {
         );
         
         return { success: false, error: `Server error: ${error.response.status}`, data: error.response.data };
+        
       } else if (error.request) {
         // Request was made but no response received
         console.error('📡 Network Error - No response received');
@@ -280,6 +416,7 @@ const App = () => {
         );
         
         return { success: false, error: 'Network error - no response', data: null };
+        
       } else {
         // Something else happened
         console.error('❌ Request Setup Error:', error.message);
@@ -376,7 +513,7 @@ const App = () => {
           }
         ],
         'plain-text',
-        '' // Default empty string if ConfigService fails
+        ''
       );
     }
   };
@@ -402,7 +539,7 @@ const App = () => {
           
           if (apiResult.success) {
             console.log('🎉 Bootstrap completed successfully!');
-            console.log('🔧 User setup completed:', apiResult.userSetup);
+            console.log('🔧 Global setup completed:', apiResult.globalSetup);
             setIsBootstrapped(true);
           } else {
             console.log('⚠️ Bootstrap completed with warnings:', apiResult.error);
@@ -410,6 +547,7 @@ const App = () => {
             // App continues even if API fails, but with default user role
             userRole = 'user';
             await EncryptedStorage.setItem('USER_ROLE', 'user');
+            global.userRole = 'user';
           }
 
         } catch (storageError) {
@@ -468,65 +606,176 @@ const App = () => {
   return null;
 };
 
-// Export helper functions for use in other components
-export const updateUserLoginStatus = async (email, accessToken) => {
+// Enhanced helper function to update user login status
+export const updateUserLoginStatus = async (email, accessToken, userData = null) => {
   try {
-    console.log('🔄 Updating user login status...');
+    console.log('🔄 === UPDATING USER LOGIN STATUS ===');
+    console.log('📧 Login Email (raw):', email);
+    console.log('📧 Login Email (processed):', email?.trim().toLowerCase());
+    console.log('🔑 Access Token Length:', accessToken?.length);
     
-    // Store login credentials
-    await EncryptedStorage.setItem('LOGGED_IN_EMAIL', email);
+    // Process email consistently
+    const processedEmail = email.trim().toLowerCase();
+    
+    // Store login credentials in both AsyncStorage and EncryptedStorage
+    await AsyncStorage.setItem('userEmail', processedEmail);
+    await AsyncStorage.setItem('userAccessToken', accessToken);
+    await EncryptedStorage.setItem('LOGGED_IN_EMAIL', processedEmail);
     await EncryptedStorage.setItem('ACCESS_TOKEN', accessToken);
     
-    // Update global variable
-    loggedin_email = email;
-    global.loggedin_email = email;
+    // Store additional user data if provided
+    if (userData) {
+      await AsyncStorage.setItem('userData', JSON.stringify(userData));
+      console.log('💾 User data stored');
+    }
     
-    // Get owner email to check admin status
+    // Update global variable
+    loggedin_email = processedEmail;
+    global.loggedin_email = processedEmail;
+    
+    // Get owner email to determine admin status
     const storedOwnerEmail = await EncryptedStorage.getItem('OWNER_EMAIL');
     
-    // Update user role based on login
-    if (storedOwnerEmail && email === storedOwnerEmail) {
+    console.log('🔍 DETAILED ADMIN CHECK IN LOGIN UPDATE:');
+    console.log('   📧 Login Email (processed):', processedEmail);
+    console.log('   👑 Owner Email (from storage):', storedOwnerEmail);
+    console.log('   🔄 Emails match (===):', processedEmail === storedOwnerEmail);
+    console.log('   👑 Owner email exists:', !!storedOwnerEmail);
+    console.log('   📧 Login email exists:', !!processedEmail);
+    
+    // Determine user role based on email comparison
+    if (storedOwnerEmail && processedEmail === storedOwnerEmail) {
       userRole = 'admin';
-      console.log('👑 User logged in as ADMIN (owner)');
+      console.log('👑 ✅ ADMIN STATUS GRANTED - Owner logged in');
+      console.log('   Matched emails: login=' + processedEmail + ' | owner=' + storedOwnerEmail);
     } else {
       userRole = 'user';
-      console.log('👤 User logged in as regular USER');
+      console.log('👤 ❌ USER STATUS - Regular user logged in');
+      if (!storedOwnerEmail) {
+        console.log('   Reason: No owner email found in storage (app not bootstrapped?)');
+      } else {
+        console.log(`   Reason: Email mismatch - '${processedEmail}' !== '${storedOwnerEmail}'`);
+      }
     }
     
     // Store updated role
     await EncryptedStorage.setItem('USER_ROLE', userRole);
     global.userRole = userRole;
     
-    console.log('✅ Login status updated successfully');
-    console.log('   📧 Logged In Email:', email);
+    console.log('✅ === LOGIN STATUS UPDATE COMPLETE ===');
+    console.log('   📧 Logged In Email:', processedEmail);
     console.log('   🔑 User Role:', userRole);
+    console.log('   👑 Is Admin:', userRole === 'admin');
+    console.log('   👑 Owner Email:', storedOwnerEmail);
     
-    return { success: true, userRole, loggedin_email };
+    return { 
+      success: true, 
+      userRole, 
+      loggedin_email: processedEmail,
+      isAdmin: userRole === 'admin',
+      owner_emailid: storedOwnerEmail
+    };
     
   } catch (error) {
     console.error('❌ Error updating login status:', error);
+    console.error('❌ Stack trace:', error.stack);
     return { success: false, error: error.message };
+  }
+};
+
+// Add a debugging helper function
+export const debugAdminStatus = async () => {
+  try {
+    console.log('🐛 === ADMIN STATUS DEBUG ===');
+    
+    // Get all relevant stored values
+    const storedOwnerEmail = await EncryptedStorage.getItem('OWNER_EMAIL');
+    const storedLoginEmail = await AsyncStorage.getItem('userEmail') || 
+                           await EncryptedStorage.getItem('LOGGED_IN_EMAIL');
+    const storedUserRole = await EncryptedStorage.getItem('USER_ROLE');
+    const storedAppOwnerInfo = await EncryptedStorage.getItem('AppOwnerInfo');
+    
+    console.log('📊 STORED VALUES:');
+    console.log('   Owner Email:', storedOwnerEmail);
+    console.log('   Login Email:', storedLoginEmail);
+    console.log('   User Role:', storedUserRole);
+    console.log('   AppOwnerInfo exists:', !!storedAppOwnerInfo);
+    
+    if (storedAppOwnerInfo) {
+      try {
+        const parsedOwnerInfo = JSON.parse(storedAppOwnerInfo);
+        console.log('   AppOwnerInfo keys:', Object.keys(parsedOwnerInfo));
+        console.log('   AppOwnerInfo values:');
+        Object.keys(parsedOwnerInfo).forEach(key => {
+          console.log(`      ${key}: ${typeof parsedOwnerInfo[key]} = ${parsedOwnerInfo[key]}`);
+        });
+      } catch (e) {
+        console.log('   AppOwnerInfo parse error:', e.message);
+      }
+    }
+    
+    console.log('🌍 GLOBAL VARIABLES:');
+    console.log('   global.owner_emailid:', global.owner_emailid);
+    console.log('   global.loggedin_email:', global.loggedin_email);
+    console.log('   global.userRole:', global.userRole);
+    console.log('   module owner_emailid:', owner_emailid);
+    console.log('   module loggedin_email:', loggedin_email);
+    console.log('   module userRole:', userRole);
+    
+    console.log('🔍 COMPARISON CHECK:');
+    if (storedOwnerEmail && storedLoginEmail) {
+      const ownerProcessed = storedOwnerEmail.trim().toLowerCase();
+      const loginProcessed = storedLoginEmail.trim().toLowerCase();
+      console.log('   Owner (processed):', ownerProcessed);
+      console.log('   Login (processed):', loginProcessed);
+      console.log('   Match (===):', ownerProcessed === loginProcessed);
+      console.log('   Expected role:', ownerProcessed === loginProcessed ? 'admin' : 'user');
+    } else {
+      console.log('   Cannot compare - missing owner or login email');
+    }
+    
+    return {
+      storedOwnerEmail,
+      storedLoginEmail,
+      storedUserRole,
+      hasAppOwnerInfo: !!storedAppOwnerInfo,
+      globalValues: {
+        owner_emailid: global.owner_emailid,
+        loggedin_email: global.loggedin_email,
+        userRole: global.userRole
+      }
+    };
+    
+  } catch (error) {
+    console.error('❌ Error in admin status debug:', error);
+    return { error: error.message };
   }
 };
 
 export const logoutUser = async () => {
   try {
-    console.log('🔓 Logging out user...');
+    console.log('🔓 === LOGGING OUT USER ===');
     
-    // Clear login credentials
+    // Clear login credentials from both storages
+    await AsyncStorage.removeItem('userEmail');
+    await AsyncStorage.removeItem('userAccessToken');
+    await AsyncStorage.removeItem('userData');
     await EncryptedStorage.removeItem('LOGGED_IN_EMAIL');
     await EncryptedStorage.removeItem('ACCESS_TOKEN');
     
-    // Reset global variables
+    // Reset global variables (keep owner info, reset user session)
     loggedin_email = '';
     userRole = 'user';
     global.loggedin_email = '';
     global.userRole = 'user';
     
-    // Update stored role
+    // Update stored role to default user
     await EncryptedStorage.setItem('USER_ROLE', 'user');
     
     console.log('✅ User logged out successfully');
+    console.log('   📧 Logged In Email: (cleared)');
+    console.log('   🔑 User Role: user (default)');
+    console.log('   👑 Owner Email: (preserved)', owner_emailid);
     
     return { success: true };
     
@@ -538,20 +787,59 @@ export const logoutUser = async () => {
 
 export const getCurrentUserRole = async () => {
   try {
-    const role = await EncryptedStorage.getItem('USER_ROLE') || 'user';
-    const loggedInEmail = await EncryptedStorage.getItem('LOGGED_IN_EMAIL') || '';
+    // Get current role from storage, fallback to global variable
+    const role = await EncryptedStorage.getItem('USER_ROLE') || userRole || 'user';
+    const loggedInEmail = await AsyncStorage.getItem('userEmail') || 
+                         await EncryptedStorage.getItem('LOGGED_IN_EMAIL') || 
+                         loggedin_email || '';
+    
+    const ownerEmail = await EncryptedStorage.getItem('OWNER_EMAIL') || owner_emailid;
+    const ownerMobile = await EncryptedStorage.getItem('OWNER_MOBILE') || owner_mobile;
     
     return {
       userRole: role,
       loggedin_email: loggedInEmail,
-      isAdmin: role === 'admin'
+      owner_emailid: ownerEmail,
+      owner_mobile: ownerMobile,
+      isAdmin: role === 'admin',
+      isLoggedIn: !!loggedInEmail,
+      isAppBootstrapped: global.isAppBootstrapped || isAppBootstrapped
     };
   } catch (error) {
     console.error('❌ Error getting user role:', error);
     return {
       userRole: 'user',
       loggedin_email: '',
-      isAdmin: false
+      owner_emailid: '',
+      owner_mobile: '',
+      isAdmin: false,
+      isLoggedIn: false,
+      isAppBootstrapped: false
+    };
+  }
+};
+
+// Helper function to check if current user is admin
+export const checkIfCurrentUserIsAdmin = async () => {
+  try {
+    const currentRole = await getCurrentUserRole();
+    return {
+      isAdmin: currentRole.isAdmin,
+      reason: currentRole.isAdmin 
+        ? 'Owner is currently logged in' 
+        : 'User is not the app owner or not logged in',
+      userRole: currentRole.userRole,
+      loggedin_email: currentRole.loggedin_email,
+      owner_emailid: currentRole.owner_emailid
+    };
+  } catch (error) {
+    console.error('❌ Error checking admin status:', error);
+    return {
+      isAdmin: false,
+      reason: 'Error checking admin status',
+      userRole: 'user',
+      loggedin_email: '',
+      owner_emailid: ''
     };
   }
 };
@@ -583,5 +871,69 @@ export const updateServerUrl = async (newUrl) => {
     return { success: false, message: error.message };
   }
 };
+
+// Helper function for debugging - get all global variables
+export const getGlobalVariablesDebug = () => {
+  return {
+    loggedin_email,
+    owner_emailid,
+    owner_mobile,
+    userRole,
+    isAppBootstrapped,
+    global_loggedin_email: global.loggedin_email,
+    global_owner_emailid: global.owner_emailid,
+    global_owner_mobile: global.owner_mobile,
+    global_userRole: global.userRole,
+    global_isAppBootstrapped: global.isAppBootstrapped
+  };
+};
+
+// NEW: Helper function to get user data for drawer (add this to your utils or App.js)
+export const getUserDataForDrawer = () => {
+  return {
+    name: global.currentUserName || 'User',
+    email: global.currentUserEmail || '',
+    mobile: global.currentUserMobile || '',
+    city: global.currentUserCity || '',
+    profileImage: global.currentUserProfileImage || null,
+    isLoggedIn: global.isUserLoggedin || false,
+    isAdmin: global.isUserAdmin || false,
+    fullUserData: global.currentUser || null
+  };
+};
+
+// NEW: Add this to your App.js to load user data on app startup
+export const initializeUserDataOnAppStart = async () => {
+  try {
+    const isLoggedin = await AsyncStorage.getItem('isLoggedin');
+    const userData = await AsyncStorage.getItem('userData');
+    
+    if (isLoggedin === 'TRUE' && userData) {
+      const parsedUserData = JSON.parse(userData);
+      
+      // Set global variables immediately
+      global.currentUser = parsedUserData;
+      global.currentUserName = parsedUserData.name || parsedUserData.fullName;
+      global.currentUserEmail = parsedUserData.email;
+      global.isUserAdmin = parsedUserData.isAdmin || false;
+      global.isUserLoggedin = true;
+      global.currentUserMobile = parsedUserData.mobile || parsedUserData.mobileNo;
+      global.currentUserCity = parsedUserData.city;
+      global.currentUserProfileImage = parsedUserData.profile_image;
+      
+      console.log('✅ User data initialized on app start:', {
+        name: global.currentUserName,
+        email: global.currentUserEmail,
+        isAdmin: global.isUserAdmin
+      });
+      
+      return parsedUserData;
+    }
+  } catch (error) {
+    console.log('❌ Error initializing user data on app start:', error);
+  }
+  return null;
+};
+
 
 export default App;

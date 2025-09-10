@@ -59,7 +59,7 @@ const MediaCornerScreen = () => {
             ))}
           </ScrollView>
         ) : activeTab === 'Facebook' ? (
-           <WebView
+          <WebView
             source={{ uri: 'http://www.facebook.com/Jaiswalsanjaybjp/' }}
             style={{ flex: 1 }}
             startInLoadingState
@@ -68,11 +68,15 @@ const MediaCornerScreen = () => {
           />
         ) : activeTab === 'X' ? (
           <WebView
-            source={{ uri: 'http://www.x.com/Sanjayjaiswalmp' }}
+            source={{ uri: 'https://twitter.com/Sanjayjaiswalmp' }}
             style={{ flex: 1 }}
             startInLoadingState
             javaScriptEnabled
             domStorageEnabled
+            // Add these properties for better compatibility
+            mixedContentMode="compatibility"
+            allowsInlineMediaPlayback
+            mediaPlaybackRequiresUserAction={false}
           />
         ) : activeTab === 'Press Meets' ? (
           <ScrollView contentContainerStyle={styles.postsContainer}>
@@ -114,12 +118,12 @@ const MediaCornerScreen = () => {
 
         ) : activeTab === 'Instagram' ? (
           <WebView
-              source={{ uri: 'https://www.instagram.com/drsanjayjaiswalbjp/' }}
-              style={{ flex: 1 }}
-              startInLoadingState
-              javaScriptEnabled
-              domStorageEnabled
-            />
+            source={{ uri: 'https://www.instagram.com/drsanjayjaiswalbjp/' }}
+            style={{ flex: 1 }}
+            startInLoadingState
+            javaScriptEnabled
+            domStorageEnabled
+          />
         ) : (
           <Text style={styles.contentText}>{activeTab}</Text>
         )}

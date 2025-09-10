@@ -24,6 +24,30 @@ try {
 class AuthService {
   static tokenKey = 'jwt_token';
   static refreshTokenKey = 'refresh_token';
+  
+  // Add session expiry callback
+  static sessionExpiryCallback = null;
+  
+  // Method to set session expiry callback
+  static setSessionExpiryCallback(callback) {
+    this.sessionExpiryCallback = callback;
+  }
+  
+  // Method to trigger session expiry
+  static async triggerSessionExpiry() {
+    console.log('🔥 Session expired - triggering automatic logout');
+    
+    // Clear tokens first
+    await this.clearTokens();
+    
+    // Call the callback if set (from ViewProfileScreen)
+    if (this.sessionExpiryCallback && typeof this.sessionExpiryCallback === 'function') {
+      console.log('📞 Calling session expiry callback');
+      this.sessionExpiryCallback();
+    } else {
+      console.warn('⚠️ No session expiry callback set');
+    }
+  }
 
   // Initialize the auth service
   static async initialize() {
@@ -213,7 +237,7 @@ class AuthService {
     return headers;
   }
 
-  // ENHANCED: Refresh token method with proper body structure
+  // ENHANCED: Refresh token method with proper error handling
   static async refreshAccessToken(refreshToken) {
     try {
       console.log('🔄 Attempting to refresh access token');
@@ -235,10 +259,18 @@ class AuthService {
         };
       } else {
         console.error('❌ Token refresh failed:', result.message);
+        
+        // IMPORTANT: Trigger session expiry when refresh fails
+        await this.triggerSessionExpiry();
+        
         throw new Error(result.message || 'Token refresh failed');
       }
     } catch (error) {
       console.error('❌ Error refreshing token:', error);
+      
+      // IMPORTANT: Always trigger session expiry when refresh token fails
+      await this.triggerSessionExpiry();
+      
       return null;
     }
   }
@@ -277,7 +309,7 @@ class AuthService {
 
           if (!refreshToken) {
             console.log('❌ No refresh token found');
-            await this.clearTokens();
+            await this.triggerSessionExpiry(); // Trigger session expiry
             return { valid: false, expired: true, reason: 'No refresh token' };
           }
 
@@ -288,7 +320,7 @@ class AuthService {
 
             if (isRefreshExpired) {
               console.log('❌ Refresh token also expired');
-              await this.clearTokens();
+              await this.triggerSessionExpiry(); // Trigger session expiry
               return { valid: false, expired: true, reason: 'Refresh token expired' };
             } else {
               // Try to refresh the access token
@@ -303,13 +335,13 @@ class AuthService {
                 return { valid: true, expired: false, reason: 'Token refreshed' };
               } else {
                 console.log('❌ Token refresh failed');
-                await this.clearTokens();
+                // Session expiry already triggered in refreshAccessToken
                 return { valid: false, expired: true, reason: 'Token refresh failed' };
               }
             }
           } catch (refreshTokenError) {
             console.log('❌ Error decoding refresh token:', refreshTokenError);
-            await this.clearTokens();
+            await this.triggerSessionExpiry(); // Trigger session expiry
             return { valid: false, expired: true, reason: 'Invalid refresh token' };
           }
         }
@@ -323,6 +355,7 @@ class AuthService {
       }
     } catch (error) {
       console.error('❌ Error validating token:', error);
+      await this.triggerSessionExpiry(); // Trigger session expiry on any validation error
       return { valid: false, expired: true, reason: 'Validation error: ' + error.message };
     }
   }
@@ -340,6 +373,7 @@ class AuthService {
         return { valid: true, expired: false, reason: 'Token valid via API' };
       } else if (result.status === 401) {
         console.log('❌ Token is invalid/expired (API validation)');
+        await this.triggerSessionExpiry(); // Trigger session expiry
         return { valid: false, expired: true, reason: 'Token invalid via API' };
       } else {
         console.log('⚠️ API validation inconclusive, assuming token is valid');
@@ -347,8 +381,9 @@ class AuthService {
       }
     } catch (error) {
       console.error('❌ Error validating token with API:', error);
-      // If API call fails, assume token is valid to avoid blocking the user
-      return { valid: true, expired: false, reason: 'API validation failed, assuming valid' };
+      // If API call fails, trigger session expiry to be safe
+      await this.triggerSessionExpiry();
+      return { valid: false, expired: true, reason: 'API validation failed' };
     }
   }
 
@@ -359,6 +394,12 @@ class AuthService {
       return await ApiService.authenticatedRequest(url, options);
     } catch (error) {
       console.error('❌ Authenticated request error:', error);
+      
+      // Check if error is session related
+      if (error.message && (error.message.includes('401') || error.message.includes('session'))) {
+        await this.triggerSessionExpiry();
+      }
+      
       throw error;
     }
   }
@@ -413,35 +454,19 @@ class AuthService {
     }
   }
 
-  // Utility methods
+  // UPDATED: checkAndHandleSession now uses automatic session expiry
   static async checkAndHandleSession(navigation) {
     try {
       const tokenStatus = await this.validateAndRefreshToken();
       if (!tokenStatus.valid) {
-        await this.clearTokens();
-
-        Alert.alert(
-          'Session Expired',
-          'Your session has expired. Please login again.',
-          [
-            {
-              text: 'OK',
-              onPress: () => {
-                setTimeout(() => {
-                  navigation.reset({
-                    index: 0,
-                    routes: [{ name: 'Login' }],
-                  });
-                }, 0);
-              }
-            },
-          ]
-        );
+        // Session expiry is already triggered in validateAndRefreshToken
+        // Just return false here
         return false;
       }
       return true;
     } catch (error) {
       console.error('Session check error:', error);
+      await this.triggerSessionExpiry();
       return false;
     }
   }

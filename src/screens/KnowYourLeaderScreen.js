@@ -18,8 +18,10 @@ import {
   Platform,
 } from 'react-native';
 import EncryptedStorage from 'react-native-encrypted-storage';
-import ConfigService from '../services/ConfigService'; // Adjust the path as needed
-import ApiService from '../services/ApiService'; // Adjust the path as needed
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import ConfigService from '../services/ConfigService';
+import ApiService from '../services/ApiService';
+import { getCurrentUserRole, checkIfCurrentUserIsAdmin } from '../../App'; // Import helper functions
 
 const { width } = Dimensions.get('window');
 
@@ -27,14 +29,17 @@ const KnowYourLeaderScreen = () => {
   // Tab state
   const [activeTab, setActiveTab] = useState('profile');
   
-  // Member ID and Role state
+  // Member ID and Role state - Enhanced
   const [memberId, setMemberId] = useState(null);
-  const [userRole, setUserRole] = useState(null);
+  const [userRole, setUserRole] = useState('user');
   const [isAdmin, setIsAdmin] = useState(false);
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [adminCheckResult, setAdminCheckResult] = useState(null);
   
   // Loading states
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [roleCheckLoading, setRoleCheckLoading] = useState(false);
   
   // Data states for Profile Tab
   const [memberData, setMemberData] = useState(null);
@@ -55,7 +60,7 @@ const KnowYourLeaderScreen = () => {
   const [editData, setEditData] = useState({});
   const [editLoading, setEditLoading] = useState(false);
 
-  // Developer mode states
+  // Developer mode states (keeping for backward compatibility)
   const [showDevInput, setShowDevInput] = useState(false);
   const [devInput, setDevInput] = useState('');
   const [devClickCount, setDevClickCount] = useState(0);
@@ -64,64 +69,110 @@ const KnowYourLeaderScreen = () => {
     initializeApp();
   }, []);
 
-  // Check if user is admin - ENHANCED
+  // Enhanced admin role checking using App.js functions
   const checkAdminRole = async () => {
     try {
-      const userRole = await EncryptedStorage.getItem('userRole');
-      const appOwnerInfo = await EncryptedStorage.getItem('AppOwnerInfo');
-      const devMode = await EncryptedStorage.getItem('developerMode');
+      setRoleCheckLoading(true);
+      console.log('🔍 === CHECKING ADMIN ROLE IN CONSTITUENCY SCREEN ===');
       
-      // Check for developer mode first
-      if (devMode === 'enabled') {
-        setIsAdmin(true);
-        return true;
-      }
-
-      if (userRole === 'admin') {
-        setIsAdmin(true);
-        return true;
-      } else if (appOwnerInfo) {
-        const parsedData = JSON.parse(appOwnerInfo);
-        if (parsedData.role === 'admin' || parsedData.userType === 'admin') {
-          setIsAdmin(true);
-          return true;
-        }
-      }
-      return false;
+      // Use the enhanced function from App.js
+      const adminCheck = await checkIfCurrentUserIsAdmin();
+      const currentRole = await getCurrentUserRole();
+      
+      console.log('👤 Current User Role Info:', currentRole);
+      console.log('👑 Admin Check Result:', adminCheck);
+      
+      setAdminCheckResult(adminCheck);
+      setIsAdmin(adminCheck.isAdmin);
+      setUserRole(currentRole.userRole);
+      setIsLoggedIn(currentRole.isLoggedIn);
+      
+      console.log('✅ Role check completed:', {
+        isAdmin: adminCheck.isAdmin,
+        userRole: currentRole.userRole,
+        isLoggedIn: currentRole.isLoggedIn,
+        reason: adminCheck.reason
+      });
+      
+      return adminCheck.isAdmin;
+      
     } catch (error) {
-      console.error('Error checking admin role:', error);
+      console.error('❌ Error checking admin role:', error);
+      setIsAdmin(false);
+      setUserRole('user');
+      setIsLoggedIn(false);
       return false;
+    } finally {
+      setRoleCheckLoading(false);
     }
   };
 
-  // Developer mode functions
+  // Developer mode functions (enhanced with better integration)
   const handleLeaderNamePress = () => {
+    // If already admin, show admin info instead of dev mode
+    if (isAdmin) {
+      Alert.alert(
+        '👑 Admin Status',
+        `You are currently logged in as an administrator.\n\n` +
+        `Reason: ${adminCheckResult?.reason || 'Owner privileges'}\n` +
+        `User Role: ${userRole}\n` +
+        `Logged In: ${isLoggedIn ? 'Yes' : 'No'}\n` +
+        `Owner Email: ${adminCheckResult?.owner_emailid || 'Not available'}`,
+        [{ text: 'OK' }]
+      );
+      return;
+    }
+    
     setDevClickCount(prevCount => {
       const newCount = prevCount + 1;
       if (newCount >= 5) {
-        setShowDevInput(true);
+        Alert.alert(
+          'Developer Mode',
+          'Developer mode is deprecated. Please log in as the app owner to get admin privileges.',
+          [
+            { text: 'OK' },
+            { text: 'Check Status', onPress: () => showCurrentStatus() }
+          ]
+        );
         return 0; // Reset count
       }
       return newCount;
     });
   };
 
-  const handleDevInputSubmit = async () => {
-    if (devInput.toLowerCase() === 'admin') {
-      try {
-        await EncryptedStorage.setItem('developerMode', 'enabled');
-        setIsAdmin(true);
-        setShowDevInput(false);
-        setDevInput('');
-        Alert.alert('Developer Mode', 'Admin features enabled for testing!');
-      } catch (error) {
-        console.error('Error enabling developer mode:', error);
-        Alert.alert('Error', 'Failed to enable developer mode');
-      }
-    } else {
-      Alert.alert('Invalid Input', 'Please enter the correct developer code');
-      setDevInput('');
+  // Show current user status
+  const showCurrentStatus = async () => {
+    try {
+      const currentRole = await getCurrentUserRole();
+      const adminCheck = await checkIfCurrentUserIsAdmin();
+      
+      Alert.alert(
+        '📊 Current User Status',
+        `User Role: ${currentRole.userRole}\n` +
+        `Is Admin: ${adminCheck.isAdmin ? 'Yes' : 'No'}\n` +
+        `Is Logged In: ${currentRole.isLoggedIn ? 'Yes' : 'No'}\n` +
+        `Logged In Email: ${currentRole.loggedin_email || 'None'}\n` +
+        `Owner Email: ${currentRole.owner_emailid || 'Not available'}\n` +
+        `App Bootstrapped: ${currentRole.isAppBootstrapped ? 'Yes' : 'No'}\n\n` +
+        `${adminCheck.reason}`,
+        [
+          { text: 'OK' },
+          { text: 'Refresh', onPress: () => checkAdminRole() }
+        ]
+      );
+    } catch (error) {
+      Alert.alert('Error', 'Failed to get current status: ' + error.message);
     }
+  };
+
+  const handleDevInputSubmit = async () => {
+    Alert.alert(
+      'Developer Mode Deprecated',
+      'Please log in as the app owner to get admin privileges instead of using developer codes.',
+      [{ text: 'OK' }]
+    );
+    setShowDevInput(false);
+    setDevInput('');
   };
 
   const closeDevInput = () => {
@@ -129,7 +180,7 @@ const KnowYourLeaderScreen = () => {
     setDevInput('');
   };
 
-  // Function to get member ID and role from EncryptedStorage
+  // Function to get member ID and role from EncryptedStorage (Enhanced)
   const getMemberInfoFromStorage = async () => {
     try {
       console.log('🔍 Retrieving member info from EncryptedStorage...');
@@ -149,35 +200,27 @@ const KnowYourLeaderScreen = () => {
                                 parsedData.member_id ||
                                 parsedData.user_id;
         
-        // Get user role
-        const role = parsedData.role || parsedData.user_role || parsedData.userRole || 'user';
-        
         console.log('✅ Member ID found:', memberIdentifier);
-        console.log('👤 User Role found:', role);
         
         return {
-          memberId: memberIdentifier || '7702000725',
-          role: role.toLowerCase()
+          memberId: memberIdentifier || '7702000725'
         };
       }
       
       // Fallback: Try to get from individual storage items
       const storedMemberId = await EncryptedStorage.getItem('MOBILE_NUMBER') || 
+                            await EncryptedStorage.getItem('OWNER_MOBILE') ||
                             await EncryptedStorage.getItem('MEMBER_ID') || 
                             '7702000725';
       
-      const storedRole = await EncryptedStorage.getItem('USER_ROLE') || 'user';
-      
       return {
-        memberId: storedMemberId,
-        role: storedRole.toLowerCase()
+        memberId: storedMemberId
       };
       
     } catch (error) {
       console.error('❌ Error retrieving member info from storage:', error);
       return {
-        memberId: '7702000725',
-        role: 'user'
+        memberId: '7702000725'
       };
     }
   };
@@ -189,15 +232,12 @@ const KnowYourLeaderScreen = () => {
       // Get member info from storage
       const memberInfo = await getMemberInfoFromStorage();
       setMemberId(memberInfo.memberId);
-      setUserRole(memberInfo.role);
       
-      // Check admin role (including developer mode)
+      // Check admin role using enhanced App.js functions
       const adminStatus = await checkAdminRole();
-      setIsAdmin(adminStatus);
       
       console.log('📱 Using member ID:', memberInfo.memberId);
-      console.log('👤 User role:', memberInfo.role);
-      console.log('🔑 Is Admin:', adminStatus);
+      console.log('🔑 Final Admin Status:', adminStatus);
       
       // Load initial data
       await loadInitialData(memberInfo.memberId);
@@ -211,7 +251,7 @@ const KnowYourLeaderScreen = () => {
     }
   };
 
-  // Individual API calls using ApiService and ConfigService
+  // Individual API calls using ApiService and ConfigService (unchanged)
   const fetchMemberCoordinates = async (memberIdentifier) => {
     try {
       const baseUrl = await ConfigService.getBaseUrl();
@@ -331,13 +371,13 @@ const KnowYourLeaderScreen = () => {
     }
   };
 
-  // PUT API calls for updating data using ApiService
+  // PUT API calls for updating data using ApiService (unchanged but with enhanced logging)
   const updateMemberCoordinates = async (memberIdentifier, data) => {
     try {
+      console.log('🔄 Updating member coordinates as admin...');
       const baseUrl = await ConfigService.getBaseUrl();
       const endpoint = `${baseUrl}/api/coordinates/${memberIdentifier}`;
       
-      // Ensure data is wrapped in leader_coordinates object
       const requestBody = {
         leader_coordinates: {
           regd_mobile_no: memberIdentifier,
@@ -346,23 +386,24 @@ const KnowYourLeaderScreen = () => {
       };
       
       const result = await ApiService.put(endpoint, requestBody);
+      console.log('✅ Member coordinates update result:', result.success);
       return {
         success: result.success,
         data: result.success ? result.data : null,
         error: result.success ? null : result.error || result.message
       };
     } catch (error) {
-      console.error('API Error (update coordinates):', error);
+      console.error('❌ API Error (update coordinates):', error);
       return { success: false, error: error.message };
     }
   };
 
   const updateSocialMedia = async (memberIdentifier, data) => {
     try {
+      console.log('🔄 Updating social media as admin...');
       const baseUrl = await ConfigService.getBaseUrl();
       const endpoint = `${baseUrl}/api/socialmedia/${memberIdentifier}`;
       
-      // Ensure data is wrapped in social_media object
       const requestBody = {
         social_media: {
           regd_mobile_no: memberIdentifier,
@@ -371,23 +412,24 @@ const KnowYourLeaderScreen = () => {
       };
       
       const result = await ApiService.put(endpoint, requestBody);
+      console.log('✅ Social media update result:', result.success);
       return {
         success: result.success,
         data: result.success ? result.data : null,
         error: result.success ? null : result.error || result.message
       };
     } catch (error) {
-      console.error('API Error (update social media):', error);
+      console.error('❌ API Error (update social media):', error);
       return { success: false, error: error.message };
     }
   };
 
   const updatePersonalDetails = async (memberIdentifier, data) => {
     try {
+      console.log('🔄 Updating personal details as admin...');
       const baseUrl = await ConfigService.getBaseUrl();
       const endpoint = `${baseUrl}/api/personaldetails/${memberIdentifier}`;
       
-      // Ensure data is wrapped in personal_details object
       const requestBody = {
         personal_details: {
           regd_mobile_no: memberIdentifier,
@@ -396,23 +438,24 @@ const KnowYourLeaderScreen = () => {
       };
       
       const result = await ApiService.put(endpoint, requestBody);
+      console.log('✅ Personal details update result:', result.success);
       return {
         success: result.success,
         data: result.success ? result.data : null,
         error: result.success ? null : result.error || result.message
       };
     } catch (error) {
-      console.error('API Error (update personal details):', error);
+      console.error('❌ API Error (update personal details):', error);
       return { success: false, error: error.message };
     }
   };
 
   const updateEducationalDetails = async (memberIdentifier, data) => {
     try {
+      console.log('🔄 Updating educational details as admin...');
       const baseUrl = await ConfigService.getBaseUrl();
       const endpoint = `${baseUrl}/api/edudata/${memberIdentifier}`;
       
-      // Ensure data is wrapped in leader_edu_data object
       const requestBody = {
         leader_edu_data: {
           regd_mobile_no: memberIdentifier,
@@ -421,23 +464,24 @@ const KnowYourLeaderScreen = () => {
       };
       
       const result = await ApiService.put(endpoint, requestBody);
+      console.log('✅ Educational details update result:', result.success);
       return {
         success: result.success,
         data: result.success ? result.data : null,
         error: result.success ? null : result.error || result.message
       };
     } catch (error) {
-      console.error('API Error (update education):', error);
+      console.error('❌ API Error (update education):', error);
       return { success: false, error: error.message };
     }
   };
 
   const updatePermanentAddress = async (memberIdentifier, data) => {
     try {
+      console.log('🔄 Updating permanent address as admin...');
       const baseUrl = await ConfigService.getBaseUrl();
       const endpoint = `${baseUrl}/api/permaddress/${memberIdentifier}`;
       
-      // Ensure data is wrapped in perm_address object
       const requestBody = {
         perm_address: {
           regd_mobile_no: memberIdentifier,
@@ -446,23 +490,24 @@ const KnowYourLeaderScreen = () => {
       };
       
       const result = await ApiService.put(endpoint, requestBody);
+      console.log('✅ Permanent address update result:', result.success);
       return {
         success: result.success,
         data: result.success ? result.data : null,
         error: result.success ? null : result.error || result.message
       };
     } catch (error) {
-      console.error('API Error (update permanent address):', error);
+      console.error('❌ API Error (update permanent address):', error);
       return { success: false, error: error.message };
     }
   };
 
   const updatePresentAddress = async (memberIdentifier, data) => {
     try {
+      console.log('🔄 Updating present address as admin...');
       const baseUrl = await ConfigService.getBaseUrl();
       const endpoint = `${baseUrl}/api/preaddress/${memberIdentifier}`;
       
-      // Ensure data is wrapped in present_address object
       const requestBody = {
         present_address: {
           regd_mobile_no: memberIdentifier,
@@ -471,35 +516,37 @@ const KnowYourLeaderScreen = () => {
       };
       
       const result = await ApiService.put(endpoint, requestBody);
+      console.log('✅ Present address update result:', result.success);
       return {
         success: result.success,
         data: result.success ? result.data : null,
         error: result.success ? null : result.error || result.message
       };
     } catch (error) {
-      console.error('API Error (update present address):', error);
+      console.error('❌ API Error (update present address):', error);
       return { success: false, error: error.message };
     }
   };
 
   const updateTimeline = async (memberIdentifier, data) => {
     try {
+      console.log('🔄 Updating timeline as admin...');
       const baseUrl = await ConfigService.getBaseUrl();
       const endpoint = `${baseUrl}/api/leadertimeline/${memberIdentifier}`;
       
-      // For timeline, send as array if it's a single item
       const requestBody = {
         timeline: Array.isArray(data) ? data : [data]
       };
       
       const result = await ApiService.put(endpoint, requestBody);
+      console.log('✅ Timeline update result:', result.success);
       return {
         success: result.success,
         data: result.success ? result.data : null,
         error: result.success ? null : result.error || result.message
       };
     } catch (error) {
-      console.error('API Error (update timeline):', error);
+      console.error('❌ API Error (update timeline):', error);
       return { success: false, error: error.message };
     }
   };
@@ -608,6 +655,8 @@ const KnowYourLeaderScreen = () => {
 
   const onRefresh = async () => {
     setRefreshing(true);
+    // Refresh admin status first
+    await checkAdminRole();
     if (memberId) {
       await loadInitialData(memberId);
     } else {
@@ -616,54 +665,206 @@ const KnowYourLeaderScreen = () => {
     setRefreshing(false);
   };
 
-  // Edit functionality
+  // Enhanced edit functionality with better admin checking
   const openEditModal = (type, data) => {
+    // Real-time admin check
     if (!isAdmin) {
-      Alert.alert('Access Denied', 'You need admin privileges to edit this data.');
+      Alert.alert(
+        '🔒 Access Denied', 
+        `You need admin privileges to edit this data.\n\n` +
+        `Current Status:\n` +
+        `• Role: ${userRole}\n` +
+        `• Logged In: ${isLoggedIn ? 'Yes' : 'No'}\n` +
+        `• Admin: ${isAdmin ? 'Yes' : 'No'}\n\n` +
+        `To get admin access, please log in as the app owner.`,
+        [
+          { text: 'OK' },
+          { text: 'Check Status', onPress: () => showCurrentStatus() }
+        ]
+      );
       return;
     }
 
+    console.log(`🔓 Opening edit modal for: ${type} (Admin verified)`);
     setEditType(type);
     setEditData({ ...data });
     setEditModalVisible(true);
   };
 
+  // Enhanced renderEditForm with comprehensive field filtering
+  const renderEditForm = () => {
+    const renderInput = (key, value, placeholder) => (
+      <View key={key} style={styles.editInputContainer}>
+        <Text style={styles.editInputLabel}>
+          {key.replace(/_/g, ' ').toUpperCase()}
+        </Text>
+        <TextInput
+          style={styles.editInput}
+          value={value || ''}
+          onChangeText={(text) => setEditData({...editData, [key]: text})}
+          placeholder={placeholder}
+          multiline={key.includes('address') || key.includes('details') || key.includes('desc')}
+          numberOfLines={key.includes('address') || key.includes('details') || key.includes('desc') ? 3 : 1}
+        />
+      </View>
+    );
+
+    if (!editData) return null;
+
+    // Comprehensive field filtering - exclude system fields and non-editable fields
+    const excludedFields = [
+      'id',
+      '_id',
+      'created_at',
+      'updated_at',
+      'createdAt',
+      'updatedAt',
+      '__v',
+      'version',
+      'regd_mobile_no', // DON'T ALLOW EDITING REGISTERED MOBILE NUMBER
+      'regdMobileNo',
+      'regd_mobile_number',
+      'registered_mobile_no',
+      'registered_mobile_number',
+      'reg_mobile_no',
+      'reg_mobile_number',
+      'member_id', // Usually auto-populated
+      'user_id', // Usually auto-populated
+      'created_by',
+      'updated_by',
+      'modified_at',
+      'modified_by',
+      'created_date',
+      'updated_date',
+      'timestamp',
+      'last_modified'
+    ];
+
+    // Get filterable fields
+    const editableFields = Object.keys(editData).filter(key => {
+      // Convert to lowercase for comparison
+      const lowerKey = key.toLowerCase();
+      
+      // Check if field should be excluded
+      const shouldExclude = excludedFields.some(excludedField => 
+        lowerKey === excludedField.toLowerCase() || 
+        lowerKey.includes(excludedField.toLowerCase())
+      );
+      
+      return !shouldExclude;
+    });
+
+    return (
+      <View style={styles.editFormContainer}>
+        {editableFields.length > 0 ? (
+          editableFields.map((key) => {
+            return renderInput(
+              key,
+              editData[key],
+              `Enter ${key.replace(/_/g, ' ')}`
+            );
+          })
+        ) : (
+          <View style={styles.noEditableFieldsContainer}>
+            <Text style={styles.noEditableFieldsText}>
+              No editable fields available for this data type.
+            </Text>
+            <Text style={styles.noEditableFieldsSubText}>
+              All fields are system-generated or non-editable.
+            </Text>
+          </View>
+        )}
+        
+        {/* Debug info in dev mode */}
+        {__DEV__ && (
+          <View style={styles.debugEditInfo}>
+            <Text style={styles.debugEditTitle}>Debug - Available Fields:</Text>
+            <Text style={styles.debugEditText}>
+              Total Fields: {Object.keys(editData).length}{'\n'}
+              Editable Fields: {editableFields.length}{'\n'}
+              Excluded: {Object.keys(editData).length - editableFields.length}{'\n'}
+              Type: {editType}
+            </Text>
+            {editableFields.length > 0 && (
+              <Text style={styles.debugEditFields}>
+                Editable: {editableFields.join(', ')}
+              </Text>
+            )}
+          </View>
+        )}
+      </View>
+    );
+  };
+
+  // Enhanced save function with field filtering
   const handleSaveEdit = async () => {
     if (!memberId || !editType) return;
+
+    // Double-check admin status before saving
+    if (!isAdmin) {
+      Alert.alert('Access Denied', 'Admin privileges required to save changes.');
+      return;
+    }
 
     setEditLoading(true);
     
     try {
+      console.log(`💾 Saving edit as admin: ${editType}`);
+      
+      // Filter out system fields before sending to API
+      const excludedFields = [
+        'id', '_id', 'created_at', 'updated_at', 'createdAt', 'updatedAt', 
+        '__v', 'version', 'regd_mobile_no', 'regdMobileNo', 'regd_mobile_number',
+        'registered_mobile_no', 'registered_mobile_number', 'reg_mobile_no', 
+        'reg_mobile_number', 'created_by', 'updated_by', 'modified_at', 
+        'modified_by', 'created_date', 'updated_date', 'timestamp', 'last_modified'
+      ];
+
+      const cleanedData = Object.keys(editData)
+        .filter(key => {
+          const lowerKey = key.toLowerCase();
+          return !excludedFields.some(excludedField => 
+            lowerKey === excludedField.toLowerCase() || 
+            lowerKey.includes(excludedField.toLowerCase())
+          );
+        })
+        .reduce((obj, key) => {
+          obj[key] = editData[key];
+          return obj;
+        }, {});
+
+      console.log('🧹 Cleaned data for API:', cleanedData);
+      
       let result;
       
       switch (editType) {
         case 'coordinates':
-          result = await updateMemberCoordinates(memberId, editData);
+          result = await updateMemberCoordinates(memberId, cleanedData);
           break;
         case 'social':
-          result = await updateSocialMedia(memberId, editData);
+          result = await updateSocialMedia(memberId, cleanedData);
           break;
         case 'personal':
-          result = await updatePersonalDetails(memberId, editData);
+          result = await updatePersonalDetails(memberId, cleanedData);
           break;
         case 'education':
-          result = await updateEducationalDetails(memberId, editData);
+          result = await updateEducationalDetails(memberId, cleanedData);
           break;
         case 'permanent_address':
-          result = await updatePermanentAddress(memberId, editData);
+          result = await updatePermanentAddress(memberId, cleanedData);
           break;
         case 'present_address':
-          result = await updatePresentAddress(memberId, editData);
+          result = await updatePresentAddress(memberId, cleanedData);
           break;
         case 'timeline':
-          result = await updateTimeline(memberId, editData);
+          result = await updateTimeline(memberId, cleanedData);
           break;
         default:
           throw new Error('Unknown edit type');
       }
 
       if (result.success) {
-        Alert.alert('Success', 'Data updated successfully!');
+        Alert.alert('✅ Success', 'Data updated successfully!');
         setEditModalVisible(false);
         // Reload the specific data section
         await loadInitialData(memberId);
@@ -671,19 +872,20 @@ const KnowYourLeaderScreen = () => {
         throw new Error(result.error);
       }
     } catch (error) {
-      console.error('Error updating data:', error);
+      console.error('❌ Error updating data:', error);
       Alert.alert('Update Failed', error.message || 'Failed to update data. Please try again.');
     } finally {
       setEditLoading(false);
     }
   };
 
+  // Enhanced render edit button with real-time admin check
   const renderEditButton = (type, data) => {
     if (!isAdmin) return null;
 
     return (
       <TouchableOpacity
-        style={styles.editButton}
+        style={[styles.editButton, isAdmin && styles.editButtonActive]}
         onPress={() => openEditModal(type, data)}
       >
         <Text style={styles.editButtonText}>✏️</Text>
@@ -704,7 +906,7 @@ const KnowYourLeaderScreen = () => {
             behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
             style={styles.editModalContent}
           >
-            {/* Modal Header */}
+            {/* Modal Header with Admin indicator */}
             <View style={styles.editModalHeader}>
               <TouchableOpacity
                 onPress={() => setEditModalVisible(false)}
@@ -712,9 +914,12 @@ const KnowYourLeaderScreen = () => {
               >
                 <Text style={styles.editModalCloseText}>✕</Text>
               </TouchableOpacity>
-              <Text style={styles.editModalTitle}>
-                Edit {editType.replace('_', ' ').toUpperCase()}
-              </Text>
+              <View style={styles.editModalTitleContainer}>
+                <Text style={styles.editModalTitle}>
+                  Edit {editType.replace('_', ' ').toUpperCase()}
+                </Text>
+                <Text style={styles.editModalSubtitle}>👑 Admin Mode</Text>
+              </View>
               <TouchableOpacity
                 onPress={handleSaveEdit}
                 style={styles.editModalSaveButton}
@@ -738,41 +943,7 @@ const KnowYourLeaderScreen = () => {
     );
   };
 
-  const renderEditForm = () => {
-    const renderInput = (key, value, placeholder) => (
-      <View key={key} style={styles.editInputContainer}>
-        <Text style={styles.editInputLabel}>
-          {key.replace('_', ' ').toUpperCase()}
-        </Text>
-        <TextInput
-          style={styles.editInput}
-          value={value || ''}
-          onChangeText={(text) => setEditData({...editData, [key]: text})}
-          placeholder={placeholder}
-          multiline={key.includes('address') || key.includes('details')}
-          numberOfLines={key.includes('address') || key.includes('details') ? 3 : 1}
-        />
-      </View>
-    );
-
-    if (!editData) return null;
-
-    return (
-      <View style={styles.editFormContainer}>
-        {Object.keys(editData).map((key) => {
-          if (key === 'id' || key === 'created_at' || key === 'updated_at') return null;
-          
-          return renderInput(
-            key,
-            editData[key],
-            `Enter ${key.replace('_', ' ')}`
-          );
-        })}
-      </View>
-    );
-  };
-
-  // Developer Input Modal
+  // Developer Input Modal (deprecated but kept for compatibility)
   const renderDeveloperInputModal = () => {
     return (
       <Modal
@@ -784,7 +955,7 @@ const KnowYourLeaderScreen = () => {
         <View style={styles.devModalOverlay}>
           <View style={styles.devModalContent}>
             <View style={styles.devModalHeader}>
-              <Text style={styles.devModalTitle}>Developer Access</Text>
+              <Text style={styles.devModalTitle}>Developer Mode Deprecated</Text>
               <TouchableOpacity onPress={closeDevInput} style={styles.devModalCloseButton}>
                 <Text style={styles.devModalCloseText}>✕</Text>
               </TouchableOpacity>
@@ -792,17 +963,12 @@ const KnowYourLeaderScreen = () => {
 
             <View style={styles.devModalBody}>
               <Text style={styles.devModalDescription}>
-                Enter developer code to enable admin features for testing:
+                Developer mode has been deprecated. Please log in as the app owner to get admin privileges.
+                {'\n\n'}Current Status:{'\n'}
+                • Role: {userRole}{'\n'}
+                • Admin: {isAdmin ? 'Yes' : 'No'}{'\n'}
+                • Logged In: {isLoggedIn ? 'Yes' : 'No'}
               </Text>
-              <TextInput
-                style={styles.devInput}
-                value={devInput}
-                onChangeText={setDevInput}
-                placeholder="Enter code..."
-                secureTextEntry={false}
-                autoCapitalize="none"
-                autoCorrect={false}
-              />
             </View>
 
             <View style={styles.devModalFooter}>
@@ -810,13 +976,13 @@ const KnowYourLeaderScreen = () => {
                 style={[styles.devModalButton, styles.devCancelButton]}
                 onPress={closeDevInput}
               >
-                <Text style={styles.devCancelButtonText}>Cancel</Text>
+                <Text style={styles.devCancelButtonText}>Close</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.devModalButton, styles.devSaveButton]}
-                onPress={handleDevInputSubmit}
+                onPress={showCurrentStatus}
               >
-                <Text style={styles.devSaveButtonText}>Submit</Text>
+                <Text style={styles.devSaveButtonText}>Check Status</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -842,6 +1008,9 @@ const KnowYourLeaderScreen = () => {
         <View style={styles.loadingCard}>
           <ActivityIndicator size="large" color="#e16e2b" />
           <Text style={styles.loadingText}>Loading leader information...</Text>
+          {roleCheckLoading && (
+            <Text style={styles.loadingSubText}>Checking admin privileges...</Text>
+          )}
         </View>
       </View>
     );
@@ -852,10 +1021,19 @@ const KnowYourLeaderScreen = () => {
     
     return (
       <View style={styles.modernHeader}>
-        {/* Admin Badge */}
+        {/* Enhanced Admin Badge */}
         {isAdmin && (
           <View style={styles.adminBadge}>
             <Text style={styles.adminBadgeText}>👑 ADMIN</Text>
+            <Text style={styles.adminBadgeSubText}>Edit Enabled</Text>
+          </View>
+        )}
+
+        {/* Role Check Loading Indicator */}
+        {roleCheckLoading && (
+          <View style={styles.roleCheckIndicator}>
+            <ActivityIndicator size="small" color="#FFD700" />
+            <Text style={styles.roleCheckText}>Checking Role...</Text>
           </View>
         )}
         
@@ -900,6 +1078,13 @@ const KnowYourLeaderScreen = () => {
                     `${memberData.constituency || ''}, ${memberData.state || ''}`.replace(', ,', ',').trim() : 
                     'Loading...'
                   }
+                </Text>
+              </View>
+              
+              {/* Enhanced User Status Display */}
+              <View style={styles.userStatusRow}>
+                <Text style={styles.userStatusText}>
+                  Role: {userRole} {isAdmin && '👑'} | {isLoggedIn ? 'Logged In' : 'Guest'}
                 </Text>
               </View>
             </View>
@@ -949,6 +1134,14 @@ const KnowYourLeaderScreen = () => {
               <Text style={styles.quickActionIcon}>🏛️</Text>
             </TouchableOpacity>
           )}
+
+          {/* Admin Status Quick Action */}
+          <TouchableOpacity 
+            style={[styles.quickAction, isAdmin && styles.quickActionAdmin]}
+            onPress={showCurrentStatus}
+          >
+            <Text style={styles.quickActionIcon}>{isAdmin ? '👑' : '👤'}</Text>
+          </TouchableOpacity>
         </View>
       </View>
     );
@@ -987,6 +1180,15 @@ const KnowYourLeaderScreen = () => {
           </Text>
         </TouchableOpacity>
       </View>
+      
+      {/* Admin Status Indicator */}
+      {isAdmin && (
+        <View style={styles.adminIndicator}>
+          <Text style={styles.adminIndicatorText}>
+            👑 Admin Mode - Edit capabilities enabled
+          </Text>
+        </View>
+      )}
     </View>
   );
 
@@ -1223,6 +1425,11 @@ const KnowYourLeaderScreen = () => {
         <View style={styles.emptyState}>
           <Text style={styles.emptyStateIcon}>📋</Text>
           <Text style={styles.emptyStateText}>No timeline data available</Text>
+          {isAdmin && (
+            <Text style={styles.emptyStateSubText}>
+              As an admin, you can add timeline entries via API
+            </Text>
+          )}
         </View>
       );
     }
@@ -1290,7 +1497,11 @@ const KnowYourLeaderScreen = () => {
       style={styles.container}
       showsVerticalScrollIndicator={false}
       refreshControl={
-        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+        <RefreshControl 
+          refreshing={refreshing} 
+          onRefresh={onRefresh}
+          title={isAdmin ? "Refreshing (Admin Mode)" : "Refreshing..."}
+        />
       }
     >
       {renderModernHeader()}
@@ -1298,6 +1509,20 @@ const KnowYourLeaderScreen = () => {
       
       <View style={styles.contentArea}>
         {renderContent()}
+        
+        {/* Debug Info for Development */}
+        {__DEV__ && (
+          <View style={styles.debugContainer}>
+            <Text style={styles.debugTitle}>🔧 Debug Info (Dev Mode)</Text>
+            <Text style={styles.debugText}>
+              Member ID: {memberId}{'\n'}
+              User Role: {userRole}{'\n'}
+              Is Admin: {isAdmin ? 'Yes' : 'No'}{'\n'}
+              Is Logged In: {isLoggedIn ? 'Yes' : 'No'}{'\n'}
+              Reason: {adminCheckResult?.reason || 'Not checked'}
+            </Text>
+          </View>
+        )}
       </View>
       
       <View style={styles.bottomSpacing} />
@@ -1344,6 +1569,13 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
 
+  loadingSubText: {
+    marginTop: 8,
+    fontSize: 14,
+    color: '#888',
+    fontStyle: 'italic',
+  },
+
   // Modern Header
   modernHeader: {
     backgroundColor: '#e16e2b',
@@ -1354,7 +1586,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
 
-  // Admin Badge
+  // Enhanced Admin Badge
   adminBadge: {
     position: 'absolute',
     top: 55,
@@ -1364,12 +1596,41 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderRadius: 15,
     zIndex: 2,
+    alignItems: 'center',
   },
   
   adminBadgeText: {
     color: '#ffffff',
     fontSize: 12,
     fontWeight: 'bold',
+  },
+
+  adminBadgeSubText: {
+    color: '#ffffff',
+    fontSize: 10,
+    opacity: 0.8,
+    marginTop: 2,
+  },
+
+  // Role Check Indicator
+  roleCheckIndicator: {
+    position: 'absolute',
+    top: 55,
+    left: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 15,
+    zIndex: 2,
+  },
+
+  roleCheckText: {
+    color: '#ffffff',
+    fontSize: 11,
+    marginLeft: 6,
+    fontWeight: '500',
   },
   
   headerPattern: {
@@ -1455,12 +1716,25 @@ const styles = StyleSheet.create({
   locationRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    marginBottom: 5,
   },
   
   locationText: {
     fontSize: 14,
     color: 'rgba(255,255,255,0.9)',
     flex: 1,
+  },
+
+  // Enhanced User Status Row
+  userStatusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+
+  userStatusText: {
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.7)',
+    fontWeight: '500',
   },
   
   partyContainer: {
@@ -1490,12 +1764,16 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
+
+  quickActionAdmin: {
+    backgroundColor: 'rgba(255,215,0,0.3)',
+  },
   
   quickActionIcon: {
     fontSize: 20,
   },
 
-  // Edit Button
+  // Enhanced Edit Button
   editButton: {
     backgroundColor: 'rgba(255,255,255,0.2)',
     width: 36,
@@ -1505,12 +1783,18 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginLeft: 10,
   },
+
+  editButtonActive: {
+    backgroundColor: 'rgba(255,215,0,0.3)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,215,0,0.5)',
+  },
   
   editButtonText: {
     fontSize: 16,
   },
 
-  // Developer Modal Styles
+  // Developer Modal Styles (updated)
   devModalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.7)',
@@ -1560,19 +1844,8 @@ const styles = StyleSheet.create({
   devModalDescription: {
     fontSize: 14,
     color: '#7f8c8d',
-    marginBottom: 15,
-    textAlign: 'center',
     lineHeight: 20,
-  },
-  devInput: {
-    borderWidth: 1,
-    borderColor: '#bdc3c7',
-    borderRadius: 8,
-    padding: 12,
-    fontSize: 16,
-    backgroundColor: '#fff',
-    color: '#2c3e50',
-    textAlign: 'center',
+    textAlign: 'left',
   },
   devModalFooter: {
     flexDirection: 'row',
@@ -1607,7 +1880,7 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
 
-  // Segmented Control
+  // Segmented Control with Admin Indicator
   segmentedContainer: {
     paddingHorizontal: 20,
     paddingVertical: 15,
@@ -1646,13 +1919,29 @@ const styles = StyleSheet.create({
     color: '#ffffff',
   },
 
+  adminIndicator: {
+    marginTop: 10,
+    backgroundColor: 'rgba(255,215,0,0.1)',
+    padding: 8,
+    borderRadius: 12,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,215,0,0.3)',
+  },
+
+  adminIndicatorText: {
+    fontSize: 12,
+    color: '#FF8C00',
+    fontWeight: '600',
+  },
+
   // Content Area
   contentArea: {
     paddingHorizontal: 20,
     paddingBottom: 10,
   },
 
-  // Info Cards
+  // Info Cards (unchanged styles continue...)
   infoCard: {
     backgroundColor: '#ffffff',
     borderRadius: 16,
@@ -1979,7 +2268,7 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
 
-  // Empty State
+  // Enhanced Empty State
   emptyState: {
     alignItems: 'center',
     paddingVertical: 40,
@@ -1996,9 +2285,17 @@ const styles = StyleSheet.create({
     color: '#7f8c8d',
     fontStyle: 'italic',
     textAlign: 'center',
+    marginBottom: 8,
   },
 
-  // Edit Modal Styles
+  emptyStateSubText: {
+    fontSize: 12,
+    color: '#95a5a6',
+    textAlign: 'center',
+    fontStyle: 'italic',
+  },
+
+  // Enhanced Edit Modal Styles
   editModalContainer: {
     flex: 1,
     backgroundColor: '#f0f2f5',
@@ -2039,10 +2336,21 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
 
+  editModalTitleContainer: {
+    alignItems: 'center',
+  },
+
   editModalTitle: {
     fontSize: 18,
     fontWeight: 'bold',
     color: '#2c3e50',
+  },
+
+  editModalSubtitle: {
+    fontSize: 12,
+    color: '#FFD700',
+    fontWeight: '600',
+    marginTop: 2,
   },
 
   editModalSaveButton: {
@@ -2097,6 +2405,30 @@ const styles = StyleSheet.create({
     color: '#495057',
     backgroundColor: '#f8f9fa',
     textAlignVertical: 'top',
+  },
+
+  // Debug Container
+  debugContainer: {
+    backgroundColor: '#f8f9fa',
+    borderRadius: 12,
+    padding: 16,
+    marginTop: 20,
+    borderWidth: 1,
+    borderColor: '#e9ecef',
+  },
+
+  debugTitle: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: '#666',
+    marginBottom: 8,
+  },
+
+  debugText: {
+    fontSize: 12,
+    color: '#666',
+    lineHeight: 18,
+    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
   },
 
   // Bottom Spacing

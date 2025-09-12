@@ -10,9 +10,18 @@ import {
   ActivityIndicator,
   Alert,
   RefreshControl,
-  Dimensions
+  Dimensions,
+  Modal,
+  TextInput,
+  SafeAreaView,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
-import ApiService from '../../ApiService';
+import EncryptedStorage from 'react-native-encrypted-storage';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import ConfigService from '../services/ConfigService';
+import ApiService from '../services/ApiService';
+import { getCurrentUserRole, checkIfCurrentUserIsAdmin } from '../../App'; // Import helper functions
 
 const { width } = Dimensions.get('window');
 
@@ -20,9 +29,17 @@ const KnowYourLeaderScreen = () => {
   // Tab state
   const [activeTab, setActiveTab] = useState('profile');
   
+  // Member ID and Role state - Enhanced
+  const [memberId, setMemberId] = useState(null);
+  const [userRole, setUserRole] = useState('user');
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [adminCheckResult, setAdminCheckResult] = useState(null);
+  
   // Loading states
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [roleCheckLoading, setRoleCheckLoading] = useState(false);
   
   // Data states for Profile Tab
   const [memberData, setMemberData] = useState(null);
@@ -37,61 +54,941 @@ const KnowYourLeaderScreen = () => {
   // Error states
   const [errors, setErrors] = useState({});
 
+  // Edit Modal States
+  const [editModalVisible, setEditModalVisible] = useState(false);
+  const [editType, setEditType] = useState('');
+  const [editData, setEditData] = useState({});
+  const [editLoading, setEditLoading] = useState(false);
+
+  // Developer mode states (keeping for backward compatibility)
+  const [showDevInput, setShowDevInput] = useState(false);
+  const [devInput, setDevInput] = useState('');
+  const [devClickCount, setDevClickCount] = useState(0);
+
   useEffect(() => {
-    loadInitialData();
+    initializeApp();
   }, []);
 
-  const loadInitialData = async () => {
-    setLoading(true);
-    await loadProfileData();
-    await loadTimelineData();
-    setLoading(false);
+  // Enhanced admin role checking using App.js functions
+  const checkAdminRole = async () => {
+    try {
+      setRoleCheckLoading(true);
+      console.log('🔍 === CHECKING ADMIN ROLE IN CONSTITUENCY SCREEN ===');
+      
+      // Use the enhanced function from App.js
+      const adminCheck = await checkIfCurrentUserIsAdmin();
+      const currentRole = await getCurrentUserRole();
+      
+      console.log('👤 Current User Role Info:', currentRole);
+      console.log('👑 Admin Check Result:', adminCheck);
+      
+      setAdminCheckResult(adminCheck);
+      setIsAdmin(adminCheck.isAdmin);
+      setUserRole(currentRole.userRole);
+      setIsLoggedIn(currentRole.isLoggedIn);
+      
+      console.log('✅ Role check completed:', {
+        isAdmin: adminCheck.isAdmin,
+        userRole: currentRole.userRole,
+        isLoggedIn: currentRole.isLoggedIn,
+        reason: adminCheck.reason
+      });
+      
+      return adminCheck.isAdmin;
+      
+    } catch (error) {
+      console.error('❌ Error checking admin role:', error);
+      setIsAdmin(false);
+      setUserRole('user');
+      setIsLoggedIn(false);
+      return false;
+    } finally {
+      setRoleCheckLoading(false);
+    }
   };
 
-  const loadProfileData = async () => {
-    try {
-      const result = await ApiService.fetchAllProfileData();
-      
-      if (result.success) {
-        setMemberData(result.data.memberCoordinates?.leader_coordinates || null);
-        setSocialMediaData(result.data.socialMedia?.social_media || null);
-        setPersonalData(result.data.personalDetails?.personal_details || null);
-        setEducationData(result.data.educationalDetails?.edu_qual || null);
-        setAddressData(result.data.addresses?.addresses || null);
-        setErrors(result.errors || {});
-        
-        console.log('Profile data loaded successfully');
-      } else {
-        console.error('Failed to load profile data:', result);
-        Alert.alert('Error', 'Failed to load profile data. Please try again.');
+  // Developer mode functions (enhanced with better integration)
+  const handleLeaderNamePress = () => {
+    // If already admin, show admin info instead of dev mode
+    if (isAdmin) {
+      Alert.alert(
+        '👑 Admin Status',
+        `You are currently logged in as an administrator.\n\n` +
+        `Reason: ${adminCheckResult?.reason || 'Owner privileges'}\n` +
+        `User Role: ${userRole}\n` +
+        `Logged In: ${isLoggedIn ? 'Yes' : 'No'}\n` +
+        `Owner Email: ${adminCheckResult?.owner_emailid || 'Not available'}`,
+        [{ text: 'OK' }]
+      );
+      return;
+    }
+    
+    setDevClickCount(prevCount => {
+      const newCount = prevCount + 1;
+      if (newCount >= 5) {
+        Alert.alert(
+          'Developer Mode',
+          'Developer mode is deprecated. Please log in as the app owner to get admin privileges.',
+          [
+            { text: 'OK' },
+            { text: 'Check Status', onPress: () => showCurrentStatus() }
+          ]
+        );
+        return 0; // Reset count
       }
+      return newCount;
+    });
+  };
+
+  // Show current user status
+  const showCurrentStatus = async () => {
+    try {
+      const currentRole = await getCurrentUserRole();
+      const adminCheck = await checkIfCurrentUserIsAdmin();
+      
+      Alert.alert(
+        '📊 Current User Status',
+        `User Role: ${currentRole.userRole}\n` +
+        `Is Admin: ${adminCheck.isAdmin ? 'Yes' : 'No'}\n` +
+        `Is Logged In: ${currentRole.isLoggedIn ? 'Yes' : 'No'}\n` +
+        `Logged In Email: ${currentRole.loggedin_email || 'None'}\n` +
+        `Owner Email: ${currentRole.owner_emailid || 'Not available'}\n` +
+        `App Bootstrapped: ${currentRole.isAppBootstrapped ? 'Yes' : 'No'}\n\n` +
+        `${adminCheck.reason}`,
+        [
+          { text: 'OK' },
+          { text: 'Refresh', onPress: () => checkAdminRole() }
+        ]
+      );
+    } catch (error) {
+      Alert.alert('Error', 'Failed to get current status: ' + error.message);
+    }
+  };
+
+  const handleDevInputSubmit = async () => {
+    Alert.alert(
+      'Developer Mode Deprecated',
+      'Please log in as the app owner to get admin privileges instead of using developer codes.',
+      [{ text: 'OK' }]
+    );
+    setShowDevInput(false);
+    setDevInput('');
+  };
+
+  const closeDevInput = () => {
+    setShowDevInput(false);
+    setDevInput('');
+  };
+
+  // Function to get member ID and role from EncryptedStorage (Enhanced)
+  const getMemberInfoFromStorage = async () => {
+    try {
+      console.log('🔍 Retrieving member info from EncryptedStorage...');
+      
+      // Get AppOwnerInfo for member ID and role
+      const appOwnerInfo = await EncryptedStorage.getItem('AppOwnerInfo');
+      if (appOwnerInfo) {
+        const parsedData = JSON.parse(appOwnerInfo);
+        console.log('📱 AppOwnerInfo found:', Object.keys(parsedData));
+        
+        // Get member identifier
+        const memberIdentifier = parsedData.mobile_no || 
+                                parsedData.regdMobileNo || 
+                                parsedData.mobile_number || 
+                                parsedData.phone ||
+                                parsedData.mobileNo ||
+                                parsedData.member_id ||
+                                parsedData.user_id;
+        
+        console.log('✅ Member ID found:', memberIdentifier);
+        
+        return {
+          memberId: memberIdentifier || '7702000725'
+        };
+      }
+      
+      // Fallback: Try to get from individual storage items
+      const storedMemberId = await EncryptedStorage.getItem('MOBILE_NUMBER') || 
+                            await EncryptedStorage.getItem('OWNER_MOBILE') ||
+                            await EncryptedStorage.getItem('MEMBER_ID') || 
+                            '7702000725';
+      
+      return {
+        memberId: storedMemberId
+      };
+      
+    } catch (error) {
+      console.error('❌ Error retrieving member info from storage:', error);
+      return {
+        memberId: '7702000725'
+      };
+    }
+  };
+
+  const initializeApp = async () => {
+    try {
+      setLoading(true);
+      
+      // Get member info from storage
+      const memberInfo = await getMemberInfoFromStorage();
+      setMemberId(memberInfo.memberId);
+      
+      // Check admin role using enhanced App.js functions
+      const adminStatus = await checkAdminRole();
+      
+      console.log('📱 Using member ID:', memberInfo.memberId);
+      console.log('🔑 Final Admin Status:', adminStatus);
+      
+      // Load initial data
+      await loadInitialData(memberInfo.memberId);
+      
+    } catch (error) {
+      console.error('❌ App initialization error:', error);
+      Alert.alert('Initialization Error', 'Failed to initialize app. Using default settings.');
+      await loadInitialData('7702000725');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Individual API calls using ApiService and ConfigService (unchanged)
+  const fetchMemberCoordinates = async (memberIdentifier) => {
+    try {
+      const baseUrl = await ConfigService.getBaseUrl();
+      const endpoint = `${baseUrl}/api/coordinates/${memberIdentifier}`;
+      const result = await ApiService.get(endpoint);
+      
+      return {
+        success: result.success,
+        data: result.success ? result.data : null,
+        error: result.success ? null : result.error || result.message
+      };
+    } catch (error) {
+      console.error('API Error (coordinates):', error);
+      return { success: false, error: error.message };
+    }
+  };
+
+  const fetchSocialMedia = async (memberIdentifier) => {
+    try {
+      const baseUrl = await ConfigService.getBaseUrl();
+      const endpoint = `${baseUrl}/api/socialmedia/${memberIdentifier}`;
+      const result = await ApiService.get(endpoint);
+      
+      return {
+        success: result.success,
+        data: result.success ? result.data : null,
+        error: result.success ? null : result.error || result.message
+      };
+    } catch (error) {
+      console.error('API Error (socialmedia):', error);
+      return { success: false, error: error.message };
+    }
+  };
+
+  const fetchPersonalDetails = async (memberIdentifier) => {
+    try {
+      const baseUrl = await ConfigService.getBaseUrl();
+      const endpoint = `${baseUrl}/api/personaldetails/${memberIdentifier}`;
+      const result = await ApiService.get(endpoint);
+      
+      return {
+        success: result.success,
+        data: result.success ? result.data : null,
+        error: result.success ? null : result.error || result.message
+      };
+    } catch (error) {
+      console.error('API Error (personaldetails):', error);
+      return { success: false, error: error.message };
+    }
+  };
+
+  const fetchEducationalDetails = async (memberIdentifier) => {
+    try {
+      const baseUrl = await ConfigService.getBaseUrl();
+      const endpoint = `${baseUrl}/api/edudata/${memberIdentifier}`;
+      const result = await ApiService.get(endpoint);
+      
+      return {
+        success: result.success,
+        data: result.success ? result.data : null,
+        error: result.success ? null : result.error || result.message
+      };
+    } catch (error) {
+      console.error('API Error (edudata):', error);
+      return { success: false, error: error.message };
+    }
+  };
+
+  const fetchPermanentAddress = async (memberIdentifier) => {
+    try {
+      const baseUrl = await ConfigService.getBaseUrl();
+      const endpoint = `${baseUrl}/api/permaddress/${memberIdentifier}`;
+      const result = await ApiService.get(endpoint);
+      
+      return {
+        success: result.success,
+        data: result.success ? result.data : null,
+        error: result.success ? null : result.error || result.message
+      };
+    } catch (error) {
+      console.error('API Error (permaddress):', error);
+      return { success: false, error: error.message };
+    }
+  };
+
+  const fetchPresentAddress = async (memberIdentifier) => {
+    try {
+      const baseUrl = await ConfigService.getBaseUrl();
+      const endpoint = `${baseUrl}/api/preaddress/${memberIdentifier}`;
+      const result = await ApiService.get(endpoint);
+      
+      return {
+        success: result.success,
+        data: result.success ? result.data : null,
+        error: result.success ? null : result.error || result.message
+      };
+    } catch (error) {
+      console.error('API Error (preaddress):', error);
+      return { success: false, error: error.message };
+    }
+  };
+
+  const fetchTimeline = async (memberIdentifier) => {
+    try {
+      const baseUrl = await ConfigService.getBaseUrl();
+      const endpoint = `${baseUrl}/api/leadertimeline/${memberIdentifier}`;
+      const result = await ApiService.get(endpoint);
+      
+      return {
+        success: result.success,
+        data: result.success ? result.data : null,
+        error: result.success ? null : result.error || result.message
+      };
+    } catch (error) {
+      console.error('API Error (leadertimeline):', error);
+      return { success: false, error: error.message };
+    }
+  };
+
+  // PUT API calls for updating data using ApiService (unchanged but with enhanced logging)
+  const updateMemberCoordinates = async (memberIdentifier, data) => {
+    try {
+      console.log('🔄 Updating member coordinates as admin...');
+      const baseUrl = await ConfigService.getBaseUrl();
+      const endpoint = `${baseUrl}/api/coordinates/${memberIdentifier}`;
+      
+      const requestBody = {
+        leader_coordinates: {
+          regd_mobile_no: memberIdentifier,
+          ...data
+        }
+      };
+      
+      const result = await ApiService.put(endpoint, requestBody);
+      console.log('✅ Member coordinates update result:', result.success);
+      return {
+        success: result.success,
+        data: result.success ? result.data : null,
+        error: result.success ? null : result.error || result.message
+      };
+    } catch (error) {
+      console.error('❌ API Error (update coordinates):', error);
+      return { success: false, error: error.message };
+    }
+  };
+
+  const updateSocialMedia = async (memberIdentifier, data) => {
+    try {
+      console.log('🔄 Updating social media as admin...');
+      const baseUrl = await ConfigService.getBaseUrl();
+      const endpoint = `${baseUrl}/api/socialmedia/${memberIdentifier}`;
+      
+      const requestBody = {
+        social_media: {
+          regd_mobile_no: memberIdentifier,
+          ...data
+        }
+      };
+      
+      const result = await ApiService.put(endpoint, requestBody);
+      console.log('✅ Social media update result:', result.success);
+      return {
+        success: result.success,
+        data: result.success ? result.data : null,
+        error: result.success ? null : result.error || result.message
+      };
+    } catch (error) {
+      console.error('❌ API Error (update social media):', error);
+      return { success: false, error: error.message };
+    }
+  };
+
+  const updatePersonalDetails = async (memberIdentifier, data) => {
+    try {
+      console.log('🔄 Updating personal details as admin...');
+      const baseUrl = await ConfigService.getBaseUrl();
+      const endpoint = `${baseUrl}/api/personaldetails/${memberIdentifier}`;
+      
+      const requestBody = {
+        personal_details: {
+          regd_mobile_no: memberIdentifier,
+          ...data
+        }
+      };
+      
+      const result = await ApiService.put(endpoint, requestBody);
+      console.log('✅ Personal details update result:', result.success);
+      return {
+        success: result.success,
+        data: result.success ? result.data : null,
+        error: result.success ? null : result.error || result.message
+      };
+    } catch (error) {
+      console.error('❌ API Error (update personal details):', error);
+      return { success: false, error: error.message };
+    }
+  };
+
+  const updateEducationalDetails = async (memberIdentifier, data) => {
+    try {
+      console.log('🔄 Updating educational details as admin...');
+      const baseUrl = await ConfigService.getBaseUrl();
+      const endpoint = `${baseUrl}/api/edudata/${memberIdentifier}`;
+      
+      const requestBody = {
+        leader_edu_data: {
+          regd_mobile_no: memberIdentifier,
+          edu_qual: Array.isArray(data.edu_qual) ? data.edu_qual : [data]
+        }
+      };
+      
+      const result = await ApiService.put(endpoint, requestBody);
+      console.log('✅ Educational details update result:', result.success);
+      return {
+        success: result.success,
+        data: result.success ? result.data : null,
+        error: result.success ? null : result.error || result.message
+      };
+    } catch (error) {
+      console.error('❌ API Error (update education):', error);
+      return { success: false, error: error.message };
+    }
+  };
+
+  const updatePermanentAddress = async (memberIdentifier, data) => {
+    try {
+      console.log('🔄 Updating permanent address as admin...');
+      const baseUrl = await ConfigService.getBaseUrl();
+      const endpoint = `${baseUrl}/api/permaddress/${memberIdentifier}`;
+      
+      const requestBody = {
+        perm_address: {
+          regd_mobile_no: memberIdentifier,
+          ...data
+        }
+      };
+      
+      const result = await ApiService.put(endpoint, requestBody);
+      console.log('✅ Permanent address update result:', result.success);
+      return {
+        success: result.success,
+        data: result.success ? result.data : null,
+        error: result.success ? null : result.error || result.message
+      };
+    } catch (error) {
+      console.error('❌ API Error (update permanent address):', error);
+      return { success: false, error: error.message };
+    }
+  };
+
+  const updatePresentAddress = async (memberIdentifier, data) => {
+    try {
+      console.log('🔄 Updating present address as admin...');
+      const baseUrl = await ConfigService.getBaseUrl();
+      const endpoint = `${baseUrl}/api/preaddress/${memberIdentifier}`;
+      
+      const requestBody = {
+        present_address: {
+          regd_mobile_no: memberIdentifier,
+          ...data
+        }
+      };
+      
+      const result = await ApiService.put(endpoint, requestBody);
+      console.log('✅ Present address update result:', result.success);
+      return {
+        success: result.success,
+        data: result.success ? result.data : null,
+        error: result.success ? null : result.error || result.message
+      };
+    } catch (error) {
+      console.error('❌ API Error (update present address):', error);
+      return { success: false, error: error.message };
+    }
+  };
+
+  const updateTimeline = async (memberIdentifier, data) => {
+    try {
+      console.log('🔄 Updating timeline as admin...');
+      const baseUrl = await ConfigService.getBaseUrl();
+      const endpoint = `${baseUrl}/api/leadertimeline/${memberIdentifier}`;
+      
+      const requestBody = {
+        timeline: Array.isArray(data) ? data : [data]
+      };
+      
+      const result = await ApiService.put(endpoint, requestBody);
+      console.log('✅ Timeline update result:', result.success);
+      return {
+        success: result.success,
+        data: result.success ? result.data : null,
+        error: result.success ? null : result.error || result.message
+      };
+    } catch (error) {
+      console.error('❌ API Error (update timeline):', error);
+      return { success: false, error: error.message };
+    }
+  };
+
+  const loadInitialData = async (memberIdentifier) => {
+    if (!memberIdentifier) {
+      console.error('❌ No member identifier provided');
+      return;
+    }
+
+    await loadProfileData(memberIdentifier);
+    await loadTimelineData(memberIdentifier);
+  };
+
+  const loadProfileData = async (memberIdentifier) => {
+    try {
+      console.log('📡 Loading profile data for member:', memberIdentifier);
+
+      // Fetch all profile data concurrently
+      const [
+        memberCoordinates,
+        socialMedia,
+        personalDetails,
+        educationalDetails,
+        permanentAddress,
+        presentAddress
+      ] = await Promise.all([
+        fetchMemberCoordinates(memberIdentifier),
+        fetchSocialMedia(memberIdentifier),
+        fetchPersonalDetails(memberIdentifier),
+        fetchEducationalDetails(memberIdentifier),
+        fetchPermanentAddress(memberIdentifier),
+        fetchPresentAddress(memberIdentifier)
+      ]);
+
+      // Set member data
+      if (memberCoordinates.success && memberCoordinates.data.leader_coordinates) {
+        setMemberData(memberCoordinates.data.leader_coordinates);
+      } else {
+        console.error('Failed to load member coordinates:', memberCoordinates.error);
+      }
+
+      // Set social media data
+      if (socialMedia.success && socialMedia.data.social_media) {
+        setSocialMediaData(socialMedia.data.social_media);
+      } else {
+        console.error('Failed to load social media:', socialMedia.error);
+      }
+
+      // Set personal data
+      if (personalDetails.success && personalDetails.data.personal_details) {
+        setPersonalData(personalDetails.data.personal_details);
+      } else {
+        console.error('Failed to load personal details:', personalDetails.error);
+      }
+
+      // Set education data
+      if (educationalDetails.success && educationalDetails.data.leader_edu_data) {
+        setEducationData(educationalDetails.data.leader_edu_data.edu_qual);
+      } else {
+        console.error('Failed to load educational details:', educationalDetails.error);
+      }
+
+      // Combine address data
+      const addresses = {
+        permanent: permanentAddress.success ? permanentAddress.data.perm_address : null,
+        present: presentAddress.success ? presentAddress.data.present_address : null
+      };
+      setAddressData(addresses);
+
+      // Set errors for debugging
+      const apiErrors = {
+        memberCoordinates: !memberCoordinates.success ? memberCoordinates.error : null,
+        socialMedia: !socialMedia.success ? socialMedia.error : null,
+        personalDetails: !personalDetails.success ? personalDetails.error : null,
+        educationalDetails: !educationalDetails.success ? educationalDetails.error : null,
+        permanentAddress: !permanentAddress.success ? permanentAddress.error : null,
+        presentAddress: !presentAddress.success ? presentAddress.error : null,
+      };
+      setErrors(apiErrors);
+
+      console.log('✅ Profile data loaded successfully');
     } catch (error) {
       console.error('Profile data loading error:', error);
       Alert.alert('Network Error', 'Please check your internet connection and try again.');
     }
   };
 
-  const loadTimelineData = async () => {
+  const loadTimelineData = async (memberIdentifier) => {
     try {
-      const result = await ApiService.fetchTimeline();
+      console.log('📡 Loading timeline data for member:', memberIdentifier);
+      const result = await fetchTimeline(memberIdentifier);
       
-      if (result.success) {
-        setTimelineData(result.data.timeline || []);
-        console.log('Timeline data loaded successfully:', result.data.timeline);
+      if (result.success && result.data.timeline) {
+        setTimelineData(result.data.timeline);
+        console.log('✅ Timeline data loaded successfully:', result.data.timeline);
       } else {
-        console.error('Failed to load timeline data:', result);
-        Alert.alert('Error', 'Failed to load timeline data. Please try again.');
+        console.error('Failed to load timeline data:', result.error);
+        setTimelineData([]);
       }
     } catch (error) {
       console.error('Timeline data loading error:', error);
-      Alert.alert('Network Error', 'Please check your internet connection and try again.');
+      setTimelineData([]);
     }
   };
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await loadInitialData();
+    // Refresh admin status first
+    await checkAdminRole();
+    if (memberId) {
+      await loadInitialData(memberId);
+    } else {
+      await initializeApp();
+    }
     setRefreshing(false);
+  };
+
+  // Enhanced edit functionality with better admin checking
+  const openEditModal = (type, data) => {
+    // Real-time admin check
+    if (!isAdmin) {
+      Alert.alert(
+        '🔒 Access Denied', 
+        `You need admin privileges to edit this data.\n\n` +
+        `Current Status:\n` +
+        `• Role: ${userRole}\n` +
+        `• Logged In: ${isLoggedIn ? 'Yes' : 'No'}\n` +
+        `• Admin: ${isAdmin ? 'Yes' : 'No'}\n\n` +
+        `To get admin access, please log in as the app owner.`,
+        [
+          { text: 'OK' },
+          { text: 'Check Status', onPress: () => showCurrentStatus() }
+        ]
+      );
+      return;
+    }
+
+    console.log(`🔓 Opening edit modal for: ${type} (Admin verified)`);
+    setEditType(type);
+    setEditData({ ...data });
+    setEditModalVisible(true);
+  };
+
+  // Enhanced renderEditForm with comprehensive field filtering
+  const renderEditForm = () => {
+    const renderInput = (key, value, placeholder) => (
+      <View key={key} style={styles.editInputContainer}>
+        <Text style={styles.editInputLabel}>
+          {key.replace(/_/g, ' ').toUpperCase()}
+        </Text>
+        <TextInput
+          style={styles.editInput}
+          value={value || ''}
+          onChangeText={(text) => setEditData({...editData, [key]: text})}
+          placeholder={placeholder}
+          multiline={key.includes('address') || key.includes('details') || key.includes('desc')}
+          numberOfLines={key.includes('address') || key.includes('details') || key.includes('desc') ? 3 : 1}
+        />
+      </View>
+    );
+
+    if (!editData) return null;
+
+    // Comprehensive field filtering - exclude system fields and non-editable fields
+    const excludedFields = [
+      'id',
+      '_id',
+      'created_at',
+      'updated_at',
+      'createdAt',
+      'updatedAt',
+      '__v',
+      'version',
+      'regd_mobile_no', // DON'T ALLOW EDITING REGISTERED MOBILE NUMBER
+      'regdMobileNo',
+      'regd_mobile_number',
+      'registered_mobile_no',
+      'registered_mobile_number',
+      'reg_mobile_no',
+      'reg_mobile_number',
+      'member_id', // Usually auto-populated
+      'user_id', // Usually auto-populated
+      'created_by',
+      'updated_by',
+      'modified_at',
+      'modified_by',
+      'created_date',
+      'updated_date',
+      'timestamp',
+      'last_modified'
+    ];
+
+    // Get filterable fields
+    const editableFields = Object.keys(editData).filter(key => {
+      // Convert to lowercase for comparison
+      const lowerKey = key.toLowerCase();
+      
+      // Check if field should be excluded
+      const shouldExclude = excludedFields.some(excludedField => 
+        lowerKey === excludedField.toLowerCase() || 
+        lowerKey.includes(excludedField.toLowerCase())
+      );
+      
+      return !shouldExclude;
+    });
+
+    return (
+      <View style={styles.editFormContainer}>
+        {editableFields.length > 0 ? (
+          editableFields.map((key) => {
+            return renderInput(
+              key,
+              editData[key],
+              `Enter ${key.replace(/_/g, ' ')}`
+            );
+          })
+        ) : (
+          <View style={styles.noEditableFieldsContainer}>
+            <Text style={styles.noEditableFieldsText}>
+              No editable fields available for this data type.
+            </Text>
+            <Text style={styles.noEditableFieldsSubText}>
+              All fields are system-generated or non-editable.
+            </Text>
+          </View>
+        )}
+        
+        {/* Debug info in dev mode */}
+        {__DEV__ && (
+          <View style={styles.debugEditInfo}>
+            <Text style={styles.debugEditTitle}>Debug - Available Fields:</Text>
+            <Text style={styles.debugEditText}>
+              Total Fields: {Object.keys(editData).length}{'\n'}
+              Editable Fields: {editableFields.length}{'\n'}
+              Excluded: {Object.keys(editData).length - editableFields.length}{'\n'}
+              Type: {editType}
+            </Text>
+            {editableFields.length > 0 && (
+              <Text style={styles.debugEditFields}>
+                Editable: {editableFields.join(', ')}
+              </Text>
+            )}
+          </View>
+        )}
+      </View>
+    );
+  };
+
+  // Enhanced save function with field filtering
+  const handleSaveEdit = async () => {
+    if (!memberId || !editType) return;
+
+    // Double-check admin status before saving
+    if (!isAdmin) {
+      Alert.alert('Access Denied', 'Admin privileges required to save changes.');
+      return;
+    }
+
+    setEditLoading(true);
+    
+    try {
+      console.log(`💾 Saving edit as admin: ${editType}`);
+      
+      // Filter out system fields before sending to API
+      const excludedFields = [
+        'id', '_id', 'created_at', 'updated_at', 'createdAt', 'updatedAt', 
+        '__v', 'version', 'regd_mobile_no', 'regdMobileNo', 'regd_mobile_number',
+        'registered_mobile_no', 'registered_mobile_number', 'reg_mobile_no', 
+        'reg_mobile_number', 'created_by', 'updated_by', 'modified_at', 
+        'modified_by', 'created_date', 'updated_date', 'timestamp', 'last_modified'
+      ];
+
+      const cleanedData = Object.keys(editData)
+        .filter(key => {
+          const lowerKey = key.toLowerCase();
+          return !excludedFields.some(excludedField => 
+            lowerKey === excludedField.toLowerCase() || 
+            lowerKey.includes(excludedField.toLowerCase())
+          );
+        })
+        .reduce((obj, key) => {
+          obj[key] = editData[key];
+          return obj;
+        }, {});
+
+      console.log('🧹 Cleaned data for API:', cleanedData);
+      
+      let result;
+      
+      switch (editType) {
+        case 'coordinates':
+          result = await updateMemberCoordinates(memberId, cleanedData);
+          break;
+        case 'social':
+          result = await updateSocialMedia(memberId, cleanedData);
+          break;
+        case 'personal':
+          result = await updatePersonalDetails(memberId, cleanedData);
+          break;
+        case 'education':
+          result = await updateEducationalDetails(memberId, cleanedData);
+          break;
+        case 'permanent_address':
+          result = await updatePermanentAddress(memberId, cleanedData);
+          break;
+        case 'present_address':
+          result = await updatePresentAddress(memberId, cleanedData);
+          break;
+        case 'timeline':
+          result = await updateTimeline(memberId, cleanedData);
+          break;
+        default:
+          throw new Error('Unknown edit type');
+      }
+
+      if (result.success) {
+        Alert.alert('✅ Success', 'Data updated successfully!');
+        setEditModalVisible(false);
+        // Reload the specific data section
+        await loadInitialData(memberId);
+      } else {
+        throw new Error(result.error);
+      }
+    } catch (error) {
+      console.error('❌ Error updating data:', error);
+      Alert.alert('Update Failed', error.message || 'Failed to update data. Please try again.');
+    } finally {
+      setEditLoading(false);
+    }
+  };
+
+  // Enhanced render edit button with real-time admin check
+  const renderEditButton = (type, data) => {
+    if (!isAdmin) return null;
+
+    return (
+      <TouchableOpacity
+        style={[styles.editButton, isAdmin && styles.editButtonActive]}
+        onPress={() => openEditModal(type, data)}
+      >
+        <Text style={styles.editButtonText}>✏️</Text>
+      </TouchableOpacity>
+    );
+  };
+
+  const renderEditModal = () => {
+    return (
+      <Modal
+        visible={editModalVisible}
+        animationType="slide"
+        presentationStyle="formSheet"
+        onRequestClose={() => setEditModalVisible(false)}
+      >
+        <SafeAreaView style={styles.editModalContainer}>
+          <KeyboardAvoidingView 
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            style={styles.editModalContent}
+          >
+            {/* Modal Header with Admin indicator */}
+            <View style={styles.editModalHeader}>
+              <TouchableOpacity
+                onPress={() => setEditModalVisible(false)}
+                style={styles.editModalCloseButton}
+              >
+                <Text style={styles.editModalCloseText}>✕</Text>
+              </TouchableOpacity>
+              <View style={styles.editModalTitleContainer}>
+                <Text style={styles.editModalTitle}>
+                  Edit {editType.replace('_', ' ').toUpperCase()}
+                </Text>
+                <Text style={styles.editModalSubtitle}>👑 Admin Mode</Text>
+              </View>
+              <TouchableOpacity
+                onPress={handleSaveEdit}
+                style={styles.editModalSaveButton}
+                disabled={editLoading}
+              >
+                {editLoading ? (
+                  <ActivityIndicator size="small" color="#ffffff" />
+                ) : (
+                  <Text style={styles.editModalSaveText}>Save</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+
+            {/* Modal Body */}
+            <ScrollView style={styles.editModalBody}>
+              {renderEditForm()}
+            </ScrollView>
+          </KeyboardAvoidingView>
+        </SafeAreaView>
+      </Modal>
+    );
+  };
+
+  // Developer Input Modal (deprecated but kept for compatibility)
+  const renderDeveloperInputModal = () => {
+    return (
+      <Modal
+        visible={showDevInput}
+        animationType="fade"
+        transparent={true}
+        onRequestClose={closeDevInput}
+      >
+        <View style={styles.devModalOverlay}>
+          <View style={styles.devModalContent}>
+            <View style={styles.devModalHeader}>
+              <Text style={styles.devModalTitle}>Developer Mode Deprecated</Text>
+              <TouchableOpacity onPress={closeDevInput} style={styles.devModalCloseButton}>
+                <Text style={styles.devModalCloseText}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.devModalBody}>
+              <Text style={styles.devModalDescription}>
+                Developer mode has been deprecated. Please log in as the app owner to get admin privileges.
+                {'\n\n'}Current Status:{'\n'}
+                • Role: {userRole}{'\n'}
+                • Admin: {isAdmin ? 'Yes' : 'No'}{'\n'}
+                • Logged In: {isLoggedIn ? 'Yes' : 'No'}
+              </Text>
+            </View>
+
+            <View style={styles.devModalFooter}>
+              <TouchableOpacity
+                style={[styles.devModalButton, styles.devCancelButton]}
+                onPress={closeDevInput}
+              >
+                <Text style={styles.devCancelButtonText}>Close</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.devModalButton, styles.devSaveButton]}
+                onPress={showCurrentStatus}
+              >
+                <Text style={styles.devSaveButtonText}>Check Status</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+    );
   };
 
   const openLink = (url) => {
@@ -111,6 +1008,9 @@ const KnowYourLeaderScreen = () => {
         <View style={styles.loadingCard}>
           <ActivityIndicator size="large" color="#e16e2b" />
           <Text style={styles.loadingText}>Loading leader information...</Text>
+          {roleCheckLoading && (
+            <Text style={styles.loadingSubText}>Checking admin privileges...</Text>
+          )}
         </View>
       </View>
     );
@@ -121,6 +1021,22 @@ const KnowYourLeaderScreen = () => {
     
     return (
       <View style={styles.modernHeader}>
+        {/* Enhanced Admin Badge */}
+        {isAdmin && (
+          <View style={styles.adminBadge}>
+            <Text style={styles.adminBadgeText}>👑 ADMIN</Text>
+            <Text style={styles.adminBadgeSubText}>Edit Enabled</Text>
+          </View>
+        )}
+
+        {/* Role Check Loading Indicator */}
+        {roleCheckLoading && (
+          <View style={styles.roleCheckIndicator}>
+            <ActivityIndicator size="small" color="#FFD700" />
+            <Text style={styles.roleCheckText}>Checking Role...</Text>
+          </View>
+        )}
+        
         {/* Background Pattern */}
         <View style={styles.headerPattern}>
           <View style={[styles.patternCircle, { top: -20, right: -30 }]} />
@@ -140,15 +1056,23 @@ const KnowYourLeaderScreen = () => {
             </View>
             
             <View style={styles.basicInfo}>
-              <Text style={styles.leaderName}>
-                {memberData ? 
-                  `${memberData.title || ''} ${memberData.member_name || ''}`.trim() : 
-                  'Loading...'
-                }
-              </Text>
+              <View style={styles.nameRow}>
+                <TouchableOpacity
+                  style={styles.nameContainer}
+                  onPress={handleLeaderNamePress}
+                  activeOpacity={0.8}
+                >
+                  <Text style={styles.leaderName}>
+                    {memberData ? 
+                      `${memberData.title || ''} ${memberData.member_name || ''}`.trim() : 
+                      'Loading...'
+                    }
+                  </Text>
+                </TouchableOpacity>
+                {renderEditButton('coordinates', memberData)}
+              </View>
               <Text style={styles.designation}>Member of Parliament</Text>
               <View style={styles.locationRow}>
-                
                 <Text style={styles.locationText}>
                   {memberData ? 
                     `${memberData.constituency || ''}, ${memberData.state || ''}`.replace(', ,', ',').trim() : 
@@ -156,12 +1080,18 @@ const KnowYourLeaderScreen = () => {
                   }
                 </Text>
               </View>
+              
+              {/* Enhanced User Status Display */}
+              <View style={styles.userStatusRow}>
+                <Text style={styles.userStatusText}>
+                  Role: {userRole} {isAdmin && '👑'} | {isLoggedIn ? 'Logged In' : 'Guest'}
+                </Text>
+              </View>
             </View>
           </View>
           
           {memberData?.party && (
             <View style={styles.partyContainer}>
-              <Text style={styles.partyLabel}>Party</Text>
               <Text style={styles.partyName}>{memberData.party}</Text>
             </View>
           )}
@@ -204,6 +1134,14 @@ const KnowYourLeaderScreen = () => {
               <Text style={styles.quickActionIcon}>🏛️</Text>
             </TouchableOpacity>
           )}
+
+          {/* Admin Status Quick Action */}
+          <TouchableOpacity 
+            style={[styles.quickAction, isAdmin && styles.quickActionAdmin]}
+            onPress={showCurrentStatus}
+          >
+            <Text style={styles.quickActionIcon}>{isAdmin ? '👑' : '👤'}</Text>
+          </TouchableOpacity>
         </View>
       </View>
     );
@@ -242,17 +1180,29 @@ const KnowYourLeaderScreen = () => {
           </Text>
         </TouchableOpacity>
       </View>
+      
+      {/* Admin Status Indicator */}
+      {isAdmin && (
+        <View style={styles.adminIndicator}>
+          <Text style={styles.adminIndicatorText}>
+            👑 Admin Mode - Edit capabilities enabled
+          </Text>
+        </View>
+      )}
     </View>
   );
 
-  const renderInfoCard = (title, icon, children, backgroundColor = '#ffffff') => (
+  const renderInfoCard = (title, icon, children, backgroundColor = '#ffffff', editType = null, editData = null) => (
     <View style={[styles.infoCard, { backgroundColor }]}>
       <View style={styles.cardHeader}>
         <View style={styles.cardTitleContainer}>
           <Text style={styles.cardIcon}>{icon}</Text>
           <Text style={styles.cardTitle}>{title}</Text>
         </View>
-        <View style={styles.cardAccent} />
+        <View style={styles.cardHeaderRight}>
+          <View style={styles.cardAccent} />
+          {editType && editData && renderEditButton(editType, editData)}
+        </View>
       </View>
       <View style={styles.cardBody}>
         {children}
@@ -295,7 +1245,10 @@ const KnowYourLeaderScreen = () => {
             <Text style={styles.infoValue}>{personalData.profession}</Text>
           </View>
         )}
-      </View>
+      </View>,
+      '#ffffff',
+      'personal',
+      personalData
     );
   };
 
@@ -322,7 +1275,10 @@ const KnowYourLeaderScreen = () => {
             </View>
           </View>
         ))}
-      </View>
+      </View>,
+      '#ffffff',
+      'education',
+      { edu_qual: educationData }
     );
   };
 
@@ -336,6 +1292,7 @@ const KnowYourLeaderScreen = () => {
           <View style={styles.contactSection}>
             <View style={styles.contactSectionHeader}>
               <Text style={styles.contactSectionTitle}>🏠 Permanent Address</Text>
+              {renderEditButton('permanent_address', addressData.permanent)}
             </View>
             <Text style={styles.addressLine}>
               {[
@@ -378,6 +1335,7 @@ const KnowYourLeaderScreen = () => {
           <View style={styles.contactSection}>
             <View style={styles.contactSectionHeader}>
               <Text style={styles.contactSectionTitle}>🏢 Present Address</Text>
+              {renderEditButton('present_address', addressData.present)}
             </View>
             <Text style={styles.addressLine}>
               {[
@@ -452,7 +1410,10 @@ const KnowYourLeaderScreen = () => {
             <Text style={styles.socialArrow}>→</Text>
           </TouchableOpacity>
         ))}
-      </View>
+      </View>,
+      '#ffffff',
+      'social',
+      socialMediaData
     );
   };
 
@@ -464,6 +1425,11 @@ const KnowYourLeaderScreen = () => {
         <View style={styles.emptyState}>
           <Text style={styles.emptyStateIcon}>📋</Text>
           <Text style={styles.emptyStateText}>No timeline data available</Text>
+          {isAdmin && (
+            <Text style={styles.emptyStateSubText}>
+              As an admin, you can add timeline entries via API
+            </Text>
+          )}
         </View>
       );
     }
@@ -486,17 +1452,28 @@ const KnowYourLeaderScreen = () => {
             
             <View style={styles.timelineItemRight}>
               <View style={styles.timelineContentCard}>
-                <Text style={styles.timelineTitle}>
-                  {item.title_position?.title || 'Position'}
-                </Text>
+                <View style={styles.timelineHeader}>
+                  <Text style={styles.timelineTitle}>
+                    {item.title || 'Position'}
+                  </Text>
+                  {renderEditButton('timeline', item)}
+                </View>
                 <Text style={styles.timelineDetails}>
-                  {item.title_position?.details || 'No details available'}
+                  {item.title_details || 'No details available'}
                 </Text>
+                {item.additional_info && (
+                  <Text style={styles.timelineAdditionalInfo}>
+                    {item.additional_info}
+                  </Text>
+                )}
               </View>
             </View>
           </View>
         ))}
-      </View>
+      </View>,
+      '#ffffff',
+      'timeline',
+      timelineData
     );
   };
 
@@ -520,7 +1497,11 @@ const KnowYourLeaderScreen = () => {
       style={styles.container}
       showsVerticalScrollIndicator={false}
       refreshControl={
-        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+        <RefreshControl 
+          refreshing={refreshing} 
+          onRefresh={onRefresh}
+          title={isAdmin ? "Refreshing (Admin Mode)" : "Refreshing..."}
+        />
       }
     >
       {renderModernHeader()}
@@ -528,9 +1509,29 @@ const KnowYourLeaderScreen = () => {
       
       <View style={styles.contentArea}>
         {renderContent()}
+        
+        {/* Debug Info for Development */}
+        {__DEV__ && (
+          <View style={styles.debugContainer}>
+            <Text style={styles.debugTitle}>🔧 Debug Info (Dev Mode)</Text>
+            <Text style={styles.debugText}>
+              Member ID: {memberId}{'\n'}
+              User Role: {userRole}{'\n'}
+              Is Admin: {isAdmin ? 'Yes' : 'No'}{'\n'}
+              Is Logged In: {isLoggedIn ? 'Yes' : 'No'}{'\n'}
+              Reason: {adminCheckResult?.reason || 'Not checked'}
+            </Text>
+          </View>
+        )}
       </View>
       
       <View style={styles.bottomSpacing} />
+      
+      {/* Edit Modal */}
+      {renderEditModal()}
+
+      {/* Developer Input Modal */}
+      {renderDeveloperInputModal()}
     </ScrollView>
   );
 };
@@ -568,6 +1569,13 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
 
+  loadingSubText: {
+    marginTop: 8,
+    fontSize: 14,
+    color: '#888',
+    fontStyle: 'italic',
+  },
+
   // Modern Header
   modernHeader: {
     backgroundColor: '#e16e2b',
@@ -576,6 +1584,53 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     position: 'relative',
     overflow: 'hidden',
+  },
+
+  // Enhanced Admin Badge
+  adminBadge: {
+    position: 'absolute',
+    top: 55,
+    right: 20,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 15,
+    zIndex: 2,
+    alignItems: 'center',
+  },
+  
+  adminBadgeText: {
+    color: '#ffffff',
+    fontSize: 12,
+    fontWeight: 'bold',
+  },
+
+  adminBadgeSubText: {
+    color: '#ffffff',
+    fontSize: 10,
+    opacity: 0.8,
+    marginTop: 2,
+  },
+
+  // Role Check Indicator
+  roleCheckIndicator: {
+    position: 'absolute',
+    top: 55,
+    left: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 15,
+    zIndex: 2,
+  },
+
+  roleCheckText: {
+    color: '#ffffff',
+    fontSize: 11,
+    marginLeft: 6,
+    fontWeight: '500',
   },
   
   headerPattern: {
@@ -633,6 +1688,16 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingTop: 5,
   },
+
+  nameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+
+  nameContainer: {
+    flex: 1,
+  },
   
   leaderName: {
     fontSize: 22,
@@ -651,11 +1716,7 @@ const styles = StyleSheet.create({
   locationRow: {
     flexDirection: 'row',
     alignItems: 'center',
-  },
-  
-  locationIcon: {
-    fontSize: 14,
-    marginRight: 5,
+    marginBottom: 5,
   },
   
   locationText: {
@@ -663,18 +1724,24 @@ const styles = StyleSheet.create({
     color: 'rgba(255,255,255,0.9)',
     flex: 1,
   },
+
+  // Enhanced User Status Row
+  userStatusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+
+  userStatusText: {
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.7)',
+    fontWeight: '500',
+  },
   
   partyContainer: {
     backgroundColor: 'rgba(255,255,255,0.15)',
     padding: 12,
     borderRadius: 10,
     marginBottom: 15,
-  },
-  
-  partyLabel: {
-    fontSize: 12,
-    color: 'rgba(255,255,255,0.8)',
-    marginBottom: 2,
   },
   
   partyName: {
@@ -697,12 +1764,123 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
+
+  quickActionAdmin: {
+    backgroundColor: 'rgba(255,215,0,0.3)',
+  },
   
   quickActionIcon: {
     fontSize: 20,
   },
 
-  // Segmented Control
+  // Enhanced Edit Button
+  editButton: {
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginLeft: 10,
+  },
+
+  editButtonActive: {
+    backgroundColor: 'rgba(255,215,0,0.3)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,215,0,0.5)',
+  },
+  
+  editButtonText: {
+    fontSize: 16,
+  },
+
+  // Developer Modal Styles (updated)
+  devModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  devModalContent: {
+    backgroundColor: '#fff',
+    borderRadius: 15,
+    width: '85%',
+    elevation: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 5 },
+    shadowOpacity: 0.3,
+    shadowRadius: 10,
+  },
+  devModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  devModalTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#2c3e50',
+    flex: 1,
+  },
+  devModalCloseButton: {
+    backgroundColor: '#e74c3c',
+    borderRadius: 15,
+    width: 30,
+    height: 30,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  devModalCloseText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  devModalBody: {
+    padding: 20,
+  },
+  devModalDescription: {
+    fontSize: 14,
+    color: '#7f8c8d',
+    lineHeight: 20,
+    textAlign: 'left',
+  },
+  devModalFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    padding: 20,
+    borderTopWidth: 1,
+    borderTopColor: '#f0f0f0',
+    gap: 10,
+  },
+  devModalButton: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 45,
+  },
+  devCancelButton: {
+    backgroundColor: '#95a5a6',
+  },
+  devCancelButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  devSaveButton: {
+    backgroundColor: '#27ae60',
+  },
+  devSaveButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+
+  // Segmented Control with Admin Indicator
   segmentedContainer: {
     paddingHorizontal: 20,
     paddingVertical: 15,
@@ -741,13 +1919,29 @@ const styles = StyleSheet.create({
     color: '#ffffff',
   },
 
+  adminIndicator: {
+    marginTop: 10,
+    backgroundColor: 'rgba(255,215,0,0.1)',
+    padding: 8,
+    borderRadius: 12,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,215,0,0.3)',
+  },
+
+  adminIndicatorText: {
+    fontSize: 12,
+    color: '#FF8C00',
+    fontWeight: '600',
+  },
+
   // Content Area
   contentArea: {
     paddingHorizontal: 20,
     paddingBottom: 10,
   },
 
-  // Info Cards
+  // Info Cards (unchanged styles continue...)
   infoCard: {
     backgroundColor: '#ffffff',
     borderRadius: 16,
@@ -784,6 +1978,11 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: 'bold',
     color: '#2c3e50',
+  },
+
+  cardHeaderRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   
   cardAccent: {
@@ -892,6 +2091,9 @@ const styles = StyleSheet.create({
   },
   
   contactSectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     marginBottom: 10,
   },
   
@@ -969,7 +2171,7 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
 
-  // Timeline - Fixed Styles
+  // Timeline
   timelineContainer: {
     paddingVertical: 10,
   },
@@ -1036,13 +2238,20 @@ const styles = StyleSheet.create({
     borderLeftWidth: 4,
     borderLeftColor: '#e16e2b',
   },
+
+  timelineHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 6,
+  },
   
   timelineTitle: {
     fontSize: 16,
     fontWeight: 'bold',
     color: '#2c3e50',
-    marginBottom: 6,
     lineHeight: 22,
+    flex: 1,
   },
   
   timelineDetails: {
@@ -1051,7 +2260,15 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
 
-  // Empty State
+  timelineAdditionalInfo: {
+    fontSize: 12,
+    color: '#6c757d',
+    marginTop: 4,
+    fontStyle: 'italic',
+    lineHeight: 18,
+  },
+
+  // Enhanced Empty State
   emptyState: {
     alignItems: 'center',
     paddingVertical: 40,
@@ -1068,6 +2285,150 @@ const styles = StyleSheet.create({
     color: '#7f8c8d',
     fontStyle: 'italic',
     textAlign: 'center',
+    marginBottom: 8,
+  },
+
+  emptyStateSubText: {
+    fontSize: 12,
+    color: '#95a5a6',
+    textAlign: 'center',
+    fontStyle: 'italic',
+  },
+
+  // Enhanced Edit Modal Styles
+  editModalContainer: {
+    flex: 1,
+    backgroundColor: '#f0f2f5',
+  },
+
+  editModalContent: {
+    flex: 1,
+  },
+
+  editModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingVertical: 15,
+    backgroundColor: '#ffffff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#e9ecef',
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 3,
+  },
+
+  editModalCloseButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#f8f9fa',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+
+  editModalCloseText: {
+    fontSize: 18,
+    color: '#6c757d',
+    fontWeight: 'bold',
+  },
+
+  editModalTitleContainer: {
+    alignItems: 'center',
+  },
+
+  editModalTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#2c3e50',
+  },
+
+  editModalSubtitle: {
+    fontSize: 12,
+    color: '#FFD700',
+    fontWeight: '600',
+    marginTop: 2,
+  },
+
+  editModalSaveButton: {
+    backgroundColor: '#e16e2b',
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 20,
+    minWidth: 80,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+
+  editModalSaveText: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+
+  editModalBody: {
+    flex: 1,
+    padding: 20,
+  },
+
+  editFormContainer: {
+    gap: 20,
+  },
+
+  editInputContainer: {
+    backgroundColor: '#ffffff',
+    borderRadius: 12,
+    padding: 16,
+    elevation: 1,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+  },
+
+  editInputLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#2c3e50',
+    marginBottom: 8,
+  },
+
+  editInput: {
+    borderWidth: 1,
+    borderColor: '#e9ecef',
+    borderRadius: 8,
+    padding: 12,
+    fontSize: 16,
+    color: '#495057',
+    backgroundColor: '#f8f9fa',
+    textAlignVertical: 'top',
+  },
+
+  // Debug Container
+  debugContainer: {
+    backgroundColor: '#f8f9fa',
+    borderRadius: 12,
+    padding: 16,
+    marginTop: 20,
+    borderWidth: 1,
+    borderColor: '#e9ecef',
+  },
+
+  debugTitle: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: '#666',
+    marginBottom: 8,
+  },
+
+  debugText: {
+    fontSize: 12,
+    color: '#666',
+    lineHeight: 18,
+    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
   },
 
   // Bottom Spacing

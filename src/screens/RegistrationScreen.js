@@ -17,55 +17,15 @@ import Icon from 'react-native-vector-icons/MaterialIcons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 // Add these imports for image picker functionality
 import { launchImageLibrary, launchCamera } from 'react-native-image-picker';
-
-// API Configuration
-const API_BASE_URL = 'http://192.168.1.100:5000'; // Update with your server IP
-
-const apiCall = async (endpoint, method = 'POST', data = null) => {
-  try {
-    const config = {
-      method,
-      headers: {
-        'Content-Type': 'application/json',
-      },
-    };
-
-    if (data) {
-      config.body = JSON.stringify(data);
-    }
-
-    const response = await fetch(`${API_BASE_URL}${endpoint}`, config);
-
-    // ✅ Check content-type before parsing
-    const contentType = response.headers.get('content-type');
-
-    if (!response.ok) {
-      let errorMessage = `HTTP error! status: ${response.status}`;
-      if (contentType && contentType.includes('application/json')) {
-        const errorData = await response.json();
-        errorMessage = errorData.message || errorMessage;
-      } else {
-        const text = await response.text();
-        console.error('Non-JSON error response:', text);
-      }
-      throw new Error(errorMessage);
-    }
-
-    // ✅ Only parse if JSON
-    if (contentType && contentType.includes('application/json')) {
-      return await response.json();
-    } else {
-      throw new Error('Expected JSON but received non-JSON response.');
-    }
-
-  } catch (error) {
-    console.error(`API Error (${endpoint}):`, error.message);
-    throw error;
-  }
-};
+import AuthService from '../utils/AuthService';
+import ConfigService from '../services/ConfigService';
+import ApiService from '../services/ApiService';
 
 const RegistrationScreen = ({ navigation, route }) => {
   const [isEditMode, setIsEditMode] = useState(false);
+  const [originalData, setOriginalData] = useState({}); // Store original data for comparison
+  const [isProfileImageChanged, setIsProfileImageChanged] = useState(false); // Track if profile image changed
+  const [apiEndpoints, setApiEndpoints] = useState(null);
   const [formData, setFormData] = useState({
     profile_image: null,
     mobile: '',
@@ -97,6 +57,22 @@ const RegistrationScreen = ({ navigation, route }) => {
 
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+
+  // Initialize API endpoints
+  useEffect(() => {
+    const initializeEndpoints = async () => {
+      try {
+        const endpoints = await ConfigService.getApiEndpoints();
+        setApiEndpoints(endpoints);
+        console.log('✅ API endpoints initialized');
+      } catch (error) {
+        console.error('❌ Error initializing API endpoints:', error);
+        Alert.alert('Configuration Error', 'Failed to load API configuration');
+      }
+    };
+
+    initializeEndpoints();
+  }, []);
 
   // Check if this is edit profile mode
   useEffect(() => {
@@ -137,7 +113,7 @@ const RegistrationScreen = ({ navigation, route }) => {
       }
 
       if (profileData) {
-        setFormData({
+        const loadedData = {
           ...profileData,
           facebookId: profileData.facebookId || '',
           instagramId: profileData.instagramId || '',
@@ -148,9 +124,13 @@ const RegistrationScreen = ({ navigation, route }) => {
           password: '',
           confirmPassword: '',
           declaration: true,
-        });
+        };
 
-        if (profileData.email && profileData.emailVerified) {
+        setFormData(loadedData);
+        setOriginalData(loadedData); // Store original data for comparison
+
+        // In edit mode, email is always verified (cannot be changed)
+        if (profileData.email) {
           setIsEmailVerified(true);
           setEmailVerificationState('verified');
         }
@@ -172,8 +152,8 @@ const RegistrationScreen = ({ navigation, route }) => {
       [field]: value
     }));
 
-    // Reset email verification when email changes
-    if (field === 'email' && value !== formData.email) {
+    // Reset email verification when email changes (only in registration mode)
+    if (field === 'email' && value !== formData.email && !isEditMode) {
       setEmailVerificationState('input');
       setIsEmailVerified(false);
       setEmailOtp('');
@@ -191,6 +171,9 @@ const RegistrationScreen = ({ navigation, route }) => {
           ...prev,
           pincode: value,
           district: '',
+
+
+
           city: '', // ✅ Clear city field
           state: '',
         }));
@@ -199,94 +182,125 @@ const RegistrationScreen = ({ navigation, route }) => {
     }
   };
 
-  // ✅ SIMPLIFIED PINCODE VERIFICATION FUNCTION
+  // ✅ UPDATED PINCODE VERIFICATION USING APISERVICE
   const handlePincodeVerification = async () => {
     if (!formData.pincode || formData.pincode.length !== 6) {
       Alert.alert('Error', 'Please enter a valid 6-digit pincode');
       return;
     }
 
+    if (!apiEndpoints) {
+      Alert.alert('Error', 'API configuration not loaded');
+      return;
+    }
+
     setPincodeVerificationState('loading');
 
     try {
-      const response = await apiCall(`/api/pincodes/${formData.pincode}`, 'GET');
-      console.log('API Response:', response);
+      const baseUrl = await ConfigService.getBaseUrl();
+      const result = await ApiService.get(`${baseUrl}/api/pincodes/${formData.pincode}`);
 
-      const data = response?.[0];
-      const district = data?.district || '';
-      const city = data?.city || data?.taluka || ''; // ✅ Get city from API response
-      const state = data?.statename || '';
+      if (result.success && result.data && result.data.length > 0) {
+        console.log('Pincode API Response:', result.data);
 
-      if (district && state) {
-        setFormData(prev => ({
-          ...prev,
-          district,
-          city, // ✅ Set city field
-          state,
-        }));
+        const data = result.data[0];
+        const district = data?.district || '';
+        const city = data?.city || data?.taluka || ''; // ✅ Get city from API response
+        const state = data?.statename || '';
 
-        setIsPincodeVerified(true);
-        setPincodeVerificationState('verified');
-        // ✅ Do not show success alert
+        if (district && state) {
+          setFormData(prev => ({
+            ...prev,
+            district,
+            city, // ✅ Set city field
+            state,
+          }));
+
+          setIsPincodeVerified(true);
+          setPincodeVerificationState('verified');
+          // ✅ Do not show success alert
+        } else {
+          setPincodeVerificationState('error');
+          Alert.alert('Error', 'Enter a valid pincode.');
+        }
       } else {
         setPincodeVerificationState('error');
-        Alert.alert('Error', 'Enter a valid pincode.');
+        Alert.alert('Error', result.message || 'Enter a valid pincode.');
       }
-
     } catch (error) {
-      console.error('❌ Pincode Fetch Error:', error.message);
+      console.error('❌ Pincode Fetch Error:', error);
       setPincodeVerificationState('error');
       Alert.alert('Error', 'Something went wrong. Please try again.');
     }
   };
 
-  // API: Verify Email Format and Availability
-  const handleEmailVerification = async () => {
-    if (!formData.email || !validateEmail(formData.email)) {
-      Alert.alert('Error', 'Please enter a valid email address');
-      return;
-    }
+  // ✅ UPDATED EMAIL VERIFICATION USING APISERVICE
+ const handleEmailVerification = async () => {
+  if (isEditMode) return; // Disabled in edit mode
 
-    setEmailVerificationState('loading');
+  if (!formData.email || !validateEmail(formData.email)) {
+    Alert.alert('Error', 'Please enter a valid email address');
+    return;
+  }
 
-    try {
-      const response = await apiCall('/api/auth/verifyemail', 'POST', {
-        email: formData.email,
-      });
+  if (!apiEndpoints) {
+    Alert.alert('Error', 'API configuration not loaded');
+    return;
+  }
 
-      setEmailVerificationState('verify');
-      Alert.alert('Email Verified', 'You can now send OTP');
+  setEmailVerificationState('loading');
 
-    } catch (error) {
+  try {
+    const result = await ApiService.post(apiEndpoints.auth.verifyEmail, {
+      email: formData.email,
+    });
+
+    if (result.success) {
+      setEmailVerificationState('verify'); 
+      // Removed: Alert for "You can now send OTP"
+      // Instead, enable OTP input/button in UI
+    } else {
       setEmailVerificationState('input');
-      Alert.alert('Error', error.message || 'Failed to verify email. Please try again.');
+      Alert.alert('Error', result.message || 'Failed to verify email. Please try again.');
     }
-  };
+  } catch (error) {
+    setEmailVerificationState('input');
+    Alert.alert('Error', 'Failed to verify email. Please try again.');
+  }
+};
+
 
   const validateEmail = (email) => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
     return emailRegex.test(email);
   };
 
-  // API: Send OTP to Email
+  // ✅ UPDATED SEND EMAIL OTP USING APISERVICE
   const sendEmailOTP = async () => {
+    if (isEditMode) return; // Disabled in edit mode
+
+    if (!apiEndpoints) {
+      Alert.alert('Error', 'API configuration not loaded');
+      return;
+    }
+
     try {
       setEmailVerificationState('loading');
 
-      const response = await apiCall('/api/auth/sendotp', 'POST', {
+      const result = await ApiService.post(apiEndpoints.auth.sendOTP, {
         email: formData.email,
       });
 
-      console.log('OTP Send API response:', response);
-      if (response?.message === 'OTP sent to email successfully') {
+      console.log('OTP Send API response:', result);
+      
+      if (result.success && (result.data?.message === 'OTP sent to email successfully' || result.message === 'OTP sent to email successfully')) {
         setVerificationToken('dummy-token');
         setEmailVerificationState('otp');
         setOtpTimer(300);
         Alert.alert('OTP Sent', `Verification code has been sent to ${formData.email}.`);
       } else {
-        throw new Error('Unexpected response');
+        throw new Error(result.message || 'Unexpected response');
       }
-
     } catch (error) {
       console.log('OTP send error:', error);
       setEmailVerificationState('verify');
@@ -294,25 +308,32 @@ const RegistrationScreen = ({ navigation, route }) => {
     }
   };
 
-  // API: Verify Email OTP
+  // ✅ UPDATED VERIFY EMAIL OTP USING APISERVICE
   const verifyEmailOTP = async () => {
+    if (isEditMode) return; // Disabled in edit mode
+
     if (!emailOtp || emailOtp.length !== 6) {
       Alert.alert('Error', 'Please enter the 6-digit OTP');
+      return;
+    }
+
+    if (!apiEndpoints) {
+      Alert.alert('Error', 'API configuration not loaded');
       return;
     }
 
     try {
       setEmailVerificationState('loading');
 
-      const response = await apiCall('/api/auth/verifyemailotp', 'POST', {
+      const result = await ApiService.post(apiEndpoints.auth.verifyEmailOTP, {
         email: formData.email,
         otp: emailOtp,
         verificationToken: verificationToken,
       });
 
-      console.log('Verification response:', response);
+      console.log('Verification response:', result);
 
-      if (response.message === 'Email verified and greeted!') {
+      if (result.success && (result.data?.message === 'Email verified and greeted!' || result.message === 'Email verified and greeted!')) {
         setIsEmailVerified(true);
         setEmailVerificationState('verified');
         Alert.alert('Success', 'Email verified successfully!');
@@ -320,9 +341,8 @@ const RegistrationScreen = ({ navigation, route }) => {
         setVerificationToken('');
       } else {
         setEmailVerificationState('otp');
-        Alert.alert('Error', 'OTP verification failed. Please try again.');
+        Alert.alert('Error', result.message || 'OTP verification failed. Please try again.');
       }
-
     } catch (error) {
       console.log('Verification error:', error);
       setEmailVerificationState('otp');
@@ -331,6 +351,8 @@ const RegistrationScreen = ({ navigation, route }) => {
   };
 
   const resendEmailOTP = () => {
+    if (isEditMode) return; // Disabled in edit mode
+
     Alert.alert(
       'Resend OTP',
       'Do you want to resend the verification code?',
@@ -386,9 +408,6 @@ const RegistrationScreen = ({ navigation, route }) => {
     );
   };
 
-  // ✅ FIXED IMAGE SELECTION WITH PROPER LIBRARY USAGE
-
-
   // ✅ FIXED IMAGE SELECTION WITH PROPER URI HANDLING
   const handleImageSelection = async (source) => {
     try {
@@ -439,6 +458,11 @@ const RegistrationScreen = ({ navigation, route }) => {
           ...prev,
           profile_image: imageAsset,  // Store the full asset object
         }));
+
+        // Mark that profile image has been changed in edit mode
+        if (isEditMode) {
+          setIsProfileImageChanged(true);
+        }
       }
 
     } catch (error) {
@@ -446,13 +470,6 @@ const RegistrationScreen = ({ navigation, route }) => {
       Alert.alert('Error', 'Failed to select image. Please try again.');
     }
   };
-
- 
-
-
-
-
-
 
   const validateForm = () => {
     if (!formData.name.trim()) {
@@ -510,60 +527,176 @@ const RegistrationScreen = ({ navigation, route }) => {
     return true;
   };
 
+  // ✅ UPDATED EDIT PROFILE HANDLER USING AUTHSERVICE (UNCHANGED - ALREADY OPTIMIZED)
+  const handleEditProfile = async () => {
+    try {
+      const userData = await AsyncStorage.getItem('userData');
+      if (!userData) {
+        Alert.alert('Error', 'User session not found. Please login again.');
+        return;
+      }
+
+      const parsedUserData = JSON.parse(userData);
+      const userId = parsedUserData.id || parsedUserData.userId;
+
+      if (isProfileImageChanged && formData.profile_image) {
+        // POST with FormData (when image is updated)
+        console.log('🔄 Updating profile with image...');
+        
+        const formDataToSend = new FormData();
+        formDataToSend.append('userId', userId);
+        formDataToSend.append('name', formData.name);
+        formDataToSend.append('mobile', formData.mobile);
+        formDataToSend.append('email', formData.email);
+        formDataToSend.append('address', formData.address);
+        formDataToSend.append('district', formData.district);
+        formDataToSend.append('city', formData.city);
+        formDataToSend.append('state', formData.state);
+        formDataToSend.append('pincode', formData.pincode);
+        formDataToSend.append('facebookId', formData.facebookId || '');
+        formDataToSend.append('instagramId', formData.instagramId || '');
+        formDataToSend.append('xId', formData.xId || '');
+
+        if (formData.profile_image && typeof formData.profile_image === 'object') {
+          formDataToSend.append('profile_image', {
+            uri: formData.profile_image.uri,
+            type: formData.profile_image.type || 'image/jpeg',
+            name: formData.profile_image.fileName || `profile-${Date.now()}.jpg`,
+          });
+        }
+
+        // Use AuthService for the request
+        const result = await AuthService.updateProfile(formDataToSend, true);
+        
+        if (result.success) {
+          Alert.alert('Success!', 'Profile updated successfully!', [
+            {
+              text: 'OK',
+              onPress: () => navigation.goBack(),
+            },
+          ]);
+        } else {
+          throw new Error(result.message || 'Failed to update profile');
+        }
+      } else {
+        // PUT with JSON (when no image is updated)
+        console.log('🔄 Updating profile without image...');
+        
+        const updateData = {
+          userId,
+          name: formData.name,
+          mobile: formData.mobile,
+          email: formData.email,
+          address: formData.address,
+          district: formData.district,
+          city: formData.city,
+          state: formData.state,
+          pincode: formData.pincode,
+          facebookId: formData.facebookId || '',
+          instagramId: formData.instagramId || '',
+          xId: formData.xId || '',
+        };
+
+        // Use AuthService for the request
+        const result = await AuthService.updateProfile(updateData, false);
+        
+        if (result.success) {
+          Alert.alert('Success!', 'Profile updated successfully!', [
+            {
+              text: 'OK',
+              onPress: () => navigation.goBack(),
+            },
+          ]);
+        } else {
+          throw new Error(result.message || 'Failed to update profile');
+        }
+      }
+    } catch (error) {
+      console.error('❌ Edit Profile Error:', error);
+      
+      if (error.message.includes('Session expired') || error.message.includes('Authentication failed')) {
+        // Handle session expiration
+        Alert.alert('Session Expired', 'Your session has expired. Please login again.', [
+          {
+            text: 'OK',
+            onPress: () => {
+              navigation.reset({
+                index: 0,
+                routes: [{ name: 'Login' }],
+              });
+            }
+          }
+        ]);
+      } else if (error.message.includes('Network request failed') || error.name === 'TypeError') {
+        Alert.alert('Network Error', 'Unable to connect to server. Please check your internet connection and try again.');
+      } else {
+        Alert.alert('Error', error.message || 'Failed to update profile. Please try again.');
+      }
+    }
+  };
+
+  // ✅ UPDATED REGISTRATION HANDLER USING APISERVICE
+  const handleRegistration = async () => {
+    if (!apiEndpoints) {
+      Alert.alert('Error', 'API configuration not loaded');
+      return;
+    }
+
+    try {
+      const formDataToSend = new FormData();
+
+      formDataToSend.append('name', formData.name);
+      formDataToSend.append('email', formData.email);
+      formDataToSend.append('mobile', formData.mobile);
+      formDataToSend.append('password', formData.password);
+      formDataToSend.append('address', formData.address);
+      formDataToSend.append('district', formData.district);
+      formDataToSend.append('city', formData.city);
+      formDataToSend.append('state', formData.state);
+      formDataToSend.append('pincode', formData.pincode);
+
+      if (formData.profile_image) {
+        formDataToSend.append('profile_image', {
+          uri: formData.profile_image.uri,
+          type: formData.profile_image.type || 'image/jpeg',
+          name: formData.profile_image.fileName || `profile-${Date.now()}.jpg`,
+        });
+      }
+
+      const result = await ApiService.post(apiEndpoints.auth.register, formDataToSend, {}, true);
+
+      console.log('Registration Response:', result);
+
+      if (result.success) {
+        Alert.alert(
+          'Success!',
+          'Your account has been created successfully!',
+          [
+            {
+              text: 'Continue to Login',
+              onPress: () => navigation.navigate('Login', {
+                message: 'Registration completed successfully! Please login to continue.',
+                registrationSuccess: true
+              })
+            }
+          ]
+        );
+      } else {
+        throw new Error(result.message || 'Registration failed');
+      }
+    } catch (error) {
+      console.error('Registration Error:', error);
+      Alert.alert('Error', error.message || 'Something went wrong during registration');
+    }
+  };
+
   const handleSubmit = async () => {
     if (validateForm()) {
       try {
         if (isEditMode) {
-          // existing edit code...
+          await handleEditProfile();
         } else {
-          const formDataToSend = new FormData();
-
-          formDataToSend.append('name', formData.name);
-          formDataToSend.append('email', formData.email);
-          formDataToSend.append('mobile', formData.mobile);
-          formDataToSend.append('password', formData.password);
-          formDataToSend.append('address', formData.address);
-          formDataToSend.append('district', formData.district);
-          formDataToSend.append('city', formData.city);
-          formDataToSend.append('state', formData.state);
-          formDataToSend.append('pincode', formData.pincode);
-
-          if (formData.profile_image) {
-            formDataToSend.append('profile_image', {
-              uri: formData.profile_image.uri,
-              type: formData.profile_image.type || 'image/jpeg',
-              name: formData.profile_image.fileName || `profile-${Date.now()}.jpg`,
-            });
-          }
-
-          const response = await fetch('http://192.168.1.100:5000/api/auth/register', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'multipart/form-data',
-            },
-            body: formDataToSend,
-          });
-
-          const result = await response.json();
-          console.log('Response:', result);
-
-          if (result && result.message) {
-            Alert.alert(
-              'Success!',
-              'Your account has been created successfully!',
-              [
-                {
-                  text: 'Continue to Login',
-                  onPress: () => navigation.navigate('Login', {
-                    message: 'Registration completed successfully! Please login to continue.',
-                    registrationSuccess: true
-                  })
-                }
-              ]
-            );
-          } else {
-            throw new Error('Registration failed');
-          }
+          await handleRegistration();
         }
       } catch (error) {
         console.error('Error:', error);
@@ -571,7 +704,6 @@ const RegistrationScreen = ({ navigation, route }) => {
       }
     }
   };
-
 
   const handleCancel = () => {
     const action = isEditMode ? 'Cancel Profile Update' : 'Cancel Registration';
@@ -600,46 +732,55 @@ const RegistrationScreen = ({ navigation, route }) => {
   };
 
   const renderProfileImage = () => {
-    if (formData.profile_image && formData.profile_image !== 'placeholder') {
-      // Construct the correct URL for your static files
-      const imageUrl = `${API_BASE_URL}/uploads/profile_images/${formData.profile_image}`;
+    if (formData.profile_image) {
+      let imageSource;
+      
+      // Check if it's a new image (object with uri) or existing image (string filename)
+      if (typeof formData.profile_image === 'object' && formData.profile_image.uri) {
+        imageSource = { uri: formData.profile_image.uri };
+      } else if (typeof formData.profile_image === 'string' && formData.profile_image !== 'placeholder') {
+        // Use ConfigService to get the base URL dynamically
+        const getImageUrl = async () => {
+          const baseUrl = await ConfigService.getBaseUrl();
+          return `${baseUrl}/uploads/profile_images/${formData.profile_image}`;
+        };
+        
+        // For existing images, we'll use the async pattern or fallback
+        imageSource = { uri: `${apiEndpoints?.user?.profile || ''}/uploads/profile_images/${formData.profile_image}` };
+      }
 
-      console.log('📸 Loading image from:', imageUrl);
-
-      return (
-        <View style={styles.photoSelectedContainer}>
-          <Image
-            source={{ uri: imageUrl }}
-            style={styles.photo}
-            onError={(error) => {
-              console.log('❌ Image load error for:', imageUrl);
-              console.log('Error details:', error.nativeEvent);
-              // Optionally show a fallback or placeholder
-            }}
-            onLoad={() => {
-              console.log('✅ Image loaded successfully:', imageUrl);
-            }}
-            onLoadStart={() => {
-              console.log('🔄 Started loading image:', imageUrl);
-            }}
-          />
-          <View style={styles.photoOverlay}>
-            <Icon name="check-circle" size={16} color="#4CAF50" />
-            <Text style={[styles.photoText, { color: '#fff', fontSize: 10 }]}>
-              {isEditMode ? 'Updated' : 'Uploaded'}
-            </Text>
+      if (imageSource) {
+        return (
+          <View style={styles.photoSelectedContainer}>
+            <Image
+              source={imageSource}
+              style={styles.photo}
+              onError={(error) => {
+                console.log('❌ Image load error:', error.nativeEvent);
+              }}
+              onLoad={() => {
+                console.log('✅ Image loaded successfully');
+              }}
+            />
+            <View style={styles.photoOverlay}>
+              <Icon name="check-circle" size={16} color="#4CAF50" />
+              <Text style={[styles.photoText, { color: '#fff', fontSize: 10 }]}>
+                {isEditMode ? (isProfileImageChanged ? 'Updated' : 'Current') : 'Uploaded'}
+              </Text>
+            </View>
           </View>
-        </View>
-      );
-    } else {
-      return (
-        <View style={styles.photoPlaceholder}>
-          <Icon name="camera-alt" size={40} color="#e16e2b" />
-          <Text style={styles.photoText}>Upload / Camera</Text>
-        </View>
-      );
+        );
+      }
     }
+
+    return (
+      <View style={styles.photoPlaceholder}>
+        <Icon name="camera-alt" size={40} color="#e16e2b" />
+        <Text style={styles.photoText}>Upload / Camera</Text>
+      </View>
+    );
   };
+
   const renderEmailVerificationSection = () => {
     return (
       <View style={styles.emailVerificationContainer}>
@@ -647,48 +788,66 @@ const RegistrationScreen = ({ navigation, route }) => {
           <TextInput
             style={[
               styles.emailInput,
-              isEmailVerified && styles.verifiedInput
+              isEmailVerified && styles.verifiedInput,
+              isEditMode && styles.disabledInput // Disabled style in edit mode
             ]}
             value={formData.email}
             onChangeText={(text) => handleInputChange('email', text)}
             placeholder="Enter your email address"
             keyboardType="email-address"
             autoCapitalize="none"
-            editable={!isEmailVerified}
+            editable={!isEditMode} // Disabled in edit mode
           />
 
-          {emailVerificationState === 'input' && (
-            <TouchableOpacity
-              style={styles.verifyIconButton}
-              onPress={handleEmailVerification}
-            >
-              <Icon name="mail-outline" size={24} color="#e16e2b" />
-            </TouchableOpacity>
-          )}
-
-          {emailVerificationState === 'loading' && (
-            <View style={styles.loadingIconButton}>
-              <ActivityIndicator size="small" color="#e16e2b" />
-            </View>
-          )}
-
-          {emailVerificationState === 'verify' && (
-            <TouchableOpacity
-              style={styles.sendOtpIconButton}
-              onPress={sendEmailOTP}
-            >
-              <Icon name="send" size={24} color="#2196F3" />
-            </TouchableOpacity>
-          )}
-
-          {isEmailVerified && (
+          {/* Always show verified icon in edit mode */}
+          {isEditMode ? (
             <View style={styles.verifiedIconButton}>
               <Icon name="verified" size={24} color="#4CAF50" />
             </View>
+          ) : (
+            <>
+              {emailVerificationState === 'input' && (
+                <TouchableOpacity
+                  style={styles.verifyIconButton}
+                  onPress={handleEmailVerification}
+                >
+                  <Icon name="mail-outline" size={24} color="#e16e2b" />
+                </TouchableOpacity>
+              )}
+
+              {emailVerificationState === 'loading' && (
+                <View style={styles.loadingIconButton}>
+                  <ActivityIndicator size="small" color="#e16e2b" />
+                </View>
+              )}
+
+              {emailVerificationState === 'verify' && (
+                <TouchableOpacity
+                  style={styles.sendOtpIconButton}
+                  onPress={sendEmailOTP}
+                >
+                  <Icon name="send" size={24} color="#2196F3" />
+                </TouchableOpacity>
+              )}
+
+              {isEmailVerified && (
+                <View style={styles.verifiedIconButton}>
+                  <Icon name="verified" size={24} color="#4CAF50" />
+                </View>
+              )}
+            </>
           )}
         </View>
 
-        {emailVerificationState === 'otp' && (
+        {/* Show helper text in edit mode */}
+        {isEditMode && (
+          <Text style={styles.helperText}>
+            Email address cannot be changed in edit mode
+          </Text>
+        )}
+
+        {/* OTP section only shown in registration mode */}
+        {!isEditMode && emailVerificationState === 'otp' && (
           <View style={styles.otpContainer}>
             <Text style={styles.otpLabel}>Enter verification code sent to your email</Text>
             <View style={styles.otpInputContainer}>
@@ -832,6 +991,11 @@ const RegistrationScreen = ({ navigation, route }) => {
             <TouchableOpacity style={styles.photoContainer} onPress={handleImagePicker}>
               {renderProfileImage()}
             </TouchableOpacity>
+            {isEditMode && isProfileImageChanged && (
+              <Text style={styles.successText}>
+                ✓ Profile image updated - will be saved when you submit
+              </Text>
+            )}
           </View>
 
           {/* Form Fields */}

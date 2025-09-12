@@ -14,7 +14,7 @@ import Icon from 'react-native-vector-icons/MaterialIcons';
 import FontAwesome from 'react-native-vector-icons/FontAwesome';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-
+import AuthService from '../utils/AuthService';
 
 const CustomDrawer = ({ navigation, handleLogout, handleEditProfile, handleMyProfile }) => {
   const [isLiteratureOpen, setIsLiteratureOpen] = useState(false);
@@ -23,10 +23,6 @@ const CustomDrawer = ({ navigation, handleLogout, handleEditProfile, handleMyPro
   const [userPhoto, setUserPhoto] = useState(null);
   const [userMobile, setUserMobile] = useState('');
   
-  
-  
-  
-
   // Check login status on component mount and when navigation changes
   useEffect(() => {
     checkLoginStatus();
@@ -117,6 +113,61 @@ const CustomDrawer = ({ navigation, handleLogout, handleEditProfile, handleMyPro
     }
   };
 
+  const handleLogoutPress = async () => {
+    Alert.alert(
+      'Logout',
+      'Are you sure you want to logout?',
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+        {
+          text: 'Logout',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              console.log("🔄 Starting logout process...");
+              
+              // Call the logout API with refresh token
+              const logoutResult = await AuthService.logout();
+              
+              if (logoutResult.success) {
+                console.log("✅ Logout successful:", logoutResult.message);
+              } else {
+                console.log("⚠️ Logout completed with issues:", logoutResult.message);
+              }
+
+              // Reset navigation to Login screen
+              navigation.reset({
+                index: 0,
+                routes: [{ name: 'Login' }],
+              });
+
+              console.log("✅ Logout complete — redirected to Login.");
+            } catch (error) {
+              console.error("❌ Logout error:", error);
+              
+              // Fallback: Clear tokens locally and redirect anyway
+              await AuthService.clearTokens();
+              
+              navigation.reset({
+                index: 0,
+                routes: [{ name: 'Login' }],
+              });
+              
+              Alert.alert(
+                'Logout',
+                'Logout completed, but there may have been network issues.',
+                [{ text: 'OK' }]
+              );
+            }
+          },
+        },
+      ]
+    );
+  };
+
   const handleOpenURL = (url) => {
     Linking.openURL(url).catch(err => console.error('Error opening URL:', err));
   };
@@ -156,8 +207,7 @@ const CustomDrawer = ({ navigation, handleLogout, handleEditProfile, handleMyPro
 
   const handleProfileAction = () => {
     if (isUserLoggedIn) {
-    navigation.navigate('ViewProfile');
-
+      navigation.navigate('ViewProfile');
     } else {
       Alert.alert(
         'Welcome',
@@ -345,7 +395,7 @@ const CustomDrawer = ({ navigation, handleLogout, handleEditProfile, handleMyPro
 
             <TouchableOpacity
               style={styles.drawerItem}
-              onPress={() => handleLogout(navigation)}
+              onPress={handleLogoutPress}
             >
               <Icon name="logout" size={24} color="#e16e2b" />
               <Text style={styles.drawerItemText}>Logout</Text>

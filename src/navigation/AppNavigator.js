@@ -17,8 +17,10 @@ import ChatBot from '../screens/ChatBot';
 import SamvadScreen from '../screens/SamvadScreen';
 import LoginScreen from '../screens/LoginScreen';
 import ViewProfileScreen from '../screens/ViewProfileScreen';
+import DeviceService from '../services/DeviceService';
 
 import HomeScreen from '../screens/HomeScreen';
+import DetailedFormScreen from '../screens/DetailedFormScreen';
 
 const Stack = createStackNavigator();
 
@@ -70,6 +72,7 @@ const AppNavigator = () => {
       <Stack.Screen name="DevelopmentLandscape" component={DevelopmentLandscapeScreen} />
       <Stack.Screen name="Dashboard" component={DashboardScreen} />
       <Stack.Screen name="LokSahayak" component={ChatBot} />
+      <Stack.Screen name="DetailedFormScreen" component={DetailedFormScreen}/>
       
       
       <Stack.Screen

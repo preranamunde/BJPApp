@@ -149,21 +149,19 @@ class ImageService {
   }
 }
 
-// Enhanced Admin Service
-class AdminService {
-  static async checkIfUserIsAdmin(userEmail) {
+// FIXED Profile API Class
+// FIXED Profile API Class
+// FIXED Profile API Class with Test Method
+class ProfileAPI {
+  static baseURL = 'http://192.168.1.107:5000/api/profile';
+  static imageBaseURL = 'http://192.168.1.107:5000/';
+
+  static async getProfile() {
+    LoggingService.profileInfo('🚀 Starting profile fetch from API');
+    
     try {
-      LoggingService.profileInfo('Checking if user is admin', { userEmail });
-      
-      const appOwnerInfoStr = await EncryptedStorage.getItem('AppOwnerInfo');
-      
-      if (!appOwnerInfoStr) {
-        LoggingService.profileWarn('No AppOwnerInfo found in storage');
-        return { isAdmin: false, ownerEmail: null };
-      }
-      
-      const appOwnerInfo = JSON.parse(appOwnerInfoStr);
-      const ownerEmail = appOwnerInfo.emailid || appOwnerInfo.email || appOwnerInfo.email_id;
+      // Get proper auth headers
+      const headers = await AuthService.getAuthHeaders();
       
       LoggingService.profileDebug('Owner email comparison', {
         userEmail: userEmail?.toLowerCase(),

@@ -18,8 +18,52 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 // Add these imports for image picker functionality
 import { launchImageLibrary, launchCamera } from 'react-native-image-picker';
 import AuthService from '../utils/AuthService';
-import ConfigService from '../services/ConfigService';
-import ApiService from '../services/ApiService';
+
+// API Configuration
+const API_BASE_URL = 'http://192.168.1.107:5000'; // Update with your server IP
+
+const apiCall = async (endpoint, method = 'POST', data = null) => {
+  try {
+    const config = {
+      method,
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    };
+
+    if (data) {
+      config.body = JSON.stringify(data);
+    }
+
+    const response = await fetch(`${API_BASE_URL}${endpoint}`, config);
+
+    // ✅ Check content-type before parsing
+    const contentType = response.headers.get('content-type');
+
+    if (!response.ok) {
+      let errorMessage = `HTTP error! status: ${response.status}`;
+      if (contentType && contentType.includes('application/json')) {
+        const errorData = await response.json();
+        errorMessage = errorData.message || errorMessage;
+      } else {
+        const text = await response.text();
+        console.error('Non-JSON error response:', text);
+      }
+      throw new Error(errorMessage);
+    }
+
+    // ✅ Only parse if JSON
+    if (contentType && contentType.includes('application/json')) {
+      return await response.json();
+    } else {
+      throw new Error('Expected JSON but received non-JSON response.');
+    }
+
+  } catch (error) {
+    console.error(`API Error (${endpoint}):`, error.message);
+    throw error;
+  }
+};
 
 const RegistrationScreen = ({ navigation, route }) => {
   const [isEditMode, setIsEditMode] = useState(false);
@@ -663,9 +707,16 @@ const RegistrationScreen = ({ navigation, route }) => {
         });
       }
 
-      const result = await ApiService.post(apiEndpoints.auth.register, formDataToSend, {}, true);
+          const response = await fetch('http://192.168.1.107:5000/api/auth/register', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'multipart/form-data',
+            },
+            body: formDataToSend,
+          });
 
-      console.log('Registration Response:', result);
+          const result = await response.json();
+          console.log('Response:', result);
 
       if (result.success) {
         Alert.alert(

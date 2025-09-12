@@ -24,36 +24,10 @@ try {
 class AuthService {
   static tokenKey = 'jwt_token';
   static refreshTokenKey = 'refresh_token';
-  
-  // Add session expiry callback
-  static sessionExpiryCallback = null;
-  
-  // Method to set session expiry callback
-  static setSessionExpiryCallback(callback) {
-    this.sessionExpiryCallback = callback;
-  }
-  
-  // Method to trigger session expiry
-  static async triggerSessionExpiry() {
-    console.log('🔥 Session expired - triggering automatic logout');
-    
-    // Clear tokens first
-    await this.clearTokens();
-    
-    // Call the callback if set (from ViewProfileScreen)
-    if (this.sessionExpiryCallback && typeof this.sessionExpiryCallback === 'function') {
-      console.log('📞 Calling session expiry callback');
-      this.sessionExpiryCallback();
-    } else {
-      console.warn('⚠️ No session expiry callback set');
-    }
-  }
-
-  // Initialize the auth service
-  static async initialize() {
-    await ConfigService.initializeConfig();
-    console.log('✅ AuthService initialized');
-  }
+  static baseURL = 'http://192.168.1.107:5000'; // Centralized base URL
+  static loginUrl = `${this.baseURL}/api/auth/login`;
+  static refreshTokenUrl = `${this.baseURL}/api/auth/refresh-token`;
+  static logoutUrl = `${this.baseURL}/api/auth/logout`;
 
   // Store token
   static async saveToken(token) {

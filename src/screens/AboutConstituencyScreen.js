@@ -1,335 +1,48 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { 
-  View, 
-  Text, 
-  StyleSheet, 
-  ScrollView, 
-  Linking, 
-  TouchableOpacity, 
-  ActivityIndicator, 
-  Modal, 
-  TextInput, 
-  Alert,
-  RefreshControl,
-  Dimensions 
-} from 'react-native';
-import Icon from 'react-native-vector-icons/MaterialIcons';
-import EncryptedStorage from 'react-native-encrypted-storage';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import ConfigService from '../services/ConfigService';
-import ApiService from '../services/ApiService';
-import { getCurrentUserRole, checkIfCurrentUserIsAdmin } from '../../App';
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, ScrollView, Linking, TouchableOpacity, ActivityIndicator } from 'react-native';
 
-// Enhanced Logging Service similar to LoginScreen
-class ConstituencyLoggingService {
-  static LOG_LEVELS = {
-    DEBUG: 0,
-    INFO: 1,
-    WARN: 2,
-    ERROR: 3,
-  };
-
-  static currentLogLevel = __DEV__ ? this.LOG_LEVELS.DEBUG : this.LOG_LEVELS.INFO;
-
-  static colors = {
-    DEBUG: '\x1b[36m',
-    INFO: '\x1b[32m',
-    WARN: '\x1b[33m',
-    ERROR: '\x1b[31m',
-    RESET: '\x1b[0m',
-  };
-
-  static log(level, category, message, data = null) {
-    if (this.LOG_LEVELS[level] >= this.currentLogLevel) {
-      const timestamp = new Date().toISOString().slice(11, 23);
-      const color = this.colors[level] || this.colors.RESET;
-      const resetColor = this.colors.RESET;
-      
-      console.log(
-        `${color}[${timestamp}] [${level}] [${category}]${resetColor} ${message}`
-      );
-      
-      if (data) {
-        console.log(`${color}📊 Data:${resetColor}`, data);
-      }
-    }
-  }
-
-  static debug(category, message, data) { this.log('DEBUG', category, message, data); }
-  static info(category, message, data) { this.log('INFO', category, message, data); }
-  static warn(category, message, data) { this.log('WARN', category, message, data); }
-  static error(category, message, data) { this.log('ERROR', category, message, data); }
-
-  // Constituency-specific methods
-  static constDebug(message, data) { this.debug('CONSTITUENCY', message, data); }
-  static constInfo(message, data) { this.info('CONSTITUENCY', message, data); }
-  static constWarn(message, data) { this.warn('CONSTITUENCY', message, data); }
-  static constError(message, data) { this.error('CONSTITUENCY', message, data); }
-}
-
-// Screen dimensions for responsive design
-const { width } = Dimensions.get('window');
-
-const AboutConstituencyScreen = ({ navigation }) => {
-  // State management
+const AboutConstituencyScreen = ({ regdMobileNo = '7702000725' }) => {
   const [constituencyData, setConstituencyData] = useState(null);
   const [assemblyConstituencies, setAssemblyConstituencies] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
-  const [regdMobileNo, setRegdMobileNo] = useState(null);
-  
-  // Admin states following App.js patterns
-  const [userRole, setUserRole] = useState('user');
-  const [isAdmin, setIsAdmin] = useState(false);
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [loggedInEmail, setLoggedInEmail] = useState('');
-  const [ownerEmail, setOwnerEmail] = useState('');
-  
-  // Edit modal states
-  const [editModalVisible, setEditModalVisible] = useState(false);
-  const [editingConstituency, setEditingConstituency] = useState(false);
-  const [editingAssembly, setEditingAssembly] = useState(false);
-  const [editFormData, setEditFormData] = useState({});
-  const [editingAssemblyId, setEditingAssemblyId] = useState(null);
-  const [updateLoading, setUpdateLoading] = useState(false);
 
-  // Developer mode states following App.js patterns
-  const [showDevInput, setShowDevInput] = useState(false);
-  const [devInput, setDevInput] = useState('');
-  const [devClickCount, setDevClickCount] = useState(0);
-
-  // Initialize component data
   useEffect(() => {
-    initializeComponent();
+    fetchConstituencyData();
   }, []);
 
-  // Initialize component with role checking and data fetching
-  const initializeComponent = async () => {
+  const fetchConstituencyData = async () => {
     try {
       ConstituencyLoggingService.constInfo('🚀 === INITIALIZING ABOUT CONSTITUENCY SCREEN ===');
       
       setLoading(true);
-      
-      // Step 1: Check user role and admin status
-      await checkUserRoleAndPermissions();
-      
-      // Step 2: Get mobile number and initialize data
-      await initializeData();
-      
-    } catch (error) {
-      ConstituencyLoggingService.constError('❌ Component initialization failed', error);
-      setError(error.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Check user role and permissions following App.js patterns
-  const checkUserRoleAndPermissions = async () => {
-    try {
-      ConstituencyLoggingService.constInfo('🔍 === CHECKING USER ROLE AND PERMISSIONS ===');
-      
-      // Use getCurrentUserRole from App.js
-      const currentUserInfo = await getCurrentUserRole();
-      
-      ConstituencyLoggingService.constDebug('User role information retrieved', {
-        userRole: currentUserInfo.userRole,
-        isAdmin: currentUserInfo.isAdmin,
-        isLoggedIn: currentUserInfo.isLoggedIn,
-        loggedin_email: currentUserInfo.loggedin_email,
-        owner_emailid: currentUserInfo.owner_emailid
-      });
-      
-      // Update state with user information
-      setUserRole(currentUserInfo.userRole);
-      setIsAdmin(currentUserInfo.isAdmin);
-      setIsLoggedIn(currentUserInfo.isLoggedIn);
-      setLoggedInEmail(currentUserInfo.loggedin_email);
-      setOwnerEmail(currentUserInfo.owner_emailid);
-      
-      // Additional check using checkIfCurrentUserIsAdmin
-      const adminCheck = await checkIfCurrentUserIsAdmin();
-      
-      ConstituencyLoggingService.constInfo('Admin status verification', {
-        isAdminFromRole: currentUserInfo.isAdmin,
-        isAdminFromCheck: adminCheck.isAdmin,
-        reason: adminCheck.reason
-      });
-      
-      // Use the most restrictive check
-      const finalAdminStatus = currentUserInfo.isAdmin && adminCheck.isAdmin;
-      setIsAdmin(finalAdminStatus);
-      
-      if (finalAdminStatus) {
-        ConstituencyLoggingService.constInfo('👑 ADMIN ACCESS GRANTED - Edit features enabled');
-      } else {
-        ConstituencyLoggingService.constInfo('👤 USER ACCESS - Read-only mode');
-      }
-      
-    } catch (error) {
-      ConstituencyLoggingService.constError('❌ Error checking user permissions', error);
-      // Default to user role on error
-      setUserRole('user');
-      setIsAdmin(false);
-      setIsLoggedIn(false);
-    }
-  };
-
-  // Get mobile number from storage following App.js patterns
-  const getMobileNumberFromStorage = async () => {
-    try {
-      ConstituencyLoggingService.constInfo('🔍 Retrieving mobile number from storage...');
-      
-      // First try to get from AppOwnerInfo (following App.js pattern)
-      const appOwnerInfoStr = await EncryptedStorage.getItem('AppOwnerInfo');
-      if (appOwnerInfoStr) {
-        const appOwnerInfo = JSON.parse(appOwnerInfoStr);
-        ConstituencyLoggingService.constDebug('AppOwnerInfo found', Object.keys(appOwnerInfo));
-        
-        // Check various possible keys for mobile number (following App.js pattern)
-        const possibleMobileFields = [
-          'mobile_no', 'regdMobileNo', 'mobile_number', 'phone', 'mobileNo',
-          'Mobile', 'MobileNo', 'MOBILE', 'phoneNumber', 'contactNumber',
-          'mobile', 'cell', 'cellular', 'contact', 'phone_number'
-        ];
-        
-        let extractedMobile = '';
-        for (const field of possibleMobileFields) {
-          if (appOwnerInfo[field] && (typeof appOwnerInfo[field] === 'string' || typeof appOwnerInfo[field] === 'number')) {
-            extractedMobile = String(appOwnerInfo[field]).trim();
-            ConstituencyLoggingService.constInfo(`✅ Mobile found in field '${field}': ${extractedMobile}`);
-            break;
-          }
-        }
-        
-        if (extractedMobile) {
-          return extractedMobile;
-        }
-      }
-      
-      // Fallback to direct storage
-      const storedMobile = await EncryptedStorage.getItem('MOBILE_NUMBER') ||
-                          await EncryptedStorage.getItem('OWNER_MOBILE') ||
-                          await AsyncStorage.getItem('userMobile');
-      
-      if (storedMobile) {
-        ConstituencyLoggingService.constInfo('✅ Mobile found in direct storage:', storedMobile);
-        return storedMobile;
-      }
-      
-      // Final fallback - ask user
-      ConstituencyLoggingService.constWarn('⚠️ No mobile number found in storage');
-      return await promptForMobileNumber();
-      
-    } catch (error) {
-      ConstituencyLoggingService.constError('❌ Error retrieving mobile number', error);
-      return await promptForMobileNumber();
-    }
-  };
-
-  // Prompt user for mobile number if not found
-  const promptForMobileNumber = () => {
-    return new Promise((resolve) => {
-      Alert.prompt(
-        '📱 Mobile Number Required',
-        'Please enter your registered mobile number to view constituency information:',
-        [
-          {
-            text: 'Cancel',
-            style: 'cancel',
-            onPress: () => {
-              setError('Mobile number is required to view constituency data');
-              resolve(null);
-            }
-          },
-          {
-            text: 'Submit',
-            onPress: async (inputMobile) => {
-              if (inputMobile && inputMobile.trim().length >= 10) {
-                const mobile = inputMobile.trim();
-                // Store for future use
-                try {
-                  await AsyncStorage.setItem('userMobile', mobile);
-                  ConstituencyLoggingService.constInfo('📱 User provided mobile number stored:', mobile);
-                  resolve(mobile);
-                } catch (error) {
-                  ConstituencyLoggingService.constError('Error storing mobile number', error);
-                  resolve(mobile);
-                }
-              } else {
-                Alert.alert('Invalid Mobile', 'Please enter a valid 10-digit mobile number');
-                resolve(await promptForMobileNumber());
-              }
-            }
-          }
-        ],
-        'plain-text',
-        '',
-        'numeric'
-      );
-    });
-  };
-
-  // Initialize data with mobile number
-  const initializeData = async () => {
-    try {
-      ConstituencyLoggingService.constInfo('📱 === INITIALIZING CONSTITUENCY DATA ===');
-      
-      // Get mobile number from storage
-      const mobileNo = await getMobileNumberFromStorage();
-      
-      if (!mobileNo) {
-        throw new Error('Mobile number is required to fetch constituency data');
-      }
-      
-      setRegdMobileNo(mobileNo);
-      ConstituencyLoggingService.constInfo('📱 Using mobile number for API calls:', mobileNo);
-      
-      // Fetch data with the retrieved mobile number
-      await fetchConstituencyData(mobileNo);
-      
-    } catch (error) {
-      ConstituencyLoggingService.constError('❌ Data initialization error', error);
-      setError(error.message);
-    }
-  };
-
-  // Fetch constituency data from API
-  const fetchConstituencyData = async (mobileNo) => {
-    try {
       setError(null);
       
-      ConstituencyLoggingService.constInfo('📡 === FETCHING CONSTITUENCY DATA ===', { mobileNo });
-      
-      // Get base URL from ConfigService (following App.js pattern)
-      const baseUrl = await ConfigService.getBaseUrl();
-      ConstituencyLoggingService.constInfo('🌐 Using base URL:', baseUrl);
-      
       // Fetch constituency profile data
-      const profileResult = await ApiService.get(
-        `${baseUrl}/api/constituencyprofile/${mobileNo}`,
-        {
-          'x-user-id': loggedInEmail || 'anonymous_user',
-          'x-user-role': userRole,
-        }
-      );
+      const profileResponse = await fetch(`http://192.168.1.107:5000/api/constituencyprofile/${regdMobileNo}`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-id': 'admin_user',
+        },
+      });
       
-      if (!profileResult.success) {
-        throw new Error(`Failed to fetch constituency profile: ${profileResult.message}`);
+      if (!profileResponse.ok) {
+        throw new Error(`Failed to fetch constituency profile: ${profileResponse.status}`);
       }
       
-      ConstituencyLoggingService.constInfo('✅ Constituency profile fetched successfully');
-      setConstituencyData(profileResult.data);
+      const profileData = await profileResponse.json();
+      setConstituencyData(profileData);
       
       // Fetch assembly constituencies data
-      const assemblyResult = await ApiService.get(
-        `${baseUrl}/api/assemblyconstituencies/${mobileNo}`,
-        {
-          'x-user-id': loggedInEmail || 'anonymous_user',
-          'x-user-role': userRole,
-        }
-      );
+      const assemblyResponse = await fetch(`http://192.168.1.107:5000/api/assemblyconstituencies/${regdMobileNo}`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-id': 'admin_user',
+        },
+      });
       
       if (assemblyResult.success) {
         const assemblyData = assemblyResult.data;
@@ -352,305 +65,11 @@ const AboutConstituencyScreen = ({ navigation }) => {
     } catch (err) {
       ConstituencyLoggingService.constError('❌ Error fetching constituency data', err);
       setError(err.message);
-    }
-  };
-
-  // Refresh data with pull-to-refresh
-  const onRefresh = useCallback(async () => {
-    if (!regdMobileNo) {
-      await initializeComponent();
-      return;
-    }
-    
-    setRefreshing(true);
-    try {
-      await checkUserRoleAndPermissions();
-      await fetchConstituencyData(regdMobileNo);
-    } catch (error) {
-      ConstituencyLoggingService.constError('❌ Refresh failed', error);
-      Alert.alert('Refresh Failed', error.message);
     } finally {
-      setRefreshing(false);
-    }
-  }, [regdMobileNo]);
-
-  // Developer mode functions (following App.js patterns)
-  const handleTitlePress = () => {
-    if (!__DEV__) return; // Only in development
-    
-    setDevClickCount(prevCount => {
-      const newCount = prevCount + 1;
-      if (newCount >= 5) {
-        setShowDevInput(true);
-        return 0; // Reset count
-      }
-      return newCount;
-    });
-  };
-
-  const handleDevInputSubmit = async () => {
-    if (devInput.toLowerCase() === 'admin') {
-      try {
-        await EncryptedStorage.setItem('developerMode', 'enabled');
-        setIsAdmin(true);
-        setUserRole('admin');
-        setShowDevInput(false);
-        setDevInput('');
-        ConstituencyLoggingService.constInfo('🔧 Developer mode enabled - Admin features activated');
-        Alert.alert('Developer Mode', 'Admin features enabled for testing!');
-      } catch (error) {
-        ConstituencyLoggingService.constError('Error enabling developer mode', error);
-        Alert.alert('Error', 'Failed to enable developer mode');
-      }
-    } else {
-      Alert.alert('Invalid Input', 'Please enter the correct developer code');
-      setDevInput('');
+      setLoading(false);
     }
   };
 
-  const closeDevInput = () => {
-    setShowDevInput(false);
-    setDevInput('');
-  };
-
-  // Admin Edit Functions (enhanced with proper error handling)
-  const openEditConstituencyForm = () => {
-    if (!isAdmin) {
-      Alert.alert('Access Denied', 'Admin privileges required for editing');
-      return;
-    }
-    
-    if (!constituencyData) {
-      Alert.alert('No Data', 'No constituency data available to edit');
-      return;
-    }
-    
-    ConstituencyLoggingService.constInfo('📝 Opening constituency edit form');
-    
-    setEditFormData({
-      const_name: constituencyData.const_name || '',
-      const_no: constituencyData.const_no || '',
-      state: constituencyData.state || '',
-      district: constituencyData.district || '',
-      constituency_type: constituencyData.constituency_type || '',
-      reservation_status: constituencyData.reservation_status || '',
-      established: constituencyData.established || '',
-      sitting_member: constituencyData.sitting_member || '',
-      member_party: constituencyData.member_party || '',
-      overview: constituencyData.overview || '',
-      geography: constituencyData.geography || '',
-      eci_url: constituencyData.eci_url || '',
-      assembly_segment_count: constituencyData.assembly_segment_count || '',
-      election_year: constituencyData.election_year || '',
-      electon_header: constituencyData.electon_header || '',
-      total_no_voters_data: constituencyData.total_no_voters_data || '',
-      voter_trunout_ratio_data: constituencyData.voter_trunout_ratio_data || '',
-      polling_station_count: constituencyData.polling_station_count || '',
-      avg_no_electors_per_ps_data: constituencyData.avg_no_electors_per_ps_data || ''
-    });
-    
-    setEditingConstituency(true);
-    setEditingAssembly(false);
-    setEditModalVisible(true);
-  };
-
-  const openEditAssemblyForm = (assembly) => {
-    if (!isAdmin) {
-      Alert.alert('Access Denied', 'Admin privileges required for editing');
-      return;
-    }
-    
-    if (!assembly) {
-      Alert.alert('No Data', 'No assembly constituency data available to edit');
-      return;
-    }
-    
-    ConstituencyLoggingService.constInfo('📝 Opening assembly edit form', { assembly: assembly.ac_name });
-    
-    setEditFormData({
-      ac_number: assembly.ac_number || '',
-      ac_name: assembly.ac_name || assembly.name || '',
-      district: assembly.district || '',
-      type: assembly.type || ''
-    });
-    
-    setEditingAssemblyId(assembly._id || assembly.id);
-    setEditingConstituency(false);
-    setEditingAssembly(true);
-    setEditModalVisible(true);
-  };
-
-  // Handle constituency update
-  const handleUpdateConstituency = async () => {
-    if (!regdMobileNo) {
-      Alert.alert('Error', 'Mobile number not found. Please refresh the screen.');
-      return;
-    }
-    
-    setUpdateLoading(true);
-    try {
-      ConstituencyLoggingService.constInfo('🔄 === UPDATING CONSTITUENCY PROFILE ===', { mobileNo: regdMobileNo });
-      
-      // Clean the form data - remove empty strings and null values
-      const cleanedFormData = {};
-      Object.keys(editFormData).forEach(key => {
-        const value = editFormData[key];
-        if (value !== null && value !== undefined && value.toString().trim() !== '') {
-          cleanedFormData[key] = value.toString().trim();
-        }
-      });
-      
-      // Get base URL from ConfigService
-      const baseUrl = await ConfigService.getBaseUrl();
-      
-      // The backend expects "constitency_profile" (with typo), not "constituency_profile"
-      const requestPayload = {
-        constitency_profile: cleanedFormData
-      };
-      
-      ConstituencyLoggingService.constDebug('Update payload prepared', {
-        url: `${baseUrl}/api/constituencyprofile/${regdMobileNo}`,
-        fieldsCount: Object.keys(cleanedFormData).length
-      });
-      
-      const result = await ApiService.put(
-        `${baseUrl}/api/constituencyprofile/${regdMobileNo}`,
-        requestPayload,
-        {
-          'x-user-id': loggedInEmail || 'admin_user',
-          'x-user-role': userRole,
-        }
-      );
-      
-      if (!result.success) {
-        throw new Error(`Failed to update constituency profile: ${result.message}`);
-      }
-      
-      ConstituencyLoggingService.constInfo('✅ Constituency profile updated successfully');
-      
-      // Update local state with new data
-      if (result.data && result.data.constituency_profile) {
-        setConstituencyData(result.data.constituency_profile);
-      } else if (result.data && result.data.constitency_profile) {
-        setConstituencyData(result.data.constitency_profile);
-      } else if (result.data) {
-        setConstituencyData(result.data);
-      }
-      
-      // Close modal and refresh data
-      setEditModalVisible(false);
-      await fetchConstituencyData(regdMobileNo);
-      
-      Alert.alert('Success', 'Constituency profile updated successfully!');
-      
-    } catch (error) {
-      ConstituencyLoggingService.constError('❌ Error updating constituency profile', error);
-      Alert.alert('Update Failed', `Failed to update constituency profile: ${error.message}`);
-    } finally {
-      setUpdateLoading(false);
-    }
-  };
-
-  // Handle assembly update
-  const handleUpdateAssembly = async () => {
-    if (!regdMobileNo || !editingAssemblyId) {
-      Alert.alert('Error', 'Missing required data. Please try again.');
-      return;
-    }
-    
-    setUpdateLoading(true);
-    try {
-      ConstituencyLoggingService.constInfo('🔄 === UPDATING ASSEMBLY CONSTITUENCY ===', { 
-        mobileNo: regdMobileNo, 
-        assemblyId: editingAssemblyId 
-      });
-      
-      // Clean the form data
-      const cleanedFormData = {};
-      Object.keys(editFormData).forEach(key => {
-        const value = editFormData[key];
-        if (value !== null && value !== undefined && value.toString().trim() !== '') {
-          cleanedFormData[key] = value.toString().trim();
-        }
-      });
-      
-      // Create updated assembly constituencies array
-      const updatedAssemblyConstituencies = assemblyConstituencies.map(assembly => {
-        if ((assembly._id || assembly.id) === editingAssemblyId) {
-          return {
-            ...assembly,
-            ac_number: cleanedFormData.ac_number || assembly.ac_number,
-            ac_name: cleanedFormData.ac_name || assembly.ac_name,
-            district: cleanedFormData.district || assembly.district,
-            type: cleanedFormData.type || assembly.type || ''
-          };
-        }
-        return assembly;
-      });
-      
-      // Get base URL from ConfigService
-      const baseUrl = await ConfigService.getBaseUrl();
-      
-      // Structure the payload according to backend API
-      const requestPayload = {
-        assembly_constituencies: {
-          narration: "Updated assembly constituencies",
-          assembly_const_count: updatedAssemblyConstituencies.length,
-          assembly_const: updatedAssemblyConstituencies.map(assembly => ({
-            ac_number: parseInt(assembly.ac_number) || 0,
-            ac_name: assembly.ac_name || '',
-            district: assembly.district || '',
-            ...(assembly.type && { type: assembly.type })
-          }))
-        }
-      };
-      
-      const result = await ApiService.put(
-        `${baseUrl}/api/assemblyconstituencies/${regdMobileNo}`,
-        requestPayload,
-        {
-          'x-user-id': loggedInEmail || 'admin_user',
-          'x-user-role': userRole,
-        }
-      );
-      
-      if (!result.success) {
-        throw new Error(`Failed to update assembly constituency: ${result.message}`);
-      }
-      
-      ConstituencyLoggingService.constInfo('✅ Assembly constituency updated successfully');
-      
-      // Close modal and refresh data
-      setEditModalVisible(false);
-      await fetchConstituencyData(regdMobileNo);
-      
-      Alert.alert('Success', 'Assembly constituency updated successfully!');
-      
-    } catch (error) {
-      ConstituencyLoggingService.constError('❌ Error updating assembly constituency', error);
-      Alert.alert('Update Failed', `Failed to update assembly constituency: ${error.message}`);
-    } finally {
-      setUpdateLoading(false);
-    }
-  };
-
-  const handleSubmitEdit = () => {
-    if (editingConstituency) {
-      handleUpdateConstituency();
-    } else if (editingAssembly) {
-      handleUpdateAssembly();
-    }
-  };
-
-  const closeEditModal = () => {
-    setEditModalVisible(false);
-    setEditingConstituency(false);
-    setEditingAssembly(false);
-    setEditFormData({});
-    setEditingAssemblyId(null);
-  };
-
-  // Utility functions for data display
   const openLink = (url) => {
     if (url) {
       Linking.openURL(url).catch(err => {
@@ -955,31 +374,50 @@ const AboutConstituencyScreen = ({ navigation }) => {
               <Text style={styles.tableHeaderText}>TOTAL</Text>
             </View>
             {electorsTableData.map((item, index) => {
-              const isTotalRow = item.category === 'TOTAL';
-              return (
-                <View
-                  key={index}
-                  style={[
-                    styles.tableRow,
-                    index % 2 === 0 && styles.tableRowEven,
-                    isTotalRow && styles.totalRow
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.tableCellLeft,
-                      { flex: 1.5, fontWeight: isTotalRow ? 'bold' : 'normal' }
-                    ]}
-                  >
-                    {item.category}
-                  </Text>
-                  <Text style={[styles.tableCellCenter, { fontWeight: isTotalRow ? 'bold' : 'normal' }]}>{item.men}</Text>
-                  <Text style={[styles.tableCellCenter, { fontWeight: isTotalRow ? 'bold' : 'normal' }]}>{item.women}</Text>
-                  <Text style={[styles.tableCellCenter, { fontWeight: isTotalRow ? 'bold' : 'normal' }]}>{item.thirdGender}</Text>
-                  <Text style={[styles.tableCellCenter, { fontWeight: isTotalRow ? 'bold' : 'normal' }]}>{item.total}</Text>
-                </View>
-              );
-            })}
+  const isTotalRow = item.category === 'TOTAL';
+  return (
+    <View
+      key={index}
+      style={[
+        styles.tableRow,
+        index % 2 === 0 && styles.tableRowEven
+      ]}
+    >
+      <Text
+        style={[
+          styles.tableCellLeft,
+          { flex: 1.5, fontWeight: isTotalRow ? 'bold' : 'normal' }
+        ]}
+      >
+        {item.category}
+      </Text>
+      <Text style={[styles.tableCellCenter, { fontWeight: isTotalRow ? 'bold' : 'normal' }]}>{item.men}</Text>
+      <Text style={[styles.tableCellCenter, { fontWeight: isTotalRow ? 'bold' : 'normal' }]}>{item.women}</Text>
+      <Text style={[styles.tableCellCenter, { fontWeight: isTotalRow ? 'bold' : 'normal' }]}>{item.thirdGender}</Text>
+      <Text style={[styles.tableCellCenter, { fontWeight: isTotalRow ? 'bold' : 'normal' }]}>{item.total}</Text>
+    </View>
+  );
+})}
+
+          </View>
+        )}
+
+        {/* Polling Stations Table */}
+        {pollingStationsData.length > 0 && (
+          <View style={styles.tableContainer}>
+            <View style={styles.tableSubHeader}>
+              <Text style={styles.tableSubHeaderText}>III. POLLING STATIONS</Text>
+            </View>
+            <View style={styles.tableHeader}>
+              <Text style={styles.tableHeaderText}>NUMBER</Text>
+              <Text style={styles.tableHeaderText}>AVERAGE ELECTORS PER POLLING STATION</Text>
+            </View>
+            {pollingStationsData.map((item, index) => (
+              <View key={index} style={[styles.tableRow, index % 2 === 0 && styles.tableRowEven]}>
+                <Text style={styles.tableCellCenter}>{item.number}</Text>
+                <Text style={styles.tableCellCenter}>{item.avgElectors}</Text>
+              </View>
+            ))}
           </View>
         )}
 
@@ -1047,20 +485,196 @@ const AboutConstituencyScreen = ({ navigation }) => {
                     <Text style={styles.scBadgeText}>SC</Text>
                   </View>
                 )}
-                {isAdmin && (
-                  <TouchableOpacity
-                    style={styles.editButton}
-                    onPress={() => openEditAssemblyForm(segment)}
-                    activeOpacity={0.7}
-                  >
-                    <Icon name="edit" size={12} color="#fff" />
-                  </TouchableOpacity>
-                )}
               </View>
             </View>
           </View>
         ))}
       </View>
+    );
+  };
+
+  const renderEditModal = () => {
+    return (
+      <Modal
+        visible={editModalVisible}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={closeEditModal}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>
+                {editingConstituency ? 'Edit Constituency Profile' : 'Edit Assembly Constituency'}
+              </Text>
+              <TouchableOpacity onPress={closeEditModal} style={styles.closeButton}>
+                <Text style={styles.closeButtonText}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={false}>
+              {editingConstituency ? renderConstituencyEditForm() : renderAssemblyEditForm()}
+            </ScrollView>
+
+            <View style={styles.modalFooter}>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.cancelButton]}
+                onPress={closeEditModal}
+                disabled={updateLoading}
+              >
+                <Text style={styles.cancelButtonText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.saveButton]}
+                onPress={handleSubmitEdit}
+                disabled={updateLoading}
+              >
+                {updateLoading ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Text style={styles.saveButtonText}>Save Changes</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+    );
+  };
+
+  const renderConstituencyEditForm = () => {
+    const fields = [
+      { key: 'const_name', label: 'Constituency Name' },
+      { key: 'const_no', label: 'Constituency Number' },
+      { key: 'state', label: 'State' },
+      { key: 'district', label: 'District' },
+      { key: 'constituency_type', label: 'Constituency Type' },
+      { key: 'reservation_status', label: 'Reservation Status' },
+      { key: 'established', label: 'Established Year' },
+      { key: 'sitting_member', label: 'Current MP' },
+      { key: 'member_party', label: 'Member Party' },
+      { key: 'overview', label: 'Overview', multiline: true },
+      { key: 'geography', label: 'Geography', multiline: true },
+      { key: 'eci_url', label: 'ECI URL' },
+      { key: 'assembly_segment_count', label: 'Assembly Segment Count' },
+      { key: 'election_year', label: 'Election Year' },
+      { key: 'electon_header', label: 'Election Header' },
+      { key: 'total_no_voters_data', label: 'Total Voters' },
+      { key: 'voter_trunout_ratio_data', label: 'Voter Turnout Ratio' },
+      { key: 'polling_station_count', label: 'Polling Station Count' },
+      { key: 'avg_no_electors_per_ps_data', label: 'Avg Electors per PS' },
+      { key: 'electors_general_male_data', label: 'General Male Electors' },
+      { key: 'electors_general_female_data', label: 'General Female Electors' },
+      { key: 'electors_general_tg_data', label: 'General Third Gender Electors' },
+      { key: 'electors_general_total_data', label: 'General Total Electors' },
+      { key: 'electors_overseas_male_data', label: 'Overseas Male Electors' },
+      { key: 'electors_overseas_female_data', label: 'Overseas Female Electors' },
+      { key: 'electors_overseas_tg_data', label: 'Overseas Third Gender Electors' },
+      { key: 'electors_overseas_total_data', label: 'Overseas Total Electors' },
+      { key: 'electors_service_male_data', label: 'Service Male Electors' },
+      { key: 'electors_service_female_data', label: 'Service Female Electors' },
+      { key: 'electors_service_tg_data', label: 'Service Third Gender Electors' },
+      { key: 'electors_service_total_data', label: 'Service Total Electors' },
+      { key: 'electors_total_male_data', label: 'Total Male Electors' },
+      { key: 'electors_total_female_data', label: 'Total Female Electors' },
+      { key: 'electors_total_tg_data', label: 'Total Third Gender Electors' },
+      { key: 'electors_grand_total_data', label: 'Grand Total Electors' }
+    ];
+
+    return (
+      <View>
+        {fields.map((field) => (
+          <View key={field.key} style={styles.formGroup}>
+            <Text style={styles.formLabel}>{field.label}</Text>
+            <TextInput
+              style={[styles.formInput, field.multiline && styles.textArea]}
+              value={editFormData[field.key] || ''}
+              onChangeText={(text) => setEditFormData({ ...editFormData, [field.key]: text })}
+              multiline={field.multiline}
+              numberOfLines={field.multiline ? 4 : 1}
+              placeholder={`Enter ${field.label.toLowerCase()}`}
+            />
+          </View>
+        ))}
+      </View>
+    );
+  };
+
+  const renderAssemblyEditForm = () => {
+    const fields = [
+      { key: 'ac_number', label: 'Assembly Constituency Number' },
+      { key: 'ac_name', label: 'Assembly Constituency Name' },
+      { key: 'district', label: 'District' },
+      { key: 'type', label: 'Type (SC/General)' }
+    ];
+
+    return (
+      <View>
+        {fields.map((field) => (
+          <View key={field.key} style={styles.formGroup}>
+            <Text style={styles.formLabel}>{field.label}</Text>
+            <TextInput
+              style={styles.formInput}
+              value={editFormData[field.key] || ''}
+              onChangeText={(text) => setEditFormData({ ...editFormData, [field.key]: text })}
+              placeholder={`Enter ${field.label.toLowerCase()}`}
+            />
+          </View>
+        ))}
+      </View>
+    );
+  };
+
+  // Developer Input Modal
+  const renderDeveloperInputModal = () => {
+    return (
+      <Modal
+        visible={showDevInput}
+        animationType="fade"
+        transparent={true}
+        onRequestClose={closeDevInput}
+      >
+        <View style={styles.devModalOverlay}>
+          <View style={styles.devModalContent}>
+            <View style={styles.devModalHeader}>
+              <Text style={styles.devModalTitle}>Developer Access</Text>
+              <TouchableOpacity onPress={closeDevInput} style={styles.closeButton}>
+                <Text style={styles.closeButtonText}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.devModalBody}>
+              <Text style={styles.devModalDescription}>
+                Enter developer code to enable admin features for testing:
+              </Text>
+              <TextInput
+                style={styles.devInput}
+                value={devInput}
+                onChangeText={setDevInput}
+                placeholder="Enter code..."
+                secureTextEntry={false}
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+            </View>
+
+            <View style={styles.devModalFooter}>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.cancelButton]}
+                onPress={closeDevInput}
+              >
+                <Text style={styles.cancelButtonText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.saveButton]}
+                onPress={handleDevInputSubmit}
+              >
+                <Text style={styles.saveButtonText}>Submit</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     );
   };
 
@@ -1082,147 +696,61 @@ const AboutConstituencyScreen = ({ navigation }) => {
     );
   };
 
-  const renderExternalLinks = () => (
-    <View style={styles.card}>
-      <View style={styles.cardHeader}>
-        <Icon name="link" size={20} color="#9b59b6" />
-        <Text style={styles.cardTitle}>External Links</Text>
-      </View>
-      <View style={styles.linksContainer}>
-        {constituencyData?.eci_url && (
-          <TouchableOpacity 
-            style={styles.linkButton}
-            onPress={() => openLink(constituencyData.eci_url)}
-            activeOpacity={0.7}
-          >
-            <Icon name="account-balance" size={20} color="#e67e22" />
-            <View style={styles.linkContent}>
-              <Text style={styles.linkTitle}>Election Commission</Text>
-              <Text style={styles.linkDescription}>Official ECI information</Text>
-            </View>
-            <Icon name="open-in-new" size={16} color="#3498db" />
-          </TouchableOpacity>
-        )}
-
-        <TouchableOpacity 
-          style={styles.linkButton}
-          onPress={() => openLink(`https://en.wikipedia.org/wiki/${(constituencyData?.const_name || '').replace(/ /g, '_')}_Lok_Sabha_constituency`)}
-          activeOpacity={0.7}
-        >
-          <Icon name="public" size={20} color="#3498db" />
-          <View style={styles.linkContent}>
-            <Text style={styles.linkTitle}>Wikipedia</Text>
-            <Text style={styles.linkDescription}>Detailed information and history</Text>
-          </View>
-          <Icon name="open-in-new" size={16} color="#3498db" />
-        </TouchableOpacity>
-
-        <TouchableOpacity 
-          style={styles.linkButton}
-          onPress={() => openLink(`https://chanakyya.com/Parliament-Details/${(constituencyData?.const_name || '').replace(/ /g, '_')}`)}
-          activeOpacity={0.7}
-        >
-          <Icon name="bar-chart" size={20} color="#f39c12" />
-          <View style={styles.linkContent}>
-            <Text style={styles.linkTitle}>Chanakyya Election Data</Text>
-            <Text style={styles.linkDescription}>Election statistics and analysis</Text>
-          </View>
-          <Icon name="open-in-new" size={16} color="#3498db" />
-        </TouchableOpacity>
-      </View>
-    </View>
-  );
-
-  const renderEditModal = () => (
-    <Modal
-      visible={editModalVisible}
-      animationType="slide"
-      transparent={true}
-      onRequestClose={closeEditModal}
-    >
-      <View style={styles.modalOverlay}>
-        <View style={styles.modalContent}>
-          <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>
-              {editingConstituency ? 'Edit Constituency Profile' : 'Edit Assembly Constituency'}
-            </Text>
-            <TouchableOpacity onPress={closeEditModal} style={styles.closeButton}>
-              <Icon name="close" size={18} color="#fff" />
-            </TouchableOpacity>
-          </View>
-
-          <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={false}>
-            {editingConstituency ? renderConstituencyEditForm() : renderAssemblyEditForm()}
-          </ScrollView>
-
-          <View style={styles.modalFooter}>
-            <TouchableOpacity
-              style={[styles.modalButton, styles.cancelButton]}
-              onPress={closeEditModal}
-              disabled={updateLoading}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.cancelButtonText}>Cancel</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.modalButton, styles.saveButton]}
-              onPress={handleSubmitEdit}
-              disabled={updateLoading}
-              activeOpacity={0.7}
-            >
-              {updateLoading ? (
-                <ActivityIndicator size="small" color="#fff" />
-              ) : (
-                <Text style={styles.saveButtonText}>Save Changes</Text>
-              )}
-            </TouchableOpacity>
-          </View>
-        </View>
-      </View>
-    </Modal>
-  );
-
-  const renderConstituencyEditForm = () => {
-    const fields = [
-      { key: 'const_name', label: 'Constituency Name', required: true },
-      { key: 'const_no', label: 'Constituency Number', required: true },
-      { key: 'state', label: 'State', required: true },
-      { key: 'district', label: 'District', required: true },
-      { key: 'constituency_type', label: 'Constituency Type' },
-      { key: 'reservation_status', label: 'Reservation Status' },
-      { key: 'established', label: 'Established Year' },
-      { key: 'sitting_member', label: 'Current MP' },
-      { key: 'member_party', label: 'Member Party' },
-      { key: 'overview', label: 'Overview', multiline: true },
-      { key: 'geography', label: 'Geography', multiline: true },
-      { key: 'eci_url', label: 'ECI URL' },
-      { key: 'assembly_segment_count', label: 'Assembly Segment Count' },
-      { key: 'election_year', label: 'Election Year' },
-      { key: 'electon_header', label: 'Election Header' },
-      { key: 'total_no_voters_data', label: 'Total Voters' },
-      { key: 'voter_trunout_ratio_data', label: 'Voter Turnout Ratio' },
-      { key: 'polling_station_count', label: 'Polling Station Count' },
-      { key: 'avg_no_electors_per_ps_data', label: 'Avg Electors per PS' }
-    ];
-
+  if (error && !constituencyData) {
     return (
-      <View>
-        {fields.map((field) => (
-          <View key={field.key} style={styles.formGroup}>
-            <Text style={[styles.formLabel, field.required && styles.requiredLabel]}>
-              {field.label}{field.required && ' *'}
-            </Text>
-            <TextInput
-              style={[styles.formInput, field.multiline && styles.textArea]}
-              value={editFormData[field.key] || ''}
-              onChangeText={(text) => setEditFormData({ ...editFormData, [field.key]: text })}
-              multiline={field.multiline}
-              numberOfLines={field.multiline ? 4 : 1}
-              placeholder={`Enter ${field.label.toLowerCase()}`}
-              placeholderTextColor="#bdc3c7"
-            />
-          </View>
-        ))}
+      <View style={styles.fullErrorContainer}>
+        <Text style={styles.errorText}>Error: {error}</Text>
+        <TouchableOpacity style={styles.retryButton} onPress={fetchConstituencyData}>
+          <Text style={styles.retryButtonText}>Retry</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
+  return (
+    <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
+      {/* Header Section */}
+    <View style={styles.header}>
+  {/* First Line: Constituency Number and Name */}
+  <Text style={styles.title}>
+    {`${constituencyData?.const_no || ''}${constituencyData?.const_no ? ', ' : ''}${constituencyData?.const_name || 'Constituency Name'}`}
+  </Text>
+
+  {/* Second Line: Constituency Type + "Constituency" */}
+  <Text style={styles.subtitle}>
+    {`${constituencyData?.constituency_type || 'Lok Sabha'} Constituency`}
+  </Text>
+
+  {/* Third Line: Reservation Status */}
+  {constituencyData?.reservation_status && (
+    <View style={[styles.badge, { backgroundColor: '#1ed02dff', marginTop: 10 }]}>
+      <Text style={styles.badgeText}>
+        {constituencyData.reservation_status}
+      </Text>
+    </View>
+  )}
+
+  {/* Fourth Line: State */}
+  <View style={[styles.badge, { marginTop: 8 }]}>
+    <Text style={styles.badgeText}>
+      {constituencyData?.state || 'State'}
+    </Text>
+  </View>
+</View>
+
+
+
+
+      {/* Overview Card */}
+      <View style={styles.card}>
+        <View style={styles.cardHeader}>
+          <Text style={styles.cardTitle}>📍 Overview</Text>
+        </View>
+        <View style={styles.cardContent}>
+          <Text style={styles.overviewText}>
+            {getOverviewText()}
+          </Text>
+        </View>
       </View>
     );
   };
@@ -1428,10 +956,6 @@ const AboutConstituencyScreen = ({ navigation }) => {
 
       {/* Footer spacing */}
       <View style={styles.footer} />
-
-      {/* Modals */}
-      {renderEditModal()}
-      {renderDeveloperInputModal()}
     </ScrollView>
   );
 };
@@ -1448,19 +972,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: '#f5f7fa',
-    padding: 20,
-  },
-  fullLoadingText: {
-    marginTop: 15,
-    fontSize: 16,
-    color: '#2c3e50',
-    fontWeight: '600',
-  },
-  fullLoadingSubText: {
-    marginTop: 5,
-    fontSize: 14,
-    color: '#7f8c8d',
-    textAlign: 'center',
   },
   fullErrorContainer: {
     flex: 1,
@@ -1524,6 +1035,16 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
   },
+  headerTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '100%',
+  },
+  titleContainer: {
+    flex: 1,
+    alignItems: 'center',
+  },
   title: {
     fontSize: Math.min(24, width * 0.06),
     fontWeight: 'bold',
@@ -1548,46 +1069,6 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 12,
     fontWeight: 'bold',
-  },
-
-  // Role Indicator Styles
-  roleIndicatorContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 15,
-  },
-  roleIndicator: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 12,
-  },
-  roleIndicatorText: {
-    color: '#fff',
-    fontSize: 10,
-    fontWeight: 'bold',
-    marginLeft: 4,
-  },
-
-  // Admin Edit Buttons
-  headerEditButton: {
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    borderRadius: 20,
-    width: 36,
-    height: 36,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginLeft: 10,
-  },
-  editButton: {
-    backgroundColor: '#3498db',
-    borderRadius: 15,
-    width: 30,
-    height: 30,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginLeft: 8,
   },
 
   // Card Styles
@@ -1624,6 +1105,69 @@ const styles = StyleSheet.create({
     lineHeight: 24,
     color: '#2c3e50',
     textAlign: 'left',
+  },
+
+  // Table Styles
+  tableContainer: {
+    marginBottom: 20,
+    borderRadius: 8,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: '#e1e8ed',
+  },
+  tableSubHeader: {
+    backgroundColor: '#f8f9fa',
+    padding: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e1e8ed',
+  },
+  tableSubHeaderText: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#2c3e50',
+    textAlign: 'center',
+  },
+  tableHeader: {
+    flexDirection: 'row',
+    backgroundColor: '#3498db',
+  },
+  tableHeaderText: {
+    flex: 1,
+    padding: 12,
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: '#fff',
+    textAlign: 'center',
+  },
+  tableRow: {
+    flexDirection: 'row',
+    borderBottomWidth: 1,
+    borderBottomColor: '#e1e8ed',
+  },
+  tableRowEven: {
+    backgroundColor: '#f8f9fa',
+  },
+  tableCellLeft: {
+    flex: 1,
+    padding: 12,
+    fontSize: 14,
+    color: '#2c3e50',
+    fontWeight: '500',
+  },
+  tableCellRight: {
+    flex: 1,
+    padding: 12,
+    fontSize: 14,
+    color: '#555',
+    textAlign: 'right',
+  },
+  tableCellCenter: {
+    flex: 1,
+    padding: 12,
+    fontSize: 14,
+    color: '#555',
+    textAlign: 'center',
+    fontWeight: '500',
   },
 
   // Info Grid Styles
@@ -1668,24 +1212,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
 
-  // ECI URL Styles
-  eciUrlContainer: {
-    marginTop: 6,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    backgroundColor: '#e8f4f8',
-    borderRadius: 6,
-    borderWidth: 1,
-    borderColor: '#3498db',
-  },
-  eciUrlText: {
-    fontSize: 10,
-    color: '#3498db',
-    textAlign: 'center',
-    fontWeight: '600',
-  },
-
-  // Header Link Button Styles
+  // Header Link Button Styles - NEW
   headerLinkButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1701,10 +1228,9 @@ const styles = StyleSheet.create({
     marginRight: 4,
   },
 
-  // Assembly Count Badge
-  assemblyCountBadge: {
-    backgroundColor: '#2980b9',
-    borderRadius: 12,
+  // ECI URL Styles - NEW
+  eciUrlContainer: {
+    marginTop: 6,
     paddingHorizontal: 8,
     paddingVertical: 4,
     minWidth: 24,
@@ -1740,9 +1266,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     backgroundColor: '#3498db',
   },
-  tableHeaderText: {
-    flex: 1,
-    padding: 10,
+
+  // Assembly Segments Styles (Updated)
+  segmentCount: {
     fontSize: 12,
     fontWeight: 'bold',
     color: '#fff',
@@ -1872,6 +1398,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 8,
     borderRadius: 6,
+    marginTop: 10,
   },
   retryButtonText: {
     color: '#fff',

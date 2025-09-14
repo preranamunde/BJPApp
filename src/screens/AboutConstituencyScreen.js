@@ -421,293 +421,6 @@ const [editFormSections, setEditFormSections] = useState({
     }
   };
 
-  // ADD THIS NEW FUNCTION
-const openMasterEditForm = () => {
-  if (!isAdmin) {
-    Alert.alert('Access Denied', 'Admin privileges required for editing');
-    return;
-  }
-  
-  if (!constituencyData) {
-    Alert.alert('No Data', 'No constituency data available to edit');
-    return;
-  }
-  
-  ConstituencyLoggingService.constInfo('📝 Opening master constituency edit form');
-  
-  // Combine all sections into one form
-  const allSections = getFieldSections();
-  const masterFormData = {};
-  
-  Object.keys(allSections).forEach(sectionKey => {
-    const section = allSections[sectionKey];
-    section.fields.forEach(field => {
-      masterFormData[field.key] = constituencyData[field.key] || '';
-    });
-  });
-  
-  setEditFormData(masterFormData);
-  setEditingConstituency(true);
-  setEditingAssembly(false);
-  setEditModalVisible(true);
-};
-
-// ADD THIS NEW FUNCTION
-const renderConstituencyEditForm = () => {
-  const allSections = getFieldSections();
-  const allFields = [];
-  
-  // Combine all fields from all sections
-  Object.keys(allSections).forEach(sectionKey => {
-    const section = allSections[sectionKey];
-    allFields.push({
-      sectionTitle: section.title,
-      sectionColor: section.color,
-      fields: section.fields
-    });
-  });
-
-  return (
-    <View>
-      {allFields.map((section, sectionIndex) => (
-        <View key={sectionIndex}>
-          <View style={[{
-            backgroundColor: section.sectionColor,
-            padding: 12,
-            marginVertical: 8,
-            borderRadius: 8,
-          }]}>
-            <Text style={{
-              color: '#fff',
-              fontSize: 16,
-              fontWeight: 'bold',
-              textAlign: 'center'
-            }}>
-              {section.sectionTitle}
-            </Text>
-          </View>
-          
-          {section.fields.map((field) => (
-            <View key={field.key} style={styles.formGroup}>
-              <Text style={[styles.formLabel, field.required && styles.requiredLabel]}>
-                {field.label}{field.required && ' *'}
-              </Text>
-              <TextInput
-                style={[styles.formInput, field.multiline && styles.textArea]}
-                value={editFormData[field.key] || ''}
-                onChangeText={(text) => setEditFormData({ ...editFormData, [field.key]: text })}
-                multiline={field.multiline}
-                numberOfLines={field.multiline ? 4 : 1}
-                placeholder={`Enter ${field.label.toLowerCase()}`}
-                placeholderTextColor="#bdc3c7"
-              />
-            </View>
-          ))}
-        </View>
-      ))}
-    </View>
-  );
-};
-
-  // Add these new functions after handleDevInputSubmit
-const getFieldSections = () => ({
-  generalInfo: {
-    title: 'General Information & Geography',
-    icon: 'info',
-    color: '#e16e2b',
-    fields: [
-      { key: 'const_name', label: 'Constituency Name', required: true },
-      { key: 'const_no', label: 'Constituency Number', required: true },
-      { key: 'state', label: 'State', required: true },
-      { key: 'district', label: 'District', required: true },
-      { key: 'constituency_type', label: 'Constituency Type' },
-      { key: 'reservation_status', label: 'Reservation Status' },
-      { key: 'established', label: 'Established Year' },
-      { key: 'sitting_member', label: 'Current MP' },
-      { key: 'member_party', label: 'Member Party' },
-      { key: 'assembly_segment_count', label: 'Assembly Segment Count' },
-      { key: 'overview', label: 'Overview', multiline: true },
-      { key: 'geography', label: 'Geography', multiline: true },
-      { key: 'eci_url', label: 'ECI URL' }
-    ]
-  },
-  eciSummary: {
-    title: 'ECI Summary Data',
-    icon: 'how-to-vote',
-    color: '#e16e2b',
-    fields: [
-      { key: 'election_year', label: 'Election Year' },
-      { key: 'electon_header', label: 'Election Header' },
-      { key: 'total_no_voters_data', label: 'Total Voters' },
-      { key: 'voter_trunout_ratio_data', label: 'Voter Turnout Ratio' },
-      { key: 'polling_station_count', label: 'Polling Station Count' },
-      { key: 'avg_no_electors_per_ps_data', label: 'Avg Electors per PS' }
-    ]
-  },
-  electorsBreakdown: {
-    title: 'Electors Breakdown',
-    icon: 'bar-chart',
-    color: '#e16e2b',
-    fields: [
-      { key: 'electors_general_male_data', label: 'General Male Electors' },
-      { key: 'electors_general_female_data', label: 'General Female Electors' },
-      { key: 'electors_general_tg_data', label: 'General Third Gender' },
-      { key: 'electors_general_total_data', label: 'General Total' },
-      { key: 'electors_overseas_male_data', label: 'Overseas Male Electors' },
-      { key: 'electors_overseas_female_data', label: 'Overseas Female Electors' },
-      { key: 'electors_overseas_tg_data', label: 'Overseas Third Gender' },
-      { key: 'electors_overseas_total_data', label: 'Overseas Total' },
-      { key: 'electors_service_male_data', label: 'Service Male Electors' },
-      { key: 'electors_service_female_data', label: 'Service Female Electors' },
-      { key: 'electors_service_tg_data', label: 'Service Third Gender' },
-      { key: 'electors_service_total_data', label: 'Service Total' },
-      { key: 'electors_total_male_data', label: 'Total Male Electors' },
-      { key: 'electors_total_female_data', label: 'Total Female Electors' },
-      { key: 'electors_total_tg_data', label: 'Total Third Gender' },
-      { key: 'electors_grand_total_data', label: 'Grand Total Electors' }
-    ]
-  }
-});
-
-const openEditSection = (sectionKey) => {
-  if (!isAdmin) {
-    Alert.alert('Access Denied', 'Admin privileges required for editing');
-    return;
-  }
-  
-  if (!constituencyData) {
-    Alert.alert('No Data', 'No constituency data available to edit');
-    return;
-  }
-  
-  const sections = getFieldSections();
-  const section = sections[sectionKey];
-  
-  if (!section) {
-    Alert.alert('Error', 'Section not found');
-    return;
-  }
-  
-  ConstituencyLoggingService.constInfo(`📝 Opening ${section.title} edit form`);
-  
-  const sectionFormData = {};
-  section.fields.forEach(field => {
-    sectionFormData[field.key] = constituencyData[field.key] || '';
-  });
-  
-  setEditFormSections(prev => ({
-    ...prev,
-    [sectionKey]: sectionFormData
-  }));
-  
-  setEditSections(prev => ({
-    ...prev,
-    [sectionKey]: true
-  }));
-  
-  setEditModalVisible(true);
-};
-
-const closeEditSection = (sectionKey) => {
-  setEditSections(prev => ({
-    ...prev,
-    [sectionKey]: false
-  }));
-  
-  setEditFormSections(prev => ({
-    ...prev,
-    [sectionKey]: {}
-  }));
-  
-  const hasOpenSections = Object.values({
-    ...editSections,
-    [sectionKey]: false
-  }).some(isOpen => isOpen);
-  
-  if (!hasOpenSections) {
-    setEditModalVisible(false);
-  }
-};
-
-const handleSectionFormChange = (sectionKey, fieldKey, value) => {
-  setEditFormSections(prev => ({
-    ...prev,
-    [sectionKey]: {
-      ...prev[sectionKey],
-      [fieldKey]: value
-    }
-  }));
-};
-
-const handleUpdateSection = async (sectionKey) => {
-  if (!regdMobileNo) {
-    Alert.alert('Error', 'Mobile number not found. Please refresh the screen.');
-    return;
-  }
-  
-  setUpdateLoading(true);
-  try {
-    const sections = getFieldSections();
-    const section = sections[sectionKey];
-    const sectionData = editFormSections[sectionKey];
-    
-    ConstituencyLoggingService.constInfo(`🔄 === UPDATING ${section.title.toUpperCase()} ===`, { mobileNo: regdMobileNo });
-    
-    const cleanedFormData = {};
-    Object.keys(sectionData).forEach(key => {
-      const value = sectionData[key];
-      if (value !== null && value !== undefined && value.toString().trim() !== '') {
-        cleanedFormData[key] = value.toString().trim();
-      }
-    });
-    
-    const baseUrl = await ConfigService.getBaseUrl();
-    
-    const requestPayload = {
-      constitency_profile: cleanedFormData
-    };
-    
-    ConstituencyLoggingService.constDebug('Section update payload prepared', {
-      section: section.title,
-      url: `${baseUrl}/api/constituencyprofile/${regdMobileNo}`,
-      fieldsCount: Object.keys(cleanedFormData).length
-    });
-    
-    const result = await ApiService.put(
-      `${baseUrl}/api/constituencyprofile/${regdMobileNo}`,
-      requestPayload,
-      {
-        'x-user-id': loggedInEmail || 'admin_user',
-        'x-user-role': userRole,
-      }
-    );
-    
-    if (!result.success) {
-      throw new Error(`Failed to update ${section.title}: ${result.message}`);
-    }
-    
-    ConstituencyLoggingService.constInfo(`✅ ${section.title} updated successfully`);
-    
-    if (result.data && result.data.constituency_profile) {
-      setConstituencyData(result.data.constituency_profile);
-    } else if (result.data && result.data.constitency_profile) {
-      setConstituencyData(result.data.constitency_profile);
-    } else if (result.data) {
-      setConstituencyData(result.data);
-    }
-    
-    closeEditSection(sectionKey);
-    await fetchConstituencyData(regdMobileNo);
-    
-    Alert.alert('Success', `${section.title} updated successfully!`);
-    
-  } catch (error) {
-    ConstituencyLoggingService.constError(`❌ Error updating ${sectionKey}`, error);
-    Alert.alert('Update Failed', `Failed to update section: ${error.message}`);
-  } finally {
-    setUpdateLoading(false);
-  }
-};
   const closeDevInput = () => {
     setShowDevInput(false);
     setDevInput('');
@@ -1022,100 +735,106 @@ const renderHeader = () => (
       </Text>
     </View>
 
-   
-  </View>
-);
-
-const renderInfoCards = () => (
-  <>
-    {/* Overview Card */}
-    <View style={styles.card}>
-      <View style={styles.cardHeader}>
-        <Icon name="place" size={20} color="#3498db" />
-        <Text style={styles.cardTitle}>Overview</Text>
-        {isAdmin && (
-          <TouchableOpacity
-            style={styles.headerEditButton}
-            onPress={() => openEditSection('generalInfo')}
-            activeOpacity={0.7}
-          >
-            <Icon name="edit" size={14} color="#fff" />
-          </TouchableOpacity>
-        )}
-      </View>
-      <View style={styles.cardContent}>
-        <Text style={styles.overviewText}>
-          {getOverviewText()}
-        </Text>
-      </View>
-    </View>
-
-    {/* Info Cards Grid - REMOVE ALL MINI EDIT BUTTONS */}
-    <View style={styles.infoGrid}>
-      <View style={styles.infoCard}>
-        <Icon name="account-balance" size={24} color="#e67e22" style={styles.infoIcon} />
-        <Text style={styles.infoLabel}>Established</Text>
-        <Text style={styles.infoValue}>
-          {formatEstablishedYear(constituencyData?.established)}
-        </Text>
-        <Text style={styles.infoSubtext}>
-          {constituencyData?.established ? 'After delimitation' : 'Historical'}
-        </Text>
-      </View>
-
-      <View style={styles.infoCard}>
-        <Icon name="person" size={24} color="#9b59b6" style={styles.infoIcon} />
-        <Text style={styles.infoLabel}>Current MP</Text>
-        <Text style={styles.infoValue} numberOfLines={3}>
-          {getCurrentMP()}
-        </Text>
-        <Text style={styles.infoSubtext}>
-          {constituencyData?.sitting_member ? 
-            `Member Of ${constituencyData?.constituency_type || 'Lok Sabha'}` : 
-            ''}
-        </Text>
-        {constituencyData?.member_party && (
-          <Text style={styles.infoSubtext}>
-            {getMemberParty()}
-          </Text>
-        )}
-      </View>
-    </View>
-
-    {/* Additional Info Cards - REMOVE ALL MINI EDIT BUTTONS */}
-    <View style={styles.infoGrid}>
-      {constituencyData?.district && (
-        <View style={styles.infoCard}>
-          <Icon name="map" size={24} color="#16a085" style={styles.infoIcon} />
-          <Text style={styles.infoLabel}>District</Text>
-          <Text style={styles.infoValue} numberOfLines={2}>
-            {constituencyData.district}
+      {/* User Role Indicator */}
+      <View style={styles.roleIndicatorContainer}>
+        <View style={[styles.roleIndicator, { backgroundColor: isAdmin ? '#f39c12' : '#3498db' }]}>
+          <Icon name={isAdmin ? 'admin-panel-settings' : 'person'} size={12} color="#fff" />
+          <Text style={styles.roleIndicatorText}>
+            {isAdmin ? 'ADMIN MODE' : 'USER MODE'}
           </Text>
         </View>
-      )}
-      
-      {constituencyData?.assembly_segment_count && (
-        <View style={styles.infoCard}>
-          <Icon name="how-to-vote" size={24} color="#2980b9" style={styles.infoIcon} />
-          <Text style={styles.infoLabel}>Assembly Constituencies</Text>
-          <Text style={styles.infoValue} numberOfLines={2}>
-            {constituencyData.assembly_segment_count}
+        
+        {isLoggedIn && (
+          <View style={[styles.roleIndicator, { backgroundColor: '#27ae60', marginLeft: 8 }]}>
+            <Icon name="verified-user" size={12} color="#fff" />
+            <Text style={styles.roleIndicatorText}>LOGGED IN</Text>
+          </View>
+        )}
+      </View>
+    </View>
+  );
+
+  const renderInfoCards = () => (
+    <>
+      {/* Overview Card */}
+      <View style={styles.card}>
+        <View style={styles.cardHeader}>
+          <Icon name="place" size={20} color="#3498db" />
+          <Text style={styles.cardTitle}>Overview</Text>
+        </View>
+        <View style={styles.cardContent}>
+          <Text style={styles.overviewText}>
+            {getOverviewText()}
           </Text>
-          {constituencyData?.eci_url && (
-            <TouchableOpacity 
-              onPress={() => openLink(constituencyData.eci_url)}
-              style={styles.eciUrlContainer}
-            >
-              <Text style={styles.eciUrlText} numberOfLines={1}>
-                View ECI Data
-              </Text>
-            </TouchableOpacity>
+        </View>
+      </View>
+
+      {/* Info Cards Grid */}
+      <View style={styles.infoGrid}>
+        <View style={styles.infoCard}>
+          <Icon name="account-balance" size={24} color="#e67e22" style={styles.infoIcon} />
+          <Text style={styles.infoLabel}>Established</Text>
+          <Text style={styles.infoValue}>
+            {formatEstablishedYear(constituencyData?.established)}
+          </Text>
+          <Text style={styles.infoSubtext}>
+            {constituencyData?.established ? 'After delimitation' : 'Historical'}
+          </Text>
+        </View>
+
+        <View style={styles.infoCard}>
+          <Icon name="person" size={24} color="#9b59b6" style={styles.infoIcon} />
+          <Text style={styles.infoLabel}>Current MP</Text>
+          <Text style={styles.infoValue} numberOfLines={3}>
+            {getCurrentMP()}
+          </Text>
+          <Text style={styles.infoSubtext}>
+            {constituencyData?.sitting_member ? 
+              `Member Of ${constituencyData?.constituency_type || 'Lok Sabha'}` : 
+              ''}
+          </Text>
+          {constituencyData?.member_party && (
+            <Text style={styles.infoSubtext}>
+              {getMemberParty()}
+            </Text>
           )}
         </View>
-      )}
-    </View>
-  </>
-);
+      </View>
+
+      {/* Additional Info Cards */}
+      <View style={styles.infoGrid}>
+        {constituencyData?.district && (
+          <View style={styles.infoCard}>
+            <Icon name="map" size={24} color="#16a085" style={styles.infoIcon} />
+            <Text style={styles.infoLabel}>District</Text>
+            <Text style={styles.infoValue} numberOfLines={2}>
+              {constituencyData.district}
+            </Text>
+          </View>
+        )}
+        
+        {constituencyData?.assembly_segment_count && (
+          <View style={styles.infoCard}>
+            <Icon name="how-to-vote" size={24} color="#2980b9" style={styles.infoIcon} />
+            <Text style={styles.infoLabel}>Assembly Constituencies</Text>
+            <Text style={styles.infoValue} numberOfLines={2}>
+              {constituencyData.assembly_segment_count}
+            </Text>
+            {constituencyData?.eci_url && (
+              <TouchableOpacity 
+                onPress={() => openLink(constituencyData.eci_url)}
+                style={styles.eciUrlContainer}
+              >
+                <Text style={styles.eciUrlText} numberOfLines={1}>
+                  View ECI Data
+                </Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        )}
+      </View>
+    </>
+  );
 
   const renderElectionTable = () => {
     if (!constituencyData) return null;
@@ -1295,15 +1014,15 @@ const renderInfoCards = () => (
     );
   };
 
-const renderAssemblySegments = () => {
-  if (loading) {
-    return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="small" color="#3498db" />
-        <Text style={styles.loadingText}>Loading assembly constituencies...</Text>
-      </View>
-    );
-  }
+  const renderAssemblySegments = () => {
+    if (loading) {
+      return (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="small" color="#3498db" />
+          <Text style={styles.loadingText}>Loading assembly constituencies...</Text>
+        </View>
+      );
+    }
 
   if (error && assemblyConstituencies.length === 0) {
     return (
@@ -1450,140 +1169,58 @@ const renderAssemblySegments = () => {
       </View>
     </View>
   );
-const renderMainEditModal = () => (
-  <Modal
-    visible={editModalVisible && (editingConstituency || editingAssembly)}
-    animationType="slide"
-    transparent={true}
-    onRequestClose={closeEditModal}
-  >
-    <View style={styles.modalOverlay}>
-      <View style={[styles.modalContent, { maxHeight: '90%' }]}>
-        <View style={styles.modalHeader}>
-          <Text style={styles.modalTitle}>
-            {editingConstituency ? 'Edit Constituency Profile' : 'Edit Assembly Constituency'}
-          </Text>
-          <TouchableOpacity onPress={closeEditModal} style={styles.closeButton}>
-            <Icon name="close" size={18} color="#fff" />
-          </TouchableOpacity>
-        </View>
+
+  const renderEditModal = () => (
+    <Modal
+      visible={editModalVisible}
+      animationType="slide"
+      transparent={true}
+      onRequestClose={closeEditModal}
+    >
+      <View style={styles.modalOverlay}>
+        <View style={styles.modalContent}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>
+              {editingConstituency ? 'Edit Constituency Profile' : 'Edit Assembly Constituency'}
+            </Text>
+            <TouchableOpacity onPress={closeEditModal} style={styles.closeButton}>
+              <Icon name="close" size={18} color="#fff" />
+            </TouchableOpacity>
+          </View>
 
         <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={true}>
           {editingConstituency && renderConstituencyEditForm()}
           {editingAssembly && renderAssemblyEditForm()}
         </ScrollView>
 
-        <View style={styles.modalFooter}>
-          <TouchableOpacity
-            style={[styles.modalButton, styles.cancelButton]}
-            onPress={closeEditModal}
-            disabled={updateLoading}
-            activeOpacity={0.7}
-          >
-            <Text style={styles.cancelButtonText}>Cancel</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.modalButton, styles.saveButton]}
-            onPress={handleSubmitEdit}
-            disabled={updateLoading}
-            activeOpacity={0.7}
-          >
-            {updateLoading ? (
-              <ActivityIndicator size="small" color="#fff" />
-            ) : (
-              <Text style={styles.saveButtonText}>
-                {editingConstituency ? 'Save All Changes' : 'Save Assembly'}
-              </Text>
-            )}
-          </TouchableOpacity>
-        </View>
-      </View>
-    </View>
-  </Modal>
-);
-  const renderEditModal = () => {
-  const sections = getFieldSections();
-  const openSectionKeys = Object.keys(editSections).filter(key => editSections[key]);
-  
-  if (openSectionKeys.length === 0) return null;
-  
-  return (
-    <Modal
-      visible={editModalVisible}
-      animationType="slide"
-      transparent={true}
-      onRequestClose={() => {
-        openSectionKeys.forEach(key => closeEditSection(key));
-      }}
-    >
-      <View style={styles.modalOverlay}>
-        <View style={styles.modalContent}>
-          {openSectionKeys.map(sectionKey => {
-            const section = sections[sectionKey];
-            return (
-              <View key={sectionKey} style={styles.sectionContainer}>
-                <View style={[styles.modalHeader, { backgroundColor: section.color }]}>
-                  <Icon name={section.icon} size={18} color="#fff" />
-                  <Text style={styles.modalTitle}>{section.title}</Text>
-                  <TouchableOpacity 
-                    onPress={() => closeEditSection(sectionKey)} 
-                    style={styles.closeButton}
-                  >
-                    <Icon name="close" size={18} color="#fff" />
-                  </TouchableOpacity>
-                </View>
-
-                <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={false}>
-                  {section.fields.map(field => (
-                    <View key={field.key} style={styles.formGroup}>
-                      <Text style={[styles.formLabel, field.required && styles.requiredLabel]}>
-                        {field.label}{field.required && ' *'}
-                      </Text>
-                      <TextInput
-                        style={[styles.formInput, field.multiline && styles.textArea]}
-                        value={editFormSections[sectionKey]?.[field.key] || ''}
-                        onChangeText={(text) => handleSectionFormChange(sectionKey, field.key, text)}
-                        multiline={field.multiline}
-                        numberOfLines={field.multiline ? 4 : 1}
-                        placeholder={`Enter ${field.label.toLowerCase()}`}
-                        placeholderTextColor="#bdc3c7"
-                      />
-                    </View>
-                  ))}
-                </ScrollView>
-
-                <View style={styles.modalFooter}>
-                  <TouchableOpacity
-                    style={[styles.modalButton, styles.cancelButton]}
-                    onPress={() => closeEditSection(sectionKey)}
-                    disabled={updateLoading}
-                    activeOpacity={0.7}
-                  >
-                    <Text style={styles.cancelButtonText}>Cancel</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.modalButton, styles.saveButton, { backgroundColor: section.color }]}
-                    onPress={() => handleUpdateSection(sectionKey)}
-                    disabled={updateLoading}
-                    activeOpacity={0.7}
-                  >
-                    {updateLoading ? (
-                      <ActivityIndicator size="small" color="#fff" />
-                    ) : (
-                      <Text style={styles.saveButtonText}>Save {section.title}</Text>
-                    )}
-                  </TouchableOpacity>
-                </View>
-              </View>
-            );
-          })}
+          <View style={styles.modalFooter}>
+            <TouchableOpacity
+              style={[styles.modalButton, styles.cancelButton]}
+              onPress={closeEditModal}
+              disabled={updateLoading}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.cancelButtonText}>Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.modalButton, styles.saveButton]}
+              onPress={handleSubmitEdit}
+              disabled={updateLoading}
+              activeOpacity={0.7}
+            >
+              {updateLoading ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Text style={styles.saveButtonText}>Save Changes</Text>
+              )}
+            </TouchableOpacity>
+          </View>
         </View>
       </View>
     </Modal>
   );
-};
 
-  /*const renderConstituencyEditForm = () => {
+  const renderConstituencyEditForm = () => {
     const fields = [
       { key: 'const_name', label: 'Constituency Name', required: true },
       { key: 'const_no', label: 'Constituency Number', required: true },
@@ -1841,9 +1478,8 @@ const renderMainEditModal = () => (
       <View style={styles.footer} />
 
       {/* Modals */}
-{renderMainEditModal()}
-{renderEditModal()}
-{renderDeveloperInputModal()}
+      {renderEditModal()}
+      {renderDeveloperInputModal()}
     </ScrollView>
   );
 };

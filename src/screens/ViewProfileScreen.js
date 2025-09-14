@@ -990,47 +990,49 @@ const ViewProfileScreen = ({ navigation, route }) => {
       </View>
 
       {/* PROFILE INFORMATION SECTION */}
-      <View style={styles.infoContainer}>
-        {/* Personal Information */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Personal Information</Text>
-          {renderInfoRow('Full Name', userProfile.name || userProfile.fullName, 'person')}
-          {renderInfoRow('Mobile Number', userProfile.mobile || userProfile.mobileNo, 'phone')}
-          {renderInfoRow('Email Address', userProfile.email, 'email')}
-          {renderInfoRow('Address', userProfile.address, 'location-on')}
-        </View>
-        
-        {/* Location Details */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Location Details</Text>
-          {renderInfoRow('Pincode', userProfile.pincode, 'pin-drop')}
-          {renderInfoRow('City', userProfile.city, 'location-city')}
-          {renderInfoRow('State', userProfile.state, 'public')}
-        </View>
 
-        {/* Admin Information Section (Only for Admins) */}
-        {userProfile.isAdmin && adminInfo && (
-          <View style={styles.section}>
-            <Text style={[styles.sectionTitle, styles.adminSectionTitle]}>
-              Administrator Information
-            </Text>
-            {renderInfoRow('Owner Email', adminInfo.ownerEmail, 'admin-panel-settings')}
-            {adminInfo.appOwnerInfo?.mobile_no && renderInfoRow(
-              'Owner Mobile', 
-              adminInfo.appOwnerInfo.mobile_no, 
-              'phone'
-            )}
-            
-            <View style={styles.adminPrivilegesBox}>
-              <Text style={styles.adminPrivilegesTitle}>Administrator Privileges:</Text>
-              <Text style={styles.adminPrivilegeItem}>• Full system access</Text>
-              <Text style={styles.adminPrivilegeItem}>• Email auto-verification</Text>
-              <Text style={styles.adminPrivilegeItem}>• User management capabilities</Text>
-              <Text style={styles.adminPrivilegeItem}>• System configuration access</Text>
-            </View>
-          </View>
-        )}
+<View style={styles.infoContainer}>
+  {/* Personal Information */}
+  <View style={styles.section}>
+    <Text style={styles.sectionTitle}>Personal Information</Text>
+    {renderInfoRow('Full Name', userProfile.name || userProfile.fullName, 'person')}
+    {renderInfoRow('Mobile Number', userProfile.mobile || userProfile.mobileNo, 'phone')}
+    {renderInfoRow('Email Address', userProfile.email, 'email')}
+    {/* Address removed from here */}
+  </View>
+  
+  {/* Location Details */}
+  <View style={styles.section}>
+    <Text style={styles.sectionTitle}>Location Details</Text>
+    {renderInfoRow('Address', userProfile.address, 'location-on')}
+    {renderInfoRow('Pincode', userProfile.pincode, 'pin-drop')}
+    {renderInfoRow('City', userProfile.city, 'location-city')}
+    {renderInfoRow('State', userProfile.state, 'public')}
+  </View>
+
+  {/* Admin Information Section (Only for Admins) */}
+  {userProfile.isAdmin && adminInfo && (
+    <View style={styles.section}>
+      <Text style={[styles.sectionTitle, styles.adminSectionTitle]}>
+        Administrator Information
+      </Text>
+      {renderInfoRow('Owner Email', adminInfo.ownerEmail, 'admin-panel-settings')}
+      {adminInfo.appOwnerInfo?.mobile_no && renderInfoRow(
+        'Owner Mobile', 
+        adminInfo.appOwnerInfo.mobile_no, 
+        'phone'
+      )}
+      
+      <View style={styles.adminPrivilegesBox}>
+        <Text style={styles.adminPrivilegesTitle}>Administrator Privileges:</Text>
+        <Text style={styles.adminPrivilegeItem}>• Full system access</Text>
+        <Text style={styles.adminPrivilegeItem}>• Email auto-verification</Text>
+        <Text style={styles.adminPrivilegeItem}>• User management capabilities</Text>
+        <Text style={styles.adminPrivilegeItem}>• System configuration access</Text>
       </View>
+    </View>
+  )}
+</View>
     </ScrollView>
   );
 };

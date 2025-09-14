@@ -112,7 +112,7 @@ const KnowYourLeaderScreen = () => {
     // If already admin, show admin info instead of dev mode
     if (isAdmin) {
       Alert.alert(
-        '👑 Admin Status',
+        'Admin Status',
         `You are currently logged in as an administrator.\n\n` +
         `Reason: ${adminCheckResult?.reason || 'Owner privileges'}\n` +
         `User Role: ${userRole}\n` +
@@ -147,7 +147,7 @@ const KnowYourLeaderScreen = () => {
       const adminCheck = await checkIfCurrentUserIsAdmin();
       
       Alert.alert(
-        '📊 Current User Status',
+        'Current User Status',
         `User Role: ${currentRole.userRole}\n` +
         `Is Admin: ${adminCheck.isAdmin ? 'Yes' : 'No'}\n` +
         `Is Logged In: ${currentRole.isLoggedIn ? 'Yes' : 'No'}\n` +
@@ -670,7 +670,7 @@ const KnowYourLeaderScreen = () => {
     // Real-time admin check
     if (!isAdmin) {
       Alert.alert(
-        '🔒 Access Denied', 
+        'Access Denied', 
         `You need admin privileges to edit this data.\n\n` +
         `Current Status:\n` +
         `• Role: ${userRole}\n` +
@@ -692,137 +692,146 @@ const KnowYourLeaderScreen = () => {
   };
 
   // Enhanced renderEditForm with comprehensive field filtering
-  const renderEditForm = () => {
-    const renderInput = (key, value, placeholder) => (
-      <View key={key} style={styles.editInputContainer}>
-        <Text style={styles.editInputLabel}>
-          {key.replace(/_/g, ' ').toUpperCase()}
-        </Text>
-        <TextInput
-          style={styles.editInput}
-          value={value || ''}
-          onChangeText={(text) => setEditData({...editData, [key]: text})}
-          placeholder={placeholder}
-          multiline={key.includes('address') || key.includes('details') || key.includes('desc')}
-          numberOfLines={key.includes('address') || key.includes('details') || key.includes('desc') ? 3 : 1}
-        />
-      </View>
-    );
+ const renderEditForm = () => {
+  const renderInput = (key, value, placeholder) => (
+    <View key={key} style={styles.editInputContainer}>
+      <Text style={styles.editInputLabel}>
+        {key.replace(/_/g, ' ').toUpperCase()}
+      </Text>
+      <TextInput
+        style={styles.editInput}
+        value={String(value || '')} // Ensure value is always a string
+        onChangeText={(text) => setEditData({...editData, [key]: text})}
+        placeholder={placeholder}
+        multiline={key.includes('address') || key.includes('details') || key.includes('desc')}
+        numberOfLines={key.includes('address') || key.includes('details') || key.includes('desc') ? 3 : 1}
+      />
+    </View>
+  );
 
-    if (!editData) return null;
+  if (!editData) return null;
 
-    // Comprehensive field filtering - exclude system fields and non-editable fields
-    const excludedFields = [
-      'id',
-      '_id',
-      'created_at',
-      'updated_at',
-      'createdAt',
-      'updatedAt',
-      '__v',
-      'version',
-      'regd_mobile_no', // DON'T ALLOW EDITING REGISTERED MOBILE NUMBER
-      'regdMobileNo',
-      'regd_mobile_number',
-      'registered_mobile_no',
-      'registered_mobile_number',
-      'reg_mobile_no',
-      'reg_mobile_number',
-      'member_id', // Usually auto-populated
-      'user_id', // Usually auto-populated
-      'created_by',
-      'updated_by',
-      'modified_at',
-      'modified_by',
-      'created_date',
-      'updated_date',
-      'timestamp',
-      'last_modified'
-    ];
-
-    // Get filterable fields
-    const editableFields = Object.keys(editData).filter(key => {
-      // Convert to lowercase for comparison
-      const lowerKey = key.toLowerCase();
-      
-      // Check if field should be excluded
-      const shouldExclude = excludedFields.some(excludedField => 
-        lowerKey === excludedField.toLowerCase() || 
-        lowerKey.includes(excludedField.toLowerCase())
-      );
-      
-      return !shouldExclude;
-    });
-
+  // Handle educational data specially
+  if (editType.startsWith('education')) {
+    const educationFields = ['degree', 'college', 'university', 'place'];
     return (
       <View style={styles.editFormContainer}>
-        {editableFields.length > 0 ? (
-          editableFields.map((key) => {
-            return renderInput(
-              key,
-              editData[key],
-              `Enter ${key.replace(/_/g, ' ')}`
-            );
-          })
-        ) : (
-          <View style={styles.noEditableFieldsContainer}>
-            <Text style={styles.noEditableFieldsText}>
-              No editable fields available for this data type.
-            </Text>
-            <Text style={styles.noEditableFieldsSubText}>
-              All fields are system-generated or non-editable.
-            </Text>
-          </View>
-        )}
-        
-        {/* Debug info in dev mode */}
-        {__DEV__ && (
-          <View style={styles.debugEditInfo}>
-            <Text style={styles.debugEditTitle}>Debug - Available Fields:</Text>
-            <Text style={styles.debugEditText}>
-              Total Fields: {Object.keys(editData).length}{'\n'}
-              Editable Fields: {editableFields.length}{'\n'}
-              Excluded: {Object.keys(editData).length - editableFields.length}{'\n'}
-              Type: {editType}
-            </Text>
-            {editableFields.length > 0 && (
-              <Text style={styles.debugEditFields}>
-                Editable: {editableFields.join(', ')}
-              </Text>
-            )}
-          </View>
-        )}
+        <Text style={styles.editSectionTitle}>
+          {editType === 'education_new' ? 'Add New Education' : 'Edit Education Entry'}
+        </Text>
+        {educationFields.map((field) => (
+          renderInput(
+            field,
+            editData[field],
+            `Enter ${field.replace(/_/g, ' ')}`
+          )
+        ))}
       </View>
     );
-  };
+  }
+  // Comprehensive field filtering - exclude system fields and non-editable fields
+  const excludedFields = [
+    'id', '_id', 'created_at', 'updated_at', 'createdAt', 'updatedAt',
+    '__v', 'version', 'regd_mobile_no', 'regdMobileNo', 'regd_mobile_number',
+    'registered_mobile_no', 'registered_mobile_number', 'reg_mobile_no',
+    'reg_mobile_number', 'member_id', 'user_id', 'created_by', 'updated_by',
+    'modified_at', 'modified_by', 'created_date', 'updated_date',
+    'timestamp', 'last_modified', 'edu_qual' // Exclude nested arrays
+  ];
+
+  // Get filterable fields
+  const editableFields = Object.keys(editData).filter(key => {
+    const lowerKey = key.toLowerCase();
+    const value = editData[key];
+    
+    // Exclude arrays and objects (except simple objects)
+    if (Array.isArray(value) || (typeof value === 'object' && value !== null)) {
+      return false;
+    }
+    
+    // Check if field should be excluded
+    const shouldExclude = excludedFields.some(excludedField => 
+      lowerKey === excludedField.toLowerCase() || 
+      lowerKey.includes(excludedField.toLowerCase())
+    );
+    
+    return !shouldExclude;
+  });
+
+  return (
+    <View style={styles.editFormContainer}>
+      {editableFields.length > 0 ? (
+        editableFields.map((key) => {
+          return renderInput(
+            key,
+            editData[key],
+            `Enter ${key.replace(/_/g, ' ')}`
+          );
+        })
+      ) : (
+        <View style={styles.noEditableFieldsContainer}>
+          <Text style={styles.noEditableFieldsText}>
+            No editable fields available for this data type.
+          </Text>
+          <Text style={styles.noEditableFieldsSubText}>
+            All fields are system-generated or non-editable.
+          </Text>
+        </View>
+      )}
+    </View>
+  );
+};
 
   // Enhanced save function with field filtering
-  const handleSaveEdit = async () => {
-    if (!memberId || !editType) return;
+ const handleSaveEdit = async () => {
+  if (!memberId || !editType) return;
 
-    // Double-check admin status before saving
-    if (!isAdmin) {
-      Alert.alert('Access Denied', 'Admin privileges required to save changes.');
-      return;
-    }
+  // Double-check admin status before saving
+  if (!isAdmin) {
+    Alert.alert('Access Denied', 'Admin privileges required to save changes.');
+    return;
+  }
 
-    setEditLoading(true);
+  setEditLoading(true);
+  
+  try {
+    console.log(`💾 Saving edit as admin: ${editType}`);
     
-    try {
-      console.log(`💾 Saving edit as admin: ${editType}`);
-      
-      // Filter out system fields before sending to API
+    let result;
+    
+    // Handle educational data specially
+    if (editType.startsWith('education')) {
+      if (editType === 'education_new') {
+        // Add new education entry
+        const newEducationData = [...(educationData || []), editData];
+        result = await updateEducationalDetails(memberId, { edu_qual: newEducationData });
+      } else {
+        // Update existing education entry
+        const index = parseInt(editType.split('_')[1]);
+        const updatedEducationData = [...educationData];
+        updatedEducationData[index] = editData;
+        result = await updateEducationalDetails(memberId, { edu_qual: updatedEducationData });
+      }
+    } else {
+      // Filter out system fields before sending to API for other data types
       const excludedFields = [
-        'id', '_id', 'created_at', 'updated_at', 'createdAt', 'updatedAt', 
+        'id', '_id', 'created_at', 'updated_at', 'createdAt', 'updatedAt',
         '__v', 'version', 'regd_mobile_no', 'regdMobileNo', 'regd_mobile_number',
-        'registered_mobile_no', 'registered_mobile_number', 'reg_mobile_no', 
-        'reg_mobile_number', 'created_by', 'updated_by', 'modified_at', 
+        'registered_mobile_no', 'registered_mobile_number', 'reg_mobile_no',
+        'reg_mobile_number', 'created_by', 'updated_by', 'modified_at',
         'modified_by', 'created_date', 'updated_date', 'timestamp', 'last_modified'
       ];
 
       const cleanedData = Object.keys(editData)
         .filter(key => {
           const lowerKey = key.toLowerCase();
+          const value = editData[key];
+          
+          // Exclude arrays and complex objects
+          if (Array.isArray(value) || (typeof value === 'object' && value !== null)) {
+            return false;
+          }
+          
           return !excludedFields.some(excludedField => 
             lowerKey === excludedField.toLowerCase() || 
             lowerKey.includes(excludedField.toLowerCase())
@@ -833,9 +842,7 @@ const KnowYourLeaderScreen = () => {
           return obj;
         }, {});
 
-      console.log('🧹 Cleaned data for API:', cleanedData);
-      
-      let result;
+      console.log('Cleaned data for API:', cleanedData);
       
       switch (editType) {
         case 'coordinates':
@@ -846,9 +853,6 @@ const KnowYourLeaderScreen = () => {
           break;
         case 'personal':
           result = await updatePersonalDetails(memberId, cleanedData);
-          break;
-        case 'education':
-          result = await updateEducationalDetails(memberId, cleanedData);
           break;
         case 'permanent_address':
           result = await updatePermanentAddress(memberId, cleanedData);
@@ -862,22 +866,23 @@ const KnowYourLeaderScreen = () => {
         default:
           throw new Error('Unknown edit type');
       }
-
-      if (result.success) {
-        Alert.alert('✅ Success', 'Data updated successfully!');
-        setEditModalVisible(false);
-        // Reload the specific data section
-        await loadInitialData(memberId);
-      } else {
-        throw new Error(result.error);
-      }
-    } catch (error) {
-      console.error('❌ Error updating data:', error);
-      Alert.alert('Update Failed', error.message || 'Failed to update data. Please try again.');
-    } finally {
-      setEditLoading(false);
     }
-  };
+
+    if (result.success) {
+      Alert.alert('Success', 'Data updated successfully!');
+      setEditModalVisible(false);
+      // Reload the specific data section
+      await loadInitialData(memberId);
+    } else {
+      throw new Error(result.error);
+    }
+  } catch (error) {
+    console.error('Error updating data:', error);
+    Alert.alert('Update Failed', error.message || 'Failed to update data. Please try again.');
+  } finally {
+    setEditLoading(false);
+  }
+};
 
   // Enhanced render edit button with real-time admin check
   const renderEditButton = (type, data) => {
@@ -906,7 +911,7 @@ const KnowYourLeaderScreen = () => {
             behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
             style={styles.editModalContent}
           >
-            {/* Modal Header with Admin indicator */}
+            {/* Modal Header */}
             <View style={styles.editModalHeader}>
               <TouchableOpacity
                 onPress={() => setEditModalVisible(false)}
@@ -918,7 +923,6 @@ const KnowYourLeaderScreen = () => {
                 <Text style={styles.editModalTitle}>
                   Edit {editType.replace('_', ' ').toUpperCase()}
                 </Text>
-                <Text style={styles.editModalSubtitle}>👑 Admin Mode</Text>
               </View>
               <TouchableOpacity
                 onPress={handleSaveEdit}
@@ -1008,9 +1012,6 @@ const KnowYourLeaderScreen = () => {
         <View style={styles.loadingCard}>
           <ActivityIndicator size="large" color="#e16e2b" />
           <Text style={styles.loadingText}>Loading leader information...</Text>
-          {roleCheckLoading && (
-            <Text style={styles.loadingSubText}>Checking admin privileges...</Text>
-          )}
         </View>
       </View>
     );
@@ -1021,22 +1022,6 @@ const KnowYourLeaderScreen = () => {
     
     return (
       <View style={styles.modernHeader}>
-        {/* Enhanced Admin Badge */}
-        {isAdmin && (
-          <View style={styles.adminBadge}>
-            <Text style={styles.adminBadgeText}>👑 ADMIN</Text>
-            <Text style={styles.adminBadgeSubText}>Edit Enabled</Text>
-          </View>
-        )}
-
-        {/* Role Check Loading Indicator */}
-        {roleCheckLoading && (
-          <View style={styles.roleCheckIndicator}>
-            <ActivityIndicator size="small" color="#FFD700" />
-            <Text style={styles.roleCheckText}>Checking Role...</Text>
-          </View>
-        )}
-        
         {/* Background Pattern */}
         <View style={styles.headerPattern}>
           <View style={[styles.patternCircle, { top: -20, right: -30 }]} />
@@ -1078,13 +1063,6 @@ const KnowYourLeaderScreen = () => {
                     `${memberData.constituency || ''}, ${memberData.state || ''}`.replace(', ,', ',').trim() : 
                     'Loading...'
                   }
-                </Text>
-              </View>
-              
-              {/* Enhanced User Status Display */}
-              <View style={styles.userStatusRow}>
-                <Text style={styles.userStatusText}>
-                  Role: {userRole} {isAdmin && '👑'} | {isLoggedIn ? 'Logged In' : 'Guest'}
                 </Text>
               </View>
             </View>
@@ -1134,14 +1112,6 @@ const KnowYourLeaderScreen = () => {
               <Text style={styles.quickActionIcon}>🏛️</Text>
             </TouchableOpacity>
           )}
-
-          {/* Admin Status Quick Action */}
-          <TouchableOpacity 
-            style={[styles.quickAction, isAdmin && styles.quickActionAdmin]}
-            onPress={showCurrentStatus}
-          >
-            <Text style={styles.quickActionIcon}>{isAdmin ? '👑' : '👤'}</Text>
-          </TouchableOpacity>
         </View>
       </View>
     );
@@ -1180,15 +1150,6 @@ const KnowYourLeaderScreen = () => {
           </Text>
         </TouchableOpacity>
       </View>
-      
-      {/* Admin Status Indicator */}
-      {isAdmin && (
-        <View style={styles.adminIndicator}>
-          <Text style={styles.adminIndicatorText}>
-            👑 Admin Mode - Edit capabilities enabled
-          </Text>
-        </View>
-      )}
     </View>
   );
 
@@ -1252,35 +1213,51 @@ const KnowYourLeaderScreen = () => {
     );
   };
 
-  const renderEducationInfo = () => {
-    if (!educationData || !Array.isArray(educationData)) return null;
+const renderEducationInfo = () => {
+  if (!educationData || !Array.isArray(educationData)) return null;
 
-    return renderInfoCard('Educational Qualifications', '🎓',
-      <View style={styles.educationList}>
-        {educationData.map((edu, index) => (
-          <View key={index} style={styles.educationItem}>
-            <View style={styles.educationLeft}>
-              <View style={styles.educationNumber}>
-                <Text style={styles.educationNumberText}>{index + 1}</Text>
-              </View>
-            </View>
-            <View style={styles.educationRight}>
-              <Text style={styles.educationDegree}>{edu.degree}</Text>
-              <Text style={styles.educationInstitute}>
-                {edu.college}{edu.university ? `, ${edu.university}` : ''}
-              </Text>
-              {edu.place && (
-                <Text style={styles.educationPlace}>📍 {edu.place}</Text>
-              )}
+  return renderInfoCard('Educational Qualifications', '🎓',
+    <View style={styles.educationList}>
+      {educationData.map((edu, index) => (
+        <View key={index} style={styles.educationItem}>
+          <View style={styles.educationLeft}>
+            <View style={styles.educationNumber}>
+              <Text style={styles.educationNumberText}>{index + 1}</Text>
             </View>
           </View>
-        ))}
-      </View>,
-      '#ffffff',
-      'education',
-      { edu_qual: educationData }
-    );
-  };
+          <View style={styles.educationRight}>
+            <Text style={styles.educationDegree}>{edu.degree}</Text>
+            <Text style={styles.educationInstitute}>
+              {edu.college}{edu.university ? `, ${edu.university}` : ''}
+            </Text>
+            {edu.place && (
+              <Text style={styles.educationPlace}>📍 {edu.place}</Text>
+            )}
+          </View>
+          {/* Add individual edit button for each education item */}
+          <View style={styles.educationEditContainer}>
+            {renderEditButton(`education_${index}`, edu)}
+          </View>
+        </View>
+      ))}
+      {/* Add button to add new education entry if admin */}
+      {isAdmin && (
+        <TouchableOpacity
+          style={styles.addEducationButton}
+          onPress={() => openEditModal('education_new', {
+            degree: '',
+            college: '',
+            university: '',
+            place: ''
+          })}
+        >
+          <Text style={styles.addEducationText}>+ Add New Education</Text>
+        </TouchableOpacity>
+      )}
+    </View>,
+    '#ffffff'
+  );
+};
 
   const renderContactInfo = () => {
     if (!addressData) return null;
@@ -1425,11 +1402,6 @@ const KnowYourLeaderScreen = () => {
         <View style={styles.emptyState}>
           <Text style={styles.emptyStateIcon}>📋</Text>
           <Text style={styles.emptyStateText}>No timeline data available</Text>
-          {isAdmin && (
-            <Text style={styles.emptyStateSubText}>
-              As an admin, you can add timeline entries via API
-            </Text>
-          )}
         </View>
       );
     }
@@ -1500,7 +1472,7 @@ const KnowYourLeaderScreen = () => {
         <RefreshControl 
           refreshing={refreshing} 
           onRefresh={onRefresh}
-          title={isAdmin ? "Refreshing (Admin Mode)" : "Refreshing..."}
+          title="Refreshing..."
         />
       }
     >
@@ -1509,20 +1481,6 @@ const KnowYourLeaderScreen = () => {
       
       <View style={styles.contentArea}>
         {renderContent()}
-        
-        {/* Debug Info for Development */}
-        {__DEV__ && (
-          <View style={styles.debugContainer}>
-            <Text style={styles.debugTitle}>🔧 Debug Info (Dev Mode)</Text>
-            <Text style={styles.debugText}>
-              Member ID: {memberId}{'\n'}
-              User Role: {userRole}{'\n'}
-              Is Admin: {isAdmin ? 'Yes' : 'No'}{'\n'}
-              Is Logged In: {isLoggedIn ? 'Yes' : 'No'}{'\n'}
-              Reason: {adminCheckResult?.reason || 'Not checked'}
-            </Text>
-          </View>
-        )}
       </View>
       
       <View style={styles.bottomSpacing} />
@@ -1569,13 +1527,6 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
 
-  loadingSubText: {
-    marginTop: 8,
-    fontSize: 14,
-    color: '#888',
-    fontStyle: 'italic',
-  },
-
   // Modern Header
   modernHeader: {
     backgroundColor: '#e16e2b',
@@ -1584,53 +1535,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     position: 'relative',
     overflow: 'hidden',
-  },
-
-  // Enhanced Admin Badge
-  adminBadge: {
-    position: 'absolute',
-    top: 55,
-    right: 20,
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 15,
-    zIndex: 2,
-    alignItems: 'center',
-  },
-  
-  adminBadgeText: {
-    color: '#ffffff',
-    fontSize: 12,
-    fontWeight: 'bold',
-  },
-
-  adminBadgeSubText: {
-    color: '#ffffff',
-    fontSize: 10,
-    opacity: 0.8,
-    marginTop: 2,
-  },
-
-  // Role Check Indicator
-  roleCheckIndicator: {
-    position: 'absolute',
-    top: 55,
-    left: 20,
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 15,
-    zIndex: 2,
-  },
-
-  roleCheckText: {
-    color: '#ffffff',
-    fontSize: 11,
-    marginLeft: 6,
-    fontWeight: '500',
   },
   
   headerPattern: {
@@ -1724,18 +1628,6 @@ const styles = StyleSheet.create({
     color: 'rgba(255,255,255,0.9)',
     flex: 1,
   },
-
-  // Enhanced User Status Row
-  userStatusRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-
-  userStatusText: {
-    fontSize: 12,
-    color: 'rgba(255,255,255,0.7)',
-    fontWeight: '500',
-  },
   
   partyContainer: {
     backgroundColor: 'rgba(255,255,255,0.15)',
@@ -1763,10 +1655,6 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.2)',
     justifyContent: 'center',
     alignItems: 'center',
-  },
-
-  quickActionAdmin: {
-    backgroundColor: 'rgba(255,215,0,0.3)',
   },
   
   quickActionIcon: {
@@ -1880,7 +1768,7 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
 
-  // Segmented Control with Admin Indicator
+  // Segmented Control
   segmentedContainer: {
     paddingHorizontal: 20,
     paddingVertical: 15,
@@ -1919,29 +1807,13 @@ const styles = StyleSheet.create({
     color: '#ffffff',
   },
 
-  adminIndicator: {
-    marginTop: 10,
-    backgroundColor: 'rgba(255,215,0,0.1)',
-    padding: 8,
-    borderRadius: 12,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(255,215,0,0.3)',
-  },
-
-  adminIndicatorText: {
-    fontSize: 12,
-    color: '#FF8C00',
-    fontWeight: '600',
-  },
-
   // Content Area
   contentArea: {
     paddingHorizontal: 20,
     paddingBottom: 10,
   },
 
-  // Info Cards (unchanged styles continue...)
+  // Info Cards
   infoCard: {
     backgroundColor: '#ffffff',
     borderRadius: 16,
@@ -2075,6 +1947,25 @@ const styles = StyleSheet.create({
   educationPlace: {
     fontSize: 12,
     color: '#95a5a6',
+  },
+
+  educationEditContainer: {
+    marginLeft: 10,
+    justifyContent: 'center',
+  },
+  
+  addEducationButton: {
+    backgroundColor: '#e16e2b',
+    padding: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginTop: 16,
+  },
+  
+  addEducationText: {
+    color: '#ffffff',
+    fontSize: 14,
+    fontWeight: '600',
   },
 
   // Contact Sections
@@ -2268,7 +2159,7 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
 
-  // Enhanced Empty State
+  // Empty State
   emptyState: {
     alignItems: 'center',
     paddingVertical: 40,
@@ -2288,14 +2179,7 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
 
-  emptyStateSubText: {
-    fontSize: 12,
-    color: '#95a5a6',
-    textAlign: 'center',
-    fontStyle: 'italic',
-  },
-
-  // Enhanced Edit Modal Styles
+  // Edit Modal Styles
   editModalContainer: {
     flex: 1,
     backgroundColor: '#f0f2f5',
@@ -2346,13 +2230,6 @@ const styles = StyleSheet.create({
     color: '#2c3e50',
   },
 
-  editModalSubtitle: {
-    fontSize: 12,
-    color: '#FFD700',
-    fontWeight: '600',
-    marginTop: 2,
-  },
-
   editModalSaveButton: {
     backgroundColor: '#e16e2b',
     paddingHorizontal: 20,
@@ -2376,6 +2253,14 @@ const styles = StyleSheet.create({
 
   editFormContainer: {
     gap: 20,
+  },
+
+  editSectionTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#2c3e50',
+    marginBottom: 20,
+    textAlign: 'center',
   },
 
   editInputContainer: {
@@ -2407,28 +2292,23 @@ const styles = StyleSheet.create({
     textAlignVertical: 'top',
   },
 
-  // Debug Container
-  debugContainer: {
-    backgroundColor: '#f8f9fa',
-    borderRadius: 12,
-    padding: 16,
-    marginTop: 20,
-    borderWidth: 1,
-    borderColor: '#e9ecef',
+  noEditableFieldsContainer: {
+    alignItems: 'center',
+    paddingVertical: 40,
   },
-
-  debugTitle: {
-    fontSize: 14,
-    fontWeight: 'bold',
-    color: '#666',
+  
+  noEditableFieldsText: {
+    fontSize: 16,
+    color: '#7f8c8d',
+    textAlign: 'center',
     marginBottom: 8,
   },
-
-  debugText: {
+  
+  noEditableFieldsSubText: {
     fontSize: 12,
-    color: '#666',
-    lineHeight: 18,
-    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
+    color: '#95a5a6',
+    textAlign: 'center',
+    fontStyle: 'italic',
   },
 
   // Bottom Spacing

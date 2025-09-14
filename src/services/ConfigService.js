@@ -2,7 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 class ConfigService {
   static BASE_URL_KEY = 'app_base_url';
-  static DEFAULT_BASE_URL = 'https://3f1fc17a1762.ngrok-free.app'; // 👈 Update this when ngrok gives new URL
+  static DEFAULT_BASE_URL = 'https://32bbd03f8236.ngrok-free.app'; // 👈 Update this when ngrok gives new URL
 
   // Initialize configuration with default values (always enforce DEFAULT_BASE_URL)
   static async initializeConfig() {

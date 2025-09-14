@@ -32,9 +32,9 @@ const RegistrationScreen = ({ navigation, route }) => {
     name: '',
     email: '',
     address: '',
+    city: '', // City field
     pincode: '',
-    district: '', // Changed from 'city' to 'district'
-    city: '', // ✅ Added city field
+    district: '',
     state: '',
     facebookId: '',
     instagramId: '',
@@ -119,8 +119,8 @@ const RegistrationScreen = ({ navigation, route }) => {
           instagramId: profileData.instagramId || '',
           xId: profileData.xId || '',
           email: profileData.email || '',
+          city: profileData.city || '',
           district: profileData.district || '',
-          city: profileData.city || '', // ✅ Load city field
           password: '',
           confirmPassword: '',
           declaration: true,
@@ -171,10 +171,7 @@ const RegistrationScreen = ({ navigation, route }) => {
           ...prev,
           pincode: value,
           district: '',
-
-
-
-          city: '', // ✅ Clear city field
+          city: '',
           state: '',
         }));
         return; // Return early to avoid double state update
@@ -182,7 +179,7 @@ const RegistrationScreen = ({ navigation, route }) => {
     }
   };
 
-  // ✅ UPDATED PINCODE VERIFICATION USING APISERVICE
+  // UPDATED PINCODE VERIFICATION USING APISERVICE
   const handlePincodeVerification = async () => {
     if (!formData.pincode || formData.pincode.length !== 6) {
       Alert.alert('Error', 'Please enter a valid 6-digit pincode');
@@ -205,20 +202,19 @@ const RegistrationScreen = ({ navigation, route }) => {
 
         const data = result.data[0];
         const district = data?.district || '';
-        const city = data?.city || data?.taluka || ''; // ✅ Get city from API response
+        const city = data?.city || data?.taluka || '';
         const state = data?.statename || '';
 
         if (district && state) {
           setFormData(prev => ({
             ...prev,
             district,
-            city, // ✅ Set city field
+            city,
             state,
           }));
 
           setIsPincodeVerified(true);
           setPincodeVerificationState('verified');
-          // ✅ Do not show success alert
         } else {
           setPincodeVerificationState('error');
           Alert.alert('Error', 'Enter a valid pincode.');
@@ -234,7 +230,7 @@ const RegistrationScreen = ({ navigation, route }) => {
     }
   };
 
-  // ✅ UPDATED EMAIL VERIFICATION USING APISERVICE
+  // UPDATED EMAIL VERIFICATION USING APISERVICE
  const handleEmailVerification = async () => {
   if (isEditMode) return; // Disabled in edit mode
 
@@ -269,13 +265,12 @@ const RegistrationScreen = ({ navigation, route }) => {
   }
 };
 
-
   const validateEmail = (email) => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
     return emailRegex.test(email);
   };
 
-  // ✅ UPDATED SEND EMAIL OTP USING APISERVICE
+  // UPDATED SEND EMAIL OTP USING APISERVICE
   const sendEmailOTP = async () => {
     if (isEditMode) return; // Disabled in edit mode
 
@@ -308,7 +303,7 @@ const RegistrationScreen = ({ navigation, route }) => {
     }
   };
 
-  // ✅ UPDATED VERIFY EMAIL OTP USING APISERVICE
+  // UPDATED VERIFY EMAIL OTP USING APISERVICE
   const verifyEmailOTP = async () => {
     if (isEditMode) return; // Disabled in edit mode
 
@@ -363,7 +358,7 @@ const RegistrationScreen = ({ navigation, route }) => {
     );
   };
 
-  // ✅ REQUEST CAMERA PERMISSIONS
+  // REQUEST CAMERA PERMISSIONS
   const requestCameraPermission = async () => {
     if (Platform.OS === 'android') {
       try {
@@ -386,7 +381,7 @@ const RegistrationScreen = ({ navigation, route }) => {
     return true;
   };
 
-  // ✅ FIXED IMAGE PICKER FUNCTION
+  // FIXED IMAGE PICKER FUNCTION
   const handleImagePicker = async () => {
     Alert.alert(
       isEditMode ? "Update Photo" : "Select Photo",
@@ -408,7 +403,7 @@ const RegistrationScreen = ({ navigation, route }) => {
     );
   };
 
-  // ✅ FIXED IMAGE SELECTION WITH PROPER URI HANDLING
+  // FIXED IMAGE SELECTION WITH PROPER URI HANDLING
   const handleImageSelection = async (source) => {
     try {
       const options = {
@@ -453,7 +448,7 @@ const RegistrationScreen = ({ navigation, route }) => {
 
         console.log('📸 Selected image:', imageAsset);
 
-        // ✅ Store the complete image asset for later use
+        // Store the complete image asset for later use
         setFormData((prev) => ({
           ...prev,
           profile_image: imageAsset,  // Store the full asset object
@@ -492,16 +487,16 @@ const RegistrationScreen = ({ navigation, route }) => {
       Alert.alert('Error', 'Please enter your address');
       return false;
     }
+    if (!formData.city.trim()) {
+      Alert.alert('Error', 'Please enter your city');
+      return false;
+    }
     if (!formData.pincode.trim() || formData.pincode.length !== 6) {
       Alert.alert('Error', 'Please enter a valid 6-digit pincode');
       return false;
     }
     if (!formData.district.trim()) {
       Alert.alert('Error', 'Please enter your district');
-      return false;
-    }
-    if (!formData.city.trim()) { // ✅ Add city validation
-      Alert.alert('Error', 'Please enter your city');
       return false;
     }
     if (!formData.state.trim()) {
@@ -527,7 +522,7 @@ const RegistrationScreen = ({ navigation, route }) => {
     return true;
   };
 
-  // ✅ UPDATED EDIT PROFILE HANDLER USING AUTHSERVICE (UNCHANGED - ALREADY OPTIMIZED)
+  // UPDATED EDIT PROFILE HANDLER USING AUTHSERVICE
   const handleEditProfile = async () => {
     try {
       const userData = await AsyncStorage.getItem('userData');
@@ -549,8 +544,8 @@ const RegistrationScreen = ({ navigation, route }) => {
         formDataToSend.append('mobile', formData.mobile);
         formDataToSend.append('email', formData.email);
         formDataToSend.append('address', formData.address);
-        formDataToSend.append('district', formData.district);
         formDataToSend.append('city', formData.city);
+        formDataToSend.append('district', formData.district);
         formDataToSend.append('state', formData.state);
         formDataToSend.append('pincode', formData.pincode);
         formDataToSend.append('facebookId', formData.facebookId || '');
@@ -588,8 +583,8 @@ const RegistrationScreen = ({ navigation, route }) => {
           mobile: formData.mobile,
           email: formData.email,
           address: formData.address,
-          district: formData.district,
           city: formData.city,
+          district: formData.district,
           state: formData.state,
           pincode: formData.pincode,
           facebookId: formData.facebookId || '',
@@ -635,7 +630,7 @@ const RegistrationScreen = ({ navigation, route }) => {
     }
   };
 
-  // ✅ UPDATED REGISTRATION HANDLER USING APISERVICE
+  // UPDATED REGISTRATION HANDLER USING APISERVICE
   const handleRegistration = async () => {
     if (!apiEndpoints) {
       Alert.alert('Error', 'API configuration not loaded');
@@ -650,8 +645,8 @@ const RegistrationScreen = ({ navigation, route }) => {
       formDataToSend.append('mobile', formData.mobile);
       formDataToSend.append('password', formData.password);
       formDataToSend.append('address', formData.address);
-      formDataToSend.append('district', formData.district);
       formDataToSend.append('city', formData.city);
+      formDataToSend.append('district', formData.district);
       formDataToSend.append('state', formData.state);
       formDataToSend.append('pincode', formData.pincode);
 
@@ -890,7 +885,7 @@ const RegistrationScreen = ({ navigation, route }) => {
     );
   };
 
-  // ✅ SIMPLIFIED PINCODE VERIFICATION UI SECTION
+  // SIMPLIFIED PINCODE VERIFICATION UI SECTION
   const renderPincodeVerificationSection = () => {
     return (
       <View style={styles.pincodeVerificationContainer}>
@@ -1044,6 +1039,26 @@ const RegistrationScreen = ({ navigation, route }) => {
             />
           </View>
 
+          {/* MOVED: CITY field now appears right after ADDRESS */}
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>CITY *</Text>
+            <TextInput
+              style={[
+                styles.input,
+                isPincodeVerified && styles.autoFilledInput
+              ]}
+              value={formData.city}
+              onChangeText={(text) => handleInputChange('city', text)}
+              placeholder={isPincodeVerified ? "Auto-filled from pincode verification" : "Enter your city"}
+              editable={true} // Always allow manual input
+            />
+            {isPincodeVerified && (
+              <Text style={styles.helperText}>
+                Auto-filled from pincode. You can edit if needed.
+              </Text>
+            )}
+          </View>
+
           <View style={styles.inputGroup}>
             <Text style={styles.label}>PINCODE *</Text>
             {renderPincodeVerificationSection()}
@@ -1059,26 +1074,6 @@ const RegistrationScreen = ({ navigation, route }) => {
               value={formData.district}
               onChangeText={(text) => handleInputChange('district', text)}
               placeholder={isPincodeVerified ? "Auto-filled from pincode verification" : "Enter your district"}
-              editable={true} // Always allow manual input
-            />
-            {isPincodeVerified && (
-              <Text style={styles.helperText}>
-                Auto-filled from pincode. You can edit if needed.
-              </Text>
-            )}
-          </View>
-
-          {/* ✅ ADDED CITY FIELD */}
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>CITY *</Text>
-            <TextInput
-              style={[
-                styles.input,
-                isPincodeVerified && styles.autoFilledInput
-              ]}
-              value={formData.city}
-              onChangeText={(text) => handleInputChange('city', text)}
-              placeholder={isPincodeVerified ? "Auto-filled from pincode verification" : "Enter your city"}
               editable={true} // Always allow manual input
             />
             {isPincodeVerified && (

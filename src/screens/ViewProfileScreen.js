@@ -232,101 +232,319 @@ class AdminService {
 }
 
 // Updated Profile API Class
+// Updated Profile API Class to match Postman structure - Replace the existing ProfileAPI class in ViewProfileScreen
 class ProfileAPI {
+  static async getUserEmail() {
+    console.log('🔍 Starting email search based on App.js storage patterns...');
+    
+    // Based on your App.js updateUserLoginStatus function, check these locations in order:
+    
+    // 1. AsyncStorage 'userEmail' (primary location from updateUserLoginStatus)
+    try {
+      const userEmail = await AsyncStorage.getItem('userEmail');
+      if (userEmail && userEmail.trim() !== '') {
+        console.log('✅ Email found in AsyncStorage[userEmail]:', userEmail);
+        return userEmail.trim();
+      }
+    } catch (error) {
+      console.log('⚠️ Error reading AsyncStorage[userEmail]:', error.message);
+    }
+    
+    // 2. EncryptedStorage 'LOGGED_IN_EMAIL' (secondary location from updateUserLoginStatus)
+    try {
+      const encryptedEmail = await EncryptedStorage.getItem('LOGGED_IN_EMAIL');
+      if (encryptedEmail && encryptedEmail.trim() !== '') {
+        console.log('✅ Email found in EncryptedStorage[LOGGED_IN_EMAIL]:', encryptedEmail);
+        return encryptedEmail.trim();
+      }
+    } catch (error) {
+      console.log('⚠️ Error reading EncryptedStorage[LOGGED_IN_EMAIL]:', error.message);
+    }
+    
+    // 3. Check userData object (from updateUserLoginStatus)
+    try {
+      const userData = await AsyncStorage.getItem('userData');
+      if (userData) {
+        const parsed = JSON.parse(userData);
+        console.log('📋 userData available, checking email fields...');
+        
+        // Check common email fields
+        const emailFields = ['email', 'emailid', 'email_id'];
+        for (const field of emailFields) {
+          if (parsed[field] && parsed[field].trim() !== '') {
+            console.log(`✅ Email found in userData[${field}]:`, parsed[field]);
+            return parsed[field].trim();
+          }
+        }
+        
+        console.log('📋 Available userData keys:', Object.keys(parsed));
+      }
+    } catch (error) {
+      console.log('⚠️ Error reading userData:', error.message);
+    }
+    
+    // 4. Check JWT token for email (fallback)
+    try {
+      const accessToken = await AsyncStorage.getItem('jwt_token') || 
+                         await AsyncStorage.getItem('userAccessToken');
+      
+      if (accessToken) {
+        console.log('🔑 JWT token found, attempting decode...');
+        const parts = accessToken.split('.');
+        if (parts.length === 3) {
+          const payload = JSON.parse(atob(parts[1]));
+          console.log('🔑 JWT payload keys:', Object.keys(payload));
+          
+          const emailFields = ['email', 'emailid', 'user_email', 'sub'];
+          for (const field of emailFields) {
+            if (payload[field] && payload[field].includes && payload[field].includes('@')) {
+              console.log(`✅ Email found in JWT[${field}]:`, payload[field]);
+              return payload[field].trim();
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.log('⚠️ Error decoding JWT:', error.message);
+    }
+    
+    // 5. Check global variables (from your App.js)
+    if (global.loggedin_email && global.loggedin_email.trim() !== '') {
+      console.log('✅ Email found in global.loggedin_email:', global.loggedin_email);
+      return global.loggedin_email.trim();
+    }
+    
+    console.log('🚫 NO EMAIL FOUND ANYWHERE!');
+    console.log('💡 Available AsyncStorage keys to check:');
+    try {
+      const allKeys = await AsyncStorage.getAllKeys();
+      console.log('   ', allKeys.join(', '));
+    } catch (e) {
+      console.log('   Could not get AsyncStorage keys');
+    }
+    
+    return null;
+  }
+
+  static async getOwnerMobile() {
+    console.log('Getting owner mobile for profile API...');
+    
+    // Check EncryptedStorage first (primary location from bootstrap)
+    try {
+      const ownerMobile = await EncryptedStorage.getItem('OWNER_MOBILE');
+      if (ownerMobile && ownerMobile.trim() !== '') {
+        console.log('Owner mobile found in EncryptedStorage:', ownerMobile);
+        return ownerMobile.trim();
+      }
+    } catch (error) {
+      console.log('Error reading EncryptedStorage[OWNER_MOBILE]:', error.message);
+    }
+    
+    // Check global variable as fallback
+    if (global.owner_mobile && global.owner_mobile.trim() !== '') {
+      console.log('Owner mobile found in global variable:', global.owner_mobile);
+      return global.owner_mobile.trim();
+    }
+    
+    console.log('No owner mobile found - using empty string');
+    return '';
+  }
+
   static async getProfile() {
-    LoggingService.profileInfo('Starting profile fetch from API using ConfigService');
+    console.log('🚀 Starting profile fetch based on Postman structure...');
     
     try {
+      // Get the email using our comprehensive search
+      const userEmail = await this.getUserEmail();
+      console.log('📧 Email search result:', userEmail);
+      
+      if (!userEmail) {
+        console.log('🚫 Cannot proceed - no email found');
+        return {
+          success: false,
+          message: 'No user email found in storage. Please login again to refresh your session.',
+          status: 400
+        };
+      }
+      
+      // Get owner mobile from EncryptedStorage (as set in bootstrap)
+      let ownerMobile = '';
+      try {
+        ownerMobile = await EncryptedStorage.getItem('OWNER_MOBILE') || '';
+        console.log('📱 Owner mobile from storage:', ownerMobile);
+      } catch (error) {
+        console.log('⚠️ Could not get owner mobile:', error.message);
+      }
+      
+      // Get API endpoint
       const endpoints = await ConfigService.getApiEndpoints();
       const profileEndpoint = endpoints.user.profile;
       
-      LoggingService.profileDebug('Profile endpoint from ConfigService', { 
-        endpoint: profileEndpoint 
-      });
-
-      const result = await ApiService.authGet(profileEndpoint);
+      console.log('🌐 Profile endpoint from ConfigService:', profileEndpoint);
       
-      LoggingService.profileDebug('Raw API response from ApiService', {
+      // Build POST body as shown in Postman
+      const requestBody = {
+        leader_regd_mobile_no: ownerMobile,
+        user_email_id: userEmail
+      };
+      
+      console.log('📡 Profile API Request Body:', requestBody);
+      
+      // Use POST method with body (matching your Postman request)
+      const result = await ApiService.authPost(profileEndpoint, requestBody);
+      
+      console.log('📥 API Response received:', {
         success: result.success,
         status: result.status,
-        hasData: !!result.data,
-        dataStructure: result.data ? Object.keys(result.data) : []
+        message: result.message,
+        hasData: !!result.data
       });
-
+      
       if (result.success && result.data) {
-        let userData;
-        
-        if (result.data.formattedData) {
-          userData = result.data.formattedData;
-          LoggingService.profileDebug('Using formattedData structure', { userData });
-        } else if (result.data.user) {
-          userData = result.data.user;
-          LoggingService.profileDebug('Using user structure', { userData });
-        } else if (result.data.data) {
-          userData = result.data.data;
-          LoggingService.profileDebug('Using data structure', { userData });
-        } else if (result.data._id || result.data.email) {
-          userData = result.data;
-          LoggingService.profileDebug('Using direct data structure', { userData });
-        } else {
-          LoggingService.profileError('No user data found in response', { data: result.data });
-          return {
-            success: false,
-            message: 'No profile data found in server response',
-          };
-        }
-
-        if (userData.profile_image) {
-          const workingImageUrl = await ImageService.getWorkingImageUrl(userData.profile_image);
-          
-          if (workingImageUrl) {
-            userData.profile_image = workingImageUrl;
-            LoggingService.profileInfo('Profile image URL resolved using ConfigService', { 
-              url: workingImageUrl 
-            });
-          } else {
-            LoggingService.profileWarn('Could not resolve profile image URL', { 
-              originalPath: userData.profile_image 
-            });
-          }
-        }
-
-        LoggingService.profileInfo('Profile fetch successful', {
-          userId: userData._id,
-          userName: userData.name,
-          userEmail: userData.email,
-          userMobile: userData.mobile,
-          profileImageURL: userData.profile_image,
-          hasAllRequiredFields: !!(userData._id && userData.name && userData.email)
-        });
-        
-        return {
-          success: true,
-          data: userData,
-        };
+        return this.processProfileResponse(result);
       } else {
-        LoggingService.profileError('Profile fetch failed', {
-          success: result.success,
-          message: result.message,
-          status: result.status
-        });
-        
+        console.log('❌ API call failed:', result.message);
         return {
           success: false,
-          message: result.message || 'Failed to fetch profile',
+          message: result.message || 'Failed to fetch profile from server. Please try logging in again.',
           status: result.status
         };
       }
+      
     } catch (error) {
-      LoggingService.profileError('Profile API error', {
-        errorMessage: error.message,
-        errorName: error.name,
-        errorStack: error.stack
+      console.log('💥 Unexpected error in profile fetch:', error.message);
+      console.log('💥 Error stack:', error.stack);
+      return {
+        success: false,
+        message: 'Network error occurred. Please check your connection and try again.',
+      };
+    }
+  }
+
+  static async processProfileResponse(result) {
+    console.log('📊 Processing profile response...');
+    console.log('   Response data keys:', result.data ? Object.keys(result.data) : 'No data');
+
+    if (result.success && result.data) {
+      let userData;
+      
+      // Based on Postman response structure: { formattedData: {...} }
+      if (result.data.formattedData) {
+        console.log('✅ Using formattedData from response');
+        userData = result.data.formattedData;
+      } 
+      // Fallback structures
+      else if (result.data.user) {
+        console.log('✅ Using user data from response');
+        userData = result.data.user;
+      } 
+      else if (result.data.data) {
+        console.log('✅ Using data field from response');
+        userData = result.data.data;
+      } 
+      // Direct user data
+      else if (result.data._id || result.data.email) {
+        console.log('✅ Using direct data from response');
+        userData = result.data;
+      } 
+      else {
+        console.log('❌ No recognizable user data structure');
+        console.log('   Available keys:', Object.keys(result.data));
+        return {
+          success: false,
+          message: 'No profile data found in server response',
+        };
+      }
+
+      console.log('📋 Extracted user data:', {
+        id: userData._id,
+        name: userData.name,
+        email: userData.email,
+        mobile: userData.mobile,
+        hasProfileImage: !!userData.profile_image
       });
+
+      // Handle profile image if present
+      if (userData.profile_image && userData.profile_image !== 'placeholder') {
+        try {
+          const workingImageUrl = await ImageService.getWorkingImageUrl(userData.profile_image);
+          if (workingImageUrl) {
+            userData.profile_image = workingImageUrl;
+            console.log('🖼️ Profile image URL resolved successfully');
+          } else {
+            console.log('⚠️ Could not resolve profile image URL');
+          }
+        } catch (imageError) {
+          console.log('⚠️ Error resolving profile image:', imageError.message);
+        }
+      }
+
+      console.log('✅ Profile processing completed successfully');
+      
+      return {
+        success: true,
+        data: userData,
+      };
+    }
+    
+    console.log('❌ Profile response processing failed');
+    return result;
+  }
+
+  // Helper method to refresh profile data
+  static async refreshProfile() {
+    console.log('Refreshing user profile...');
+    
+    try {
+      const result = await this.getProfile();
+      
+      if (result.success) {
+        console.log('Profile refreshed successfully');
+        
+        // Update global user data if available
+        if (result.data) {
+          global.currentUser = result.data;
+          global.currentUserName = result.data.name || result.data.fullName;
+          global.currentUserEmail = result.data.email || result.data.emailid;
+          global.currentUserMobile = result.data.mobile || result.data.mobileNo;
+          global.currentUserCity = result.data.city;
+          global.currentUserProfileImage = result.data.profile_image;
+        }
+      }
+      
+      return result;
+    } catch (error) {
+      console.log('Error refreshing profile:', error.message);
+      return {
+        success: false,
+        message: 'Failed to refresh profile',
+        error: error.message
+      };
+    }
+  }
+
+  // Helper method to get cached profile
+  static async getCachedProfile() {
+    try {
+      const cachedProfile = await AsyncStorage.getItem('userProfile');
+      if (cachedProfile) {
+        return {
+          success: true,
+          data: JSON.parse(cachedProfile),
+          cached: true
+        };
+      }
       
       return {
         success: false,
-        message: 'Network error. Please check your connection and try again.',
+        message: 'No cached profile found'
+      };
+    } catch (error) {
+      console.log('Error getting cached profile:', error.message);
+      return {
+        success: false,
+        message: 'Error reading cached profile',
+        error: error.message
       };
     }
   }
@@ -1002,13 +1220,25 @@ const ViewProfileScreen = ({ navigation, route }) => {
   </View>
   
   {/* Location Details */}
-  <View style={styles.section}>
-    <Text style={styles.sectionTitle}>Location Details</Text>
-    {renderInfoRow('Address', userProfile.address, 'location-on')}
-    {renderInfoRow('Pincode', userProfile.pincode, 'pin-drop')}
-    {renderInfoRow('City', userProfile.city, 'location-city')}
-    {renderInfoRow('State', userProfile.state, 'public')}
-  </View>
+ 
+<View style={styles.section}>
+  <Text style={styles.sectionTitle}>Location Details</Text>
+  {renderInfoRow('Address', userProfile.address, 'location-on')}
+  {renderInfoRow('Pincode', userProfile.pincode, 'pin-drop')}
+  {renderInfoRow('City', userProfile.city, 'location-city')}
+  {renderInfoRow('District', userProfile.district, 'place')}
+  {renderInfoRow('State', userProfile.state, 'public')}
+</View>
+
+{/* Social Media Links */}
+        {(userProfile.facebook || userProfile.twitter || userProfile.instagram) && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Social Media</Text>
+            {renderInfoRow('Facebook', userProfile.facebook, 'facebook')}
+            {renderInfoRow('Twitter', userProfile.twitter, 'alternate-email')}
+            {renderInfoRow('Instagram', userProfile.instagram, 'camera-alt')}
+          </View>
+        )}
 
   {/* Admin Information Section (Only for Admins) */}
   {userProfile.isAdmin && adminInfo && (

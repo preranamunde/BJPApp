@@ -21,7 +21,8 @@ import EncryptedStorage from 'react-native-encrypted-storage';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import ConfigService from '../services/ConfigService';
 import ApiService from '../services/ApiService';
-import { getCurrentUserRole, checkIfCurrentUserIsAdmin } from '../../App'; // Import helper functions
+import styles from '../styles/KnowYourLeaderstyle';
+import { getCurrentUserRole, checkIfCurrentUserIsAdmin} from '../../App'; // Import helper functions
 
 const { width } = Dimensions.get('window');
 
@@ -64,7 +65,28 @@ const KnowYourLeaderScreen = () => {
   const [showDevInput, setShowDevInput] = useState(false);
   const [devInput, setDevInput] = useState('');
   const [devClickCount, setDevClickCount] = useState(0);
-
+  // Add this with your other state declarations
+const [dropdownVisible, setDropdownVisible] = useState(false);
+const [dropdownPosition, setDropdownPosition] = useState({ x: 0, y: 0 });
+const [currentDropdownType, setCurrentDropdownType] = useState('');
+const [currentDropdownData, setCurrentDropdownData] = useState(null);
+const [addEducationModalVisible, setAddEducationModalVisible] = useState(false);
+const [addEducationData, setAddEducationData] = useState({
+  degree: '',
+  college: '',
+  university: '',
+  place: ''
+});
+const [addEducationLoading, setAddEducationLoading] = useState(false);
+const [editEducationModalVisible, setEditEducationModalVisible] = useState(false);
+const [currentEducationIndex, setCurrentEducationIndex] = useState(0);
+const [editingEducationData, setEditingEducationData] = useState({
+  degree: '',
+  college: '',
+  university: '',
+  place: ''
+});
+const [educationEditLoading, setEducationEditLoading] = useState(false);
   useEffect(() => {
     initializeApp();
   }, []);
@@ -225,6 +247,26 @@ const KnowYourLeaderScreen = () => {
     }
   };
 
+  const getUserInfoForEducation = async () => {
+  try {
+    console.log('🔍 Getting user info for education entry...');
+    
+    // Get mobile number (reuse existing logic)
+    const memberInfo = await getMemberInfoFromStorage();
+    
+    // Get current user role for email
+    const currentUserInfo = await getCurrentUserRole();
+    
+    return {
+      regdMobileNo: memberInfo.memberId,
+      userEmailId: currentUserInfo.loggedin_email || ''
+    };
+  } catch (error) {
+    console.error('❌ Error getting user info for education:', error);
+    throw error;
+  }
+};
+
   const initializeApp = async () => {
     try {
       setLoading(true);
@@ -303,22 +345,25 @@ const KnowYourLeaderScreen = () => {
     }
   };
 
-  const fetchEducationalDetails = async (memberIdentifier) => {
-    try {
-      const baseUrl = await ConfigService.getBaseUrl();
-      const endpoint = `${baseUrl}/api/edudata/${memberIdentifier}`;
-      const result = await ApiService.get(endpoint);
-      
-      return {
-        success: result.success,
-        data: result.success ? result.data : null,
-        error: result.success ? null : result.error || result.message
-      };
-    } catch (error) {
-      console.error('API Error (edudata):', error);
-      return { success: false, error: error.message };
-    }
-  };
+ const fetchEducationalDetails = async (memberIdentifier) => {
+  try {
+    const baseUrl = await ConfigService.getBaseUrl();
+    const endpoint = `${baseUrl}/api/edudata/${memberIdentifier}`;
+
+    // ✅ use authGet to include Authorization + x-app-key headers
+    const result = await ApiService.authGet(endpoint);
+
+    return {
+      success: result.success,
+      data: result.success ? result.data : null,
+      error: result.success ? null : result.error || result.message
+    };
+  } catch (error) {
+    console.error('API Error (edudata):', error);
+    return { success: false, error: error.message };
+  }
+};
+
 
   const fetchPermanentAddress = async (memberIdentifier) => {
     try {
@@ -371,6 +416,317 @@ const KnowYourLeaderScreen = () => {
     }
   };
 
+  const submitEducationEntry = async () => {
+  try {
+    // Validate form data
+    if (!addEducationData.degree.trim()) {
+      Alert.alert('Validation Error', 'Please enter degree');
+      return;
+    }
+    if (!addEducationData.college.trim()) {
+      Alert.alert('Validation Error', 'Please enter college name');
+      return;
+    }
+    if (!addEducationData.university.trim()) {
+      Alert.alert('Validation Error', 'Please enter university name');
+      return;
+    }
+    if (!addEducationData.place.trim()) {
+      Alert.alert('Validation Error', 'Please enter place');
+      return;
+    }
+
+    setAddEducationLoading(true);
+
+    // Get user information
+    const userInfo = await getUserInfoForEducation();
+    
+    if (!userInfo.regdMobileNo || !userInfo.userEmailId) {
+      Alert.alert('Error', 'User information not available. Please try refreshing the screen.');
+      return;
+    }
+
+    // Get base URL
+    const baseUrl = await ConfigService.getBaseUrl();
+
+    // Prepare request payload matching your Postman request
+    const requestPayload = {
+      leader_regd_mobile_no: userInfo.regdMobileNo,
+      user_email_id: userInfo.userEmailId,
+      edu_qual: {
+        degree: addEducationData.degree.trim(),
+        college: addEducationData.college.trim(),
+        university: addEducationData.university.trim(),
+        place: addEducationData.place.trim()
+      }
+    };
+
+    console.log('📤 Submitting education entry:', requestPayload);
+
+    // Use authPost since education endpoint requires authentication
+    const result = await ApiService.authPost(
+      `${baseUrl}/api/edudata/entry`,
+      requestPayload
+    );
+
+    if (result.success) {
+      Alert.alert(
+        'Success', 
+        'Education entry added successfully!',
+        [
+          {
+            text: 'OK',
+            onPress: () => {
+              // Reset form
+              setAddEducationData({
+                degree: '',
+                college: '',
+                university: '',
+                place: ''
+              });
+              
+              // Close modal
+              setAddEducationModalVisible(false);
+              
+              // Refresh education data
+              if (memberId) {
+                loadInitialData(memberId);
+              }
+            }
+          }
+        ]
+      );
+    } else {
+      throw new Error(result.message || 'Failed to add education entry');
+    }
+
+  } catch (error) {
+    console.error('❌ Error submitting education entry:', error);
+    
+    // Handle specific error cases
+    if (error.message && error.message.includes('Duplicate education entry')) {
+      Alert.alert('Duplicate Entry', 'This education entry already exists.');
+    } else if (error.message && error.message.includes('network')) {
+      Alert.alert('Network Error', 'Please check your internet connection and try again.');
+    } else {
+      Alert.alert('Error', `Failed to add education entry: ${error.message}`);
+    }
+  } finally {
+    setAddEducationLoading(false);
+  }
+};
+
+const openEducationEditModal = () => {
+  if (!educationData || !Array.isArray(educationData) || educationData.length === 0) {
+    Alert.alert('No Education Data', 'No education entries found to edit.');
+    return;
+  }
+
+  // Start with the first education entry
+  setCurrentEducationIndex(0);
+  setEditingEducationData({
+    degree: educationData[0].degree || '',
+    college: educationData[0].college || '',
+    university: educationData[0].university || '',
+    place: educationData[0].place || ''
+  });
+  setEditEducationModalVisible(true);
+};
+
+const navigateEducation = (direction) => {
+  if (!educationData || !Array.isArray(educationData)) return;
+
+  let newIndex;
+  if (direction === 'next') {
+    newIndex = currentEducationIndex < educationData.length - 1 ? currentEducationIndex + 1 : 0;
+  } else {
+    newIndex = currentEducationIndex > 0 ? currentEducationIndex - 1 : educationData.length - 1;
+  }
+
+  setCurrentEducationIndex(newIndex);
+  setEditingEducationData({
+    degree: educationData[newIndex].degree || '',
+    college: educationData[newIndex].college || '',
+    university: educationData[newIndex].university || '',
+    place: educationData[newIndex].place || ''
+  });
+};
+
+const handleEducationInputChange = (field, value) => {
+  setEditingEducationData(prev => ({
+    ...prev,
+    [field]: value
+  }));
+};
+
+const saveCurrentEducation = async () => {
+  try {
+    // Validate current education data
+    if (!editingEducationData.degree.trim()) {
+      Alert.alert('Validation Error', 'Please enter degree');
+      return;
+    }
+    if (!editingEducationData.college.trim()) {
+      Alert.alert('Validation Error', 'Please enter college name');
+      return;
+    }
+    if (!editingEducationData.university.trim()) {
+      Alert.alert('Validation Error', 'Please enter university name');
+      return;
+    }
+    if (!editingEducationData.place.trim()) {
+      Alert.alert('Validation Error', 'Please enter place');
+      return;
+    }
+
+    setEducationEditLoading(true);
+
+    // Get user information
+    const userInfo = await getUserInfoForEducation();
+    
+    if (!userInfo.regdMobileNo || !userInfo.userEmailId) {
+      Alert.alert('Error', 'User information not available. Please try refreshing the screen.');
+      return;
+    }
+
+    // Get the current education entry to extract eduId
+    const currentEducationEntry = educationData[currentEducationIndex];
+    if (!currentEducationEntry._id && !currentEducationEntry.eduId) {
+      Alert.alert('Error', 'Education ID not found. Cannot update entry.');
+      return;
+    }
+
+    // Get base URL
+    const baseUrl = await ConfigService.getBaseUrl();
+
+    // Prepare request payload for PUT method (matching your Postman request)
+    const requestPayload = {
+      leader_regd_mobile_no: userInfo.regdMobileNo,
+      user_email_id: userInfo.userEmailId,
+      eduId: currentEducationEntry._id || currentEducationEntry.eduId, // Use the education ID
+      edu_qual: {
+        degree: editingEducationData.degree.trim(),
+        college: editingEducationData.college.trim(),
+        university: editingEducationData.university.trim(),
+        place: editingEducationData.place.trim()
+      }
+    };
+
+    console.log('📤 Updating education entry:', requestPayload);
+
+    // Use authPut since education endpoint requires authentication
+    const result = await ApiService.authPut(
+      `${baseUrl}/api/edudata/entry`,
+      requestPayload
+    );
+
+    if (result.success) {
+      Alert.alert('Success', 'Education entry updated successfully!', [
+        {
+          text: 'OK',
+          onPress: () => {
+            // Refresh education data
+            loadInitialData(memberId);
+          }
+        }
+      ]);
+    } else {
+      throw new Error(result.message || 'Failed to update education entry');
+    }
+
+  } catch (error) {
+    console.error('❌ Error updating education entry:', error);
+    Alert.alert('Update Failed', `Failed to update education entry: ${error.message}`);
+  } finally {
+    setEducationEditLoading(false);
+  }
+};
+
+const deleteCurrentEducation = async () => {
+  // Get the current education entry to show in confirmation
+  const currentEducationEntry = educationData[currentEducationIndex];
+  
+  Alert.alert(
+    'Delete Education Entry',
+    `Are you sure you want to delete this education entry?\n\n${editingEducationData.degree} from ${editingEducationData.college}`,
+    [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            setEducationEditLoading(true);
+
+            // Get user information
+            const userInfo = await getUserInfoForEducation();
+            
+            if (!userInfo.regdMobileNo || !userInfo.userEmailId) {
+              Alert.alert('Error', 'User information not available. Please try refreshing the screen.');
+              return;
+            }
+
+            // Check if education ID exists
+            if (!currentEducationEntry._id && !currentEducationEntry.eduId) {
+              Alert.alert('Error', 'Education ID not found. Cannot delete entry.');
+              return;
+            }
+
+            // Get base URL
+            const baseUrl = await ConfigService.getBaseUrl();
+
+            // Prepare request payload for DELETE method (matching your Postman request)
+            const requestPayload = {
+              leader_regd_mobile_no: userInfo.regdMobileNo,
+              user_email_id: userInfo.userEmailId,
+              eduId: currentEducationEntry._id || currentEducationEntry.eduId
+            };
+
+            console.log('🗑️ Deleting education entry:', requestPayload);
+
+            // Use authDelete since education endpoint requires authentication
+            const result = await ApiService.authDelete(
+              `${baseUrl}/api/edudata/entry`,
+              requestPayload
+            );
+
+            if (result.success) {
+              Alert.alert('Success', 'Education entry deleted successfully!', [
+                {
+                  text: 'OK',
+                  onPress: () => {
+                    // Check if this was the last education entry
+                    if (educationData.length <= 1) {
+                      // Close modal if no more entries
+                      setEditEducationModalVisible(false);
+                    } else {
+                      // Adjust current index if needed
+                      const newIndex = currentEducationIndex >= educationData.length - 1 ? 
+                        0 : currentEducationIndex;
+                      
+                      setCurrentEducationIndex(newIndex);
+                    }
+                    
+                    // Refresh education data
+                    loadInitialData(memberId);
+                  }
+                }
+              ]);
+            } else {
+              throw new Error(result.message || 'Failed to delete education entry');
+            }
+
+          } catch (error) {
+            console.error('❌ Error deleting education entry:', error);
+            Alert.alert('Delete Failed', `Failed to delete education entry: ${error.message}`);
+          } finally {
+            setEducationEditLoading(false);
+          }
+        }
+      }
+    ]
+  );
+};
   // PUT API calls for updating data using ApiService (unchanged but with enhanced logging)
   const updateMemberCoordinates = async (memberIdentifier, data) => {
     try {
@@ -398,6 +754,51 @@ const KnowYourLeaderScreen = () => {
     }
   };
 
+const deleteMemberCoordinates = async (memberIdentifier) => {
+  try {
+    console.log('🗑️ Deleting member coordinates as admin...');
+    const baseUrl = await ConfigService.getBaseUrl();
+    const endpoint = `${baseUrl}/api/coordinates/${memberIdentifier}`;
+    
+    const result = await ApiService.delete(endpoint);
+    console.log('🔍 Delete API Response:', result);
+    
+    if (result.success) {
+      console.log('✅ Member coordinates deleted successfully');
+      return {
+        success: true,
+        data: result.data,
+        error: null
+      };
+    } else {
+      // Handle the error properly - the error might be an object
+      let errorMessage = 'Delete failed';
+      
+      if (result.error) {
+        if (typeof result.error === 'string') {
+          errorMessage = result.error;
+        } else if (typeof result.error === 'object') {
+          errorMessage = result.error.message || result.error.error || JSON.stringify(result.error);
+        }
+      } else if (result.message) {
+        errorMessage = result.message;
+      }
+      
+      console.log('❌ Delete failed:', errorMessage);
+      return {
+        success: false,
+        data: null,
+        error: errorMessage
+      };
+    }
+  } catch (error) {
+    console.error('❌ API Error (delete coordinates):', error);
+    return { 
+      success: false, 
+      error: error.message || 'Network error occurred' 
+    };
+  }
+};
   const updateSocialMedia = async (memberIdentifier, data) => {
     try {
       console.log('🔄 Updating social media as admin...');
@@ -423,6 +824,40 @@ const KnowYourLeaderScreen = () => {
       return { success: false, error: error.message };
     }
   };
+
+  const deleteSocialMedia = async (memberIdentifier) => {
+  try {
+    console.log('🗑️ Deleting social media as admin...');
+    const baseUrl = await ConfigService.getBaseUrl();
+    const endpoint = `${baseUrl}/api/socialmedia/${memberIdentifier}`;
+    
+    const result = await ApiService.delete(endpoint);
+    console.log('🔍 Delete Social Media API Response:', result);
+    
+    if (result.success) {
+      console.log('✅ Social media deleted successfully');
+      return { success: true, data: result.data, error: null };
+    } else {
+      let errorMessage = 'Delete failed';
+      if (result.error) {
+        if (typeof result.error === 'string') {
+          errorMessage = result.error;
+        } else if (typeof result.error === 'object') {
+          errorMessage = result.error.message || result.error.error || JSON.stringify(result.error);
+        }
+      } else if (result.message) {
+        errorMessage = result.message;
+      }
+      
+      console.log('❌ Delete failed:', errorMessage);
+      return { success: false, data: null, error: errorMessage };
+    }
+  } catch (error) {
+    console.error('❌ API Error (delete social media):', error);
+    return { success: false, error: error.message || 'Network error occurred' };
+  }
+};
+
 
   const updatePersonalDetails = async (memberIdentifier, data) => {
     try {
@@ -450,6 +885,30 @@ const KnowYourLeaderScreen = () => {
     }
   };
 
+  const deletePersonalDetails = async (memberIdentifier) => {
+  try {
+    console.log('🗑️ Deleting personal details as admin...');
+    const baseUrl = await ConfigService.getBaseUrl();
+    const endpoint = `${baseUrl}/api/personaldetails/${memberIdentifier}`;
+    
+    const result = await ApiService.delete(endpoint);
+    
+    if (result.success) {
+      console.log('✅ Personal details deleted successfully');
+      return { success: true, data: result.data, error: null };
+    } else {
+      let errorMessage = 'Delete failed';
+      if (result.error) {
+        errorMessage = typeof result.error === 'string' ? result.error : 
+                      result.error.message || JSON.stringify(result.error);
+      }
+      return { success: false, data: null, error: errorMessage };
+    }
+  } catch (error) {
+    console.error('❌ API Error (delete personal details):', error);
+    return { success: false, error: error.message || 'Network error occurred' };
+  }
+};
   const updateEducationalDetails = async (memberIdentifier, data) => {
     try {
       console.log('🔄 Updating educational details as admin...');
@@ -475,6 +934,31 @@ const KnowYourLeaderScreen = () => {
       return { success: false, error: error.message };
     }
   };
+
+  const deleteEducationalDetails = async (memberIdentifier) => {
+  try {
+    console.log('🗑️ Deleting educational details as admin...');
+    const baseUrl = await ConfigService.getBaseUrl();
+    const endpoint = `${baseUrl}/api/edudata/${memberIdentifier}`;
+    
+    const result = await ApiService.delete(endpoint);
+    
+    if (result.success) {
+      console.log('✅ Educational details deleted successfully');
+      return { success: true, data: result.data, error: null };
+    } else {
+      let errorMessage = 'Delete failed';
+      if (result.error) {
+        errorMessage = typeof result.error === 'string' ? result.error : 
+                      result.error.message || JSON.stringify(result.error);
+      }
+      return { success: false, data: null, error: errorMessage };
+    }
+  } catch (error) {
+    console.error('❌ API Error (delete educational details):', error);
+    return { success: false, error: error.message || 'Network error occurred' };
+  }
+};
 
   const updatePermanentAddress = async (memberIdentifier, data) => {
     try {
@@ -502,6 +986,31 @@ const KnowYourLeaderScreen = () => {
     }
   };
 
+  const deletePermanentAddress = async (memberIdentifier) => {
+  try {
+    console.log('🗑️ Deleting permanent address as admin...');
+    const baseUrl = await ConfigService.getBaseUrl();
+    const endpoint = `${baseUrl}/api/permaddress/${memberIdentifier}`;
+    
+    const result = await ApiService.delete(endpoint);
+    
+    if (result.success) {
+      console.log('✅ Permanent address deleted successfully');
+      return { success: true, data: result.data, error: null };
+    } else {
+      let errorMessage = 'Delete failed';
+      if (result.error) {
+        errorMessage = typeof result.error === 'string' ? result.error : 
+                      result.error.message || JSON.stringify(result.error);
+      }
+      return { success: false, data: null, error: errorMessage };
+    }
+  } catch (error) {
+    console.error('❌ API Error (delete permanent address):', error);
+    return { success: false, error: error.message || 'Network error occurred' };
+  }
+};
+
   const updatePresentAddress = async (memberIdentifier, data) => {
     try {
       console.log('🔄 Updating present address as admin...');
@@ -528,6 +1037,31 @@ const KnowYourLeaderScreen = () => {
     }
   };
 
+  const deletePresentAddress = async (memberIdentifier) => {
+  try {
+    console.log('🗑️ Deleting present address as admin...');
+    const baseUrl = await ConfigService.getBaseUrl();
+    const endpoint = `${baseUrl}/api/preaddress/${memberIdentifier}`;
+    
+    const result = await ApiService.delete(endpoint);
+    
+    if (result.success) {
+      console.log('✅ Present address deleted successfully');
+      return { success: true, data: result.data, error: null };
+    } else {
+      let errorMessage = 'Delete failed';
+      if (result.error) {
+        errorMessage = typeof result.error === 'string' ? result.error : 
+                      result.error.message || JSON.stringify(result.error);
+      }
+      return { success: false, data: null, error: errorMessage };
+    }
+  } catch (error) {
+    console.error('❌ API Error (delete present address):', error);
+    return { success: false, error: error.message || 'Network error occurred' };
+  }
+};
+
   const updateTimeline = async (memberIdentifier, data) => {
     try {
       console.log('🔄 Updating timeline as admin...');
@@ -550,6 +1084,32 @@ const KnowYourLeaderScreen = () => {
       return { success: false, error: error.message };
     }
   };
+
+  const deleteTimeline = async (memberIdentifier) => {
+  try {
+    console.log('🗑️ Deleting timeline as admin...');
+    const baseUrl = await ConfigService.getBaseUrl();
+    const endpoint = `${baseUrl}/api/leadertimeline/${memberIdentifier}`;
+    
+    const result = await ApiService.delete(endpoint);
+    
+    if (result.success) {
+      console.log('✅ Timeline deleted successfully');
+      return { success: true, data: result.data, error: null };
+    } else {
+      let errorMessage = 'Delete failed';
+      if (result.error) {
+        errorMessage = typeof result.error === 'string' ? result.error : 
+                      result.error.message || JSON.stringify(result.error);
+      }
+      return { success: false, data: null, error: errorMessage };
+    }
+  } catch (error) {
+    console.error('❌ API Error (delete timeline):', error);
+    return { success: false, error: error.message || 'Network error occurred' };
+  }
+};
+
 
   const loadInitialData = async (memberIdentifier) => {
     if (!memberIdentifier) {
@@ -884,20 +1444,477 @@ const KnowYourLeaderScreen = () => {
   }
 };
 
-  // Enhanced render edit button with real-time admin check
-  const renderEditButton = (type, data) => {
-    if (!isAdmin) return null;
-
-    return (
-      <TouchableOpacity
-        style={[styles.editButton, isAdmin && styles.editButtonActive]}
-        onPress={() => openEditModal(type, data)}
-      >
-        <Text style={styles.editButtonText}>✏️</Text>
-      </TouchableOpacity>
-    );
+const handleUniversalDelete = async (type, data) => {
+  const typeLabels = {
+    'coordinates': 'Leader Coordinates',
+    'social': 'Social Media',
+    'personal': 'Personal Details',
+    'education': 'Educational Details',
+    'permanent_address': 'Permanent Address',
+    'present_address': 'Present Address',
+    'timeline': 'Career Timeline'
   };
 
+  Alert.alert(
+    'Delete Confirmation',
+    `Are you sure you want to delete the ${typeLabels[type]} information? This action cannot be undone.`,
+    [
+      { text: 'No', style: 'cancel' },
+      {
+        text: 'Yes',
+        style: 'destructive',
+        onPress: async () => {
+          if (!isAdmin) {
+            Alert.alert('Access Denied', 'Admin privileges required to delete data.');
+            return;
+          }
+          
+          if (!memberId) {
+            Alert.alert('Error', 'Member ID not available.');
+            return;
+          }
+          
+          try {
+            setLoading(true);
+            console.log(`🗑️ Deleting ${type} for member:`, memberId);
+            
+            let result;
+            switch (type) {
+              case 'coordinates':
+                result = await deleteMemberCoordinates(memberId);
+                break;
+              case 'social':
+                result = await deleteSocialMedia(memberId);
+                break;
+              case 'personal':
+                result = await deletePersonalDetails(memberId);
+                break;
+              case 'education':
+                result = await deleteEducationalDetails(memberId);
+                break;
+              case 'permanent_address':
+                result = await deletePermanentAddress(memberId);
+                break;
+              case 'present_address':
+                result = await deletePresentAddress(memberId);
+                break;
+              case 'timeline':
+                result = await deleteTimeline(memberId);
+                break;
+              default:
+                throw new Error('Unknown delete type');
+            }
+            
+            if (result.success) {
+              Alert.alert('Success', `${typeLabels[type]} deleted successfully!`);
+              
+              // Clear the appropriate state data
+              switch (type) {
+                case 'coordinates':
+                  setMemberData(null);
+                  break;
+                case 'social':
+                  setSocialMediaData(null);
+                  break;
+                case 'personal':
+                  setPersonalData(null);
+                  break;
+                case 'education':
+                  setEducationData(null);
+                  break;
+                case 'permanent_address':
+                  setAddressData(prev => ({ ...prev, permanent: null }));
+                  break;
+                case 'present_address':
+                  setAddressData(prev => ({ ...prev, present: null }));
+                  break;
+                case 'timeline':
+                  setTimelineData(null);
+                  break;
+              }
+              
+              // Reload all data
+              await loadInitialData(memberId);
+            } else {
+              const errorMessage = result.error || `Failed to delete ${typeLabels[type]}`;
+              Alert.alert('Delete Failed', errorMessage);
+            }
+          } catch (error) {
+            console.error(`❌ Delete ${type} error:`, error);
+            const errorMessage = error.message || String(error) || 'An unexpected error occurred';
+            Alert.alert('Delete Failed', errorMessage);
+          } finally {
+            setLoading(false);
+          }
+        },
+      },
+    ]
+  );
+};
+
+
+const renderActionDropdown = (type, data) => {
+  if (!isAdmin || !data) return null;
+
+  const handleDropdownPress = (event) => {
+    const { pageX, pageY } = event.nativeEvent;
+    setDropdownPosition({ x: pageX - 100, y: pageY + 10 });
+    setCurrentDropdownType(type);
+    setCurrentDropdownData(data);
+    setDropdownVisible(true);
+  };
+
+  return (
+    <TouchableOpacity
+      style={styles.actionButton}
+      onPress={handleDropdownPress}
+    >
+      <Text style={styles.actionButtonText}>⋮</Text>
+    </TouchableOpacity>
+  );
+};
+
+
+
+
+const renderDropdownModal = () => {
+  if (!dropdownVisible || !currentDropdownType) return null;
+
+  return (
+    <Modal
+      visible={dropdownVisible}
+      transparent={true}
+      animationType="fade"
+      onRequestClose={() => setDropdownVisible(false)}
+    >
+      <TouchableOpacity
+        style={styles.dropdownOverlay}
+        activeOpacity={1}
+        onPress={() => setDropdownVisible(false)}
+      >
+        <View style={[styles.dropdownMenu, { 
+          top: dropdownPosition.y, 
+          left: dropdownPosition.x 
+        }]}>
+          <TouchableOpacity
+            style={styles.dropdownItem}
+            onPress={() => {
+              setDropdownVisible(false);
+              // Handle education edit differently
+              if (currentDropdownType === 'education') {
+                openEducationEditModal();
+              } else {
+                openEditModal(currentDropdownType, currentDropdownData);
+              }
+            }}
+          >
+            <Text style={styles.dropdownItemIcon}>✏️</Text>
+            <Text style={styles.dropdownItemText}>Edit</Text>
+          </TouchableOpacity>
+          
+          <View style={styles.dropdownSeparator} />
+          
+          <TouchableOpacity
+            style={[styles.dropdownItem, styles.dropdownDeleteItem]}
+            onPress={() => {
+              setDropdownVisible(false);
+              handleUniversalDelete(currentDropdownType, currentDropdownData);
+            }}
+          >
+            <Text style={styles.dropdownItemIcon}>🗑️</Text>
+            <Text style={[styles.dropdownItemText, styles.dropdownDeleteText]}>Delete All</Text>
+          </TouchableOpacity>
+        </View>
+      </TouchableOpacity>
+    </Modal>
+  );
+};
+
+
+const renderAddEducationModal = () => {
+  return (
+    <Modal
+      visible={addEducationModalVisible}
+      animationType="slide"
+      presentationStyle="formSheet"
+      onRequestClose={() => setAddEducationModalVisible(false)}
+    >
+      <SafeAreaView style={styles.editModalContainer}>
+        <KeyboardAvoidingView 
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={styles.editModalContent}
+        >
+          {/* Modal Header */}
+          <View style={styles.editModalHeader}>
+            <TouchableOpacity
+              onPress={() => setAddEducationModalVisible(false)}
+              style={styles.editModalCloseButton}
+            >
+              <Text style={styles.editModalCloseText}>✕</Text>
+            </TouchableOpacity>
+            <View style={styles.editModalTitleContainer}>
+              <Text style={styles.editModalTitle}>Add New Education</Text>
+            </View>
+            <TouchableOpacity
+              onPress={submitEducationEntry}
+              style={styles.editModalSaveButton}
+              disabled={addEducationLoading}
+            >
+              {addEducationLoading ? (
+                <ActivityIndicator size="small" color="#ffffff" />
+              ) : (
+                <Text style={styles.editModalSaveText}>Save</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+
+          {/* Modal Body */}
+          <ScrollView style={styles.editModalBody}>
+            <View style={styles.editFormContainer}>
+              <Text style={styles.editSectionTitle}>Education Details</Text>
+              
+              {/* Degree Field */}
+              <View style={styles.editInputContainer}>
+                <Text style={styles.editInputLabel}>DEGREE *</Text>
+                <TextInput
+                  style={styles.editInput}
+                  value={addEducationData.degree}
+                  onChangeText={(text) => setAddEducationData({
+                    ...addEducationData,
+                    degree: text
+                  })}
+                  placeholder="e.g., B.Tech, M.Tech, MBA, PhD"
+                  multiline={false}
+                />
+              </View>
+
+              {/* College Field */}
+              <View style={styles.editInputContainer}>
+                <Text style={styles.editInputLabel}>COLLEGE *</Text>
+                <TextInput
+                  style={styles.editInput}
+                  value={addEducationData.college}
+                  onChangeText={(text) => setAddEducationData({
+                    ...addEducationData,
+                    college: text
+                  })}
+                  placeholder="e.g., IIT Delhi, DU, etc."
+                  multiline={false}
+                />
+              </View>
+
+              {/* University Field */}
+              <View style={styles.editInputContainer}>
+                <Text style={styles.editInputLabel}>UNIVERSITY *</Text>
+                <TextInput
+                  style={styles.editInput}
+                  value={addEducationData.university}
+                  onChangeText={(text) => setAddEducationData({
+                    ...addEducationData,
+                    university: text
+                  })}
+                  placeholder="e.g., IIT, University of Delhi, etc."
+                  multiline={false}
+                />
+              </View>
+
+              {/* Place Field */}
+              <View style={styles.editInputContainer}>
+                <Text style={styles.editInputLabel}>PLACE *</Text>
+                <TextInput
+                  style={styles.editInput}
+                  value={addEducationData.place}
+                  onChangeText={(text) => setAddEducationData({
+                    ...addEducationData,
+                    place: text
+                  })}
+                  placeholder="e.g., Delhi, Mumbai, etc."
+                  multiline={false}
+                />
+              </View>
+
+              {/* Info Text */}
+              <View style={styles.infoContainer}>
+                <Text style={styles.infoText}>
+                  All fields are required. Please fill in your educational qualification details.
+                </Text>
+              </View>
+            </View>
+          </ScrollView>
+        </KeyboardAvoidingView>
+      </SafeAreaView>
+    </Modal>
+  );
+};
+
+const renderEducationEditModal = () => {
+  if (!educationData || !Array.isArray(educationData) || educationData.length === 0) {
+    return null;
+  }
+
+  return (
+    <Modal
+      visible={editEducationModalVisible}
+      animationType="slide"
+      presentationStyle="formSheet"
+      onRequestClose={() => setEditEducationModalVisible(false)}
+    >
+      <SafeAreaView style={styles.editModalContainer}>
+        <KeyboardAvoidingView 
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={styles.editModalContent}
+        >
+          {/* Modal Header */}
+          <View style={styles.editModalHeader}>
+            <TouchableOpacity
+              onPress={() => setEditEducationModalVisible(false)}
+              style={styles.editModalCloseButton}
+            >
+              <Text style={styles.editModalCloseText}>✕</Text>
+            </TouchableOpacity>
+            <View style={styles.editModalTitleContainer}>
+              <Text style={styles.editModalTitle}>Edit Education</Text>
+            </View>
+            <View style={styles.headerButtonsContainer}>
+              <TouchableOpacity
+                onPress={saveCurrentEducation}
+                style={styles.editModalSaveButton}
+                disabled={educationEditLoading}
+              >
+                {educationEditLoading ? (
+                  <ActivityIndicator size="small" color="#ffffff" />
+                ) : (
+                  <Text style={styles.editModalSaveText}>Save</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          {/* Education Navigation Header */}
+          <View style={styles.educationNavHeader}>
+            <View style={styles.navigationControls}>
+              <TouchableOpacity
+                style={[
+                  styles.navButton,
+                  educationData.length <= 1 && styles.navButtonDisabled
+                ]}
+                onPress={() => navigateEducation('previous')}
+                disabled={educationData.length <= 1 || educationEditLoading}
+              >
+                <Text style={[
+                  styles.navButtonText,
+                  educationData.length <= 1 && styles.navButtonTextDisabled
+                ]}>
+                  Previous
+                </Text>
+              </TouchableOpacity>
+
+              <View style={styles.navIndicator}>
+                <Text style={styles.navIndicatorText}>
+                  {currentEducationIndex + 1} of {educationData.length}
+                </Text>
+              </View>
+
+              <TouchableOpacity
+                style={[
+                  styles.navButton,
+                  educationData.length <= 1 && styles.navButtonDisabled
+                ]}
+                onPress={() => navigateEducation('next')}
+                disabled={educationData.length <= 1 || educationEditLoading}
+              >
+                <Text style={[
+                  styles.navButtonText,
+                  educationData.length <= 1 && styles.navButtonTextDisabled
+                ]}>
+                  Next
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          {/* Modal Body */}
+          <ScrollView style={styles.editModalBody}>
+            <View style={styles.editFormContainer}>
+              <Text style={styles.editSectionTitle}>
+                Education Entry {currentEducationIndex + 1}
+              </Text>
+              
+              {/* Degree Field */}
+              <View style={styles.editInputContainer}>
+                <Text style={styles.editInputLabel}>DEGREE *</Text>
+                <TextInput
+                  style={styles.editInput}
+                  value={editingEducationData.degree}
+                  onChangeText={(text) => handleEducationInputChange('degree', text)}
+                  placeholder="e.g., B.Tech, M.Tech, MBA, PhD"
+                  multiline={false}
+                />
+              </View>
+
+              {/* College Field */}
+              <View style={styles.editInputContainer}>
+                <Text style={styles.editInputLabel}>COLLEGE *</Text>
+                <TextInput
+                  style={styles.editInput}
+                  value={editingEducationData.college}
+                  onChangeText={(text) => handleEducationInputChange('college', text)}
+                  placeholder="e.g., IIT Delhi, DU, etc."
+                  multiline={false}
+                />
+              </View>
+
+              {/* University Field */}
+              <View style={styles.editInputContainer}>
+                <Text style={styles.editInputLabel}>UNIVERSITY *</Text>
+                <TextInput
+                  style={styles.editInput}
+                  value={editingEducationData.university}
+                  onChangeText={(text) => handleEducationInputChange('university', text)}
+                  placeholder="e.g., IIT, University of Delhi, etc."
+                  multiline={false}
+                />
+              </View>
+
+              {/* Place Field */}
+              <View style={styles.editInputContainer}>
+                <Text style={styles.editInputLabel}>PLACE *</Text>
+                <TextInput
+                  style={styles.editInput}
+                  value={editingEducationData.place}
+                  onChangeText={(text) => handleEducationInputChange('place', text)}
+                  placeholder="e.g., Delhi, Mumbai, etc."
+                  multiline={false}
+                />
+              </View>
+
+              {/* Action Buttons */}
+              <View style={styles.actionButtonsContainer}>
+                <TouchableOpacity
+                  style={styles.deleteEducationButton}
+                  onPress={deleteCurrentEducation}
+                  disabled={educationEditLoading}
+                >
+                  <Text style={styles.deleteEducationButtonText}>
+                    Delete This Entry
+                  </Text>
+                </TouchableOpacity>
+              </View>
+
+              {/* Info Text */}
+              <View style={styles.infoContainer}>
+                <Text style={styles.infoText}>
+                  Use Previous/Next to navigate between education entries. 
+                  Save to update current entry or Delete to remove it permanently.
+                </Text>
+              </View>
+            </View>
+          </ScrollView>
+        </KeyboardAvoidingView>
+      </SafeAreaView>
+    </Modal>
+  );
+};
   const renderEditModal = () => {
     return (
       <Modal
@@ -1041,21 +2058,23 @@ const KnowYourLeaderScreen = () => {
             </View>
             
             <View style={styles.basicInfo}>
-              <View style={styles.nameRow}>
-                <TouchableOpacity
-                  style={styles.nameContainer}
-                  onPress={handleLeaderNamePress}
-                  activeOpacity={0.8}
-                >
-                  <Text style={styles.leaderName}>
-                    {memberData ? 
-                      `${memberData.title || ''} ${memberData.member_name || ''}`.trim() : 
-                      'Loading...'
-                    }
-                  </Text>
-                </TouchableOpacity>
-                {renderEditButton('coordinates', memberData)}
-              </View>
+<View style={styles.nameRow}>
+  <TouchableOpacity
+    style={styles.nameContainer}
+    onPress={handleLeaderNamePress}
+    activeOpacity={0.8}
+  >
+    <Text style={styles.leaderName}>
+      {memberData ? 
+        `${memberData.title || ''} ${memberData.member_name || ''}`.trim() : 
+        'Loading...'
+      }
+    </Text>
+  </TouchableOpacity>
+  <View style={styles.headerButtonsContainer}>
+    {renderActionDropdown('coordinates', memberData)}
+  </View>
+</View>
               <Text style={styles.designation}>Member of Parliament</Text>
               <View style={styles.locationRow}>
                 <Text style={styles.locationText}>
@@ -1153,301 +2172,299 @@ const KnowYourLeaderScreen = () => {
     </View>
   );
 
-  const renderInfoCard = (title, icon, children, backgroundColor = '#ffffff', editType = null, editData = null) => (
-    <View style={[styles.infoCard, { backgroundColor }]}>
-      <View style={styles.cardHeader}>
-        <View style={styles.cardTitleContainer}>
-          <Text style={styles.cardIcon}>{icon}</Text>
-          <Text style={styles.cardTitle}>{title}</Text>
-        </View>
-        <View style={styles.cardHeaderRight}>
-          <View style={styles.cardAccent} />
-          {editType && editData && renderEditButton(editType, editData)}
-        </View>
+ // Updated renderInfoCard to include dropdown for all cards
+const renderInfoCard = (title, icon, children, backgroundColor = '#ffffff', editType = null, editData = null) => (
+  <View style={[styles.infoCard, { backgroundColor }]}>
+    <View style={styles.cardHeader}>
+      <View style={styles.cardTitleContainer}>
+        <Text style={styles.cardIcon}>{icon}</Text>
+        <Text style={styles.cardTitle}>{title}</Text>
       </View>
-      <View style={styles.cardBody}>
-        {children}
+      <View style={styles.cardHeaderRight}>
+        <View style={styles.cardAccent} />
+        {editType && editData && renderActionDropdown(editType, editData)}
       </View>
     </View>
-  );
+    <View style={styles.cardBody}>
+      {children}
+    </View>
+  </View>
+);
 
-  const renderPersonalInfo = () => {
-    if (!personalData) return null;
 
-    return renderInfoCard('Personal Information', '👤',
-      <View style={styles.infoRows}>
-        {personalData.birth_place && (
-          <View style={styles.infoRow}>
-            <Text style={styles.infoLabel}>Birthplace</Text>
-            <Text style={styles.infoValue}>{personalData.birth_place}</Text>
-          </View>
-        )}
-        {personalData.dob && (
-          <View style={styles.infoRow}>
-            <Text style={styles.infoLabel}>Date of Birth</Text>
-            <Text style={styles.infoValue}>{personalData.dob}</Text>
-          </View>
-        )}
-        {personalData.father_name && (
-          <View style={styles.infoRow}>
-            <Text style={styles.infoLabel}>Father's Name</Text>
-            <Text style={styles.infoValue}>{personalData.father_name}</Text>
-          </View>
-        )}
-        {personalData.mother_name && (
-          <View style={styles.infoRow}>
-            <Text style={styles.infoLabel}>Mother's Name</Text>
-            <Text style={styles.infoValue}>{personalData.mother_name}</Text>
-          </View>
-        )}
-        {personalData.profession && (
-          <View style={styles.infoRow}>
-            <Text style={styles.infoLabel}>Profession</Text>
-            <Text style={styles.infoValue}>{personalData.profession}</Text>
-          </View>
-        )}
-      </View>,
-      '#ffffff',
-      'personal',
-      personalData
-    );
-  };
+ const renderPersonalInfo = () => {
+  if (!personalData) return null;
 
-const renderEducationInfo = () => {
-  if (!educationData || !Array.isArray(educationData)) return null;
-
-  return renderInfoCard('Educational Qualifications', '🎓',
-    <View style={styles.educationList}>
-      {educationData.map((edu, index) => (
-        <View key={index} style={styles.educationItem}>
-          <View style={styles.educationLeft}>
-            <View style={styles.educationNumber}>
-              <Text style={styles.educationNumberText}>{index + 1}</Text>
-            </View>
-          </View>
-          <View style={styles.educationRight}>
-            <Text style={styles.educationDegree}>{edu.degree}</Text>
-            <Text style={styles.educationInstitute}>
-              {edu.college}{edu.university ? `, ${edu.university}` : ''}
-            </Text>
-            {edu.place && (
-              <Text style={styles.educationPlace}>📍 {edu.place}</Text>
-            )}
-          </View>
-          {/* Add individual edit button for each education item */}
-          <View style={styles.educationEditContainer}>
-            {renderEditButton(`education_${index}`, edu)}
-          </View>
+  return renderInfoCard('Personal Information', '👤',
+    <View style={styles.infoRows}>
+      {personalData.birth_place && (
+        <View style={styles.infoRow}>
+          <Text style={styles.infoLabel}>Birthplace</Text>
+          <Text style={styles.infoValue}>{personalData.birth_place}</Text>
         </View>
-      ))}
-      {/* Add button to add new education entry if admin */}
-      {isAdmin && (
-        <TouchableOpacity
-          style={styles.addEducationButton}
-          onPress={() => openEditModal('education_new', {
-            degree: '',
-            college: '',
-            university: '',
-            place: ''
-          })}
-        >
-          <Text style={styles.addEducationText}>+ Add New Education</Text>
-        </TouchableOpacity>
+      )}
+      {personalData.dob && (
+        <View style={styles.infoRow}>
+          <Text style={styles.infoLabel}>Date of Birth</Text>
+          <Text style={styles.infoValue}>{personalData.dob}</Text>
+        </View>
+      )}
+      {personalData.father_name && (
+        <View style={styles.infoRow}>
+          <Text style={styles.infoLabel}>Father's Name</Text>
+          <Text style={styles.infoValue}>{personalData.father_name}</Text>
+        </View>
+      )}
+      {personalData.mother_name && (
+        <View style={styles.infoRow}>
+          <Text style={styles.infoLabel}>Mother's Name</Text>
+          <Text style={styles.infoValue}>{personalData.mother_name}</Text>
+        </View>
+      )}
+      {personalData.profession && (
+        <View style={styles.infoRow}>
+          <Text style={styles.infoLabel}>Profession</Text>
+          <Text style={styles.infoValue}>{personalData.profession}</Text>
+        </View>
       )}
     </View>,
-    '#ffffff'
+    '#ffffff',
+    'personal',    // editType
+    personalData   // editData
   );
 };
 
-  const renderContactInfo = () => {
-    if (!addressData) return null;
-
-    return renderInfoCard('Contact Information', '📞',
-      <View style={styles.contactSections}>
-        {/* Permanent Address */}
-        {addressData.permanent && (
-          <View style={styles.contactSection}>
-            <View style={styles.contactSectionHeader}>
-              <Text style={styles.contactSectionTitle}>🏠 Permanent Address</Text>
-              {renderEditButton('permanent_address', addressData.permanent)}
+const renderEducationInfo = () => {
+  return renderInfoCard('Educational Qualifications', '🎓',
+    <View style={styles.educationList}>
+      {/* Show existing education data */}
+      {educationData && Array.isArray(educationData) && educationData.length > 0 ? (
+        educationData.map((edu, index) => (
+          <View key={index} style={styles.educationItem}>
+            <View style={styles.educationLeft}>
+              <View style={styles.educationNumber}>
+                <Text style={styles.educationNumberText}>{index + 1}</Text>
+              </View>
             </View>
-            <Text style={styles.addressLine}>
-              {[
-                addressData.permanent.address1,
-                addressData.permanent.address2,
-                addressData.permanent.address3
-              ].filter(Boolean).join(', ')}
-            </Text>
-            <Text style={styles.addressLine}>
-              {addressData.permanent.state} - {addressData.permanent.pincode}
-            </Text>
-            
-            <View style={styles.contactButtons}>
-              {addressData.permanent.tel_number1 && (
-                <TouchableOpacity 
-                  style={styles.contactBtn}
-                  onPress={() => openLink(`tel:${formatPhoneNumber(
-                    addressData.permanent.isd_code,
-                    addressData.permanent.std_code,
-                    addressData.permanent.tel_number1
-                  )}`)}
-                >
-                  <Text style={styles.contactBtnText}>Call Landline</Text>
-                </TouchableOpacity>
-              )}
-              {addressData.permanent.mobile_number1 && (
-                <TouchableOpacity 
-                  style={styles.contactBtn}
-                  onPress={() => openLink(`tel:${addressData.permanent.isd_code}${addressData.permanent.mobile_number1}`)}
-                >
-                  <Text style={styles.contactBtnText}>Call Mobile</Text>
-                </TouchableOpacity>
+            <View style={styles.educationRight}>
+              <Text style={styles.educationDegree}>{edu.degree}</Text>
+              <Text style={styles.educationInstitute}>
+                {edu.college}{edu.university ? `, ${edu.university}` : ''}
+              </Text>
+              {edu.place && (
+                <Text style={styles.educationPlace}>📍 {edu.place}</Text>
               )}
             </View>
           </View>
-        )}
+        ))
+      ) : (
+        <View style={styles.emptyState}>
+          <Text style={styles.emptyStateIcon}>🎓</Text>
+          <Text style={styles.emptyStateText}>No education data available</Text>
+        </View>
+      )}
+      
+      {/* Add Education Button - Show for both admin and regular users */}
+      <TouchableOpacity
+        style={styles.addEducationButton}
+        onPress={() => setAddEducationModalVisible(true)}
+      >
+        <Text style={styles.addEducationIcon}>+</Text>
+        <Text style={styles.addEducationText}>Add New Education</Text>
+      </TouchableOpacity>
+    </View>,
+    '#ffffff',
+    'education',
+    educationData
+  );
+};
 
-        {/* Present Address */}
-        {addressData.present && (
-          <View style={styles.contactSection}>
-            <View style={styles.contactSectionHeader}>
-              <Text style={styles.contactSectionTitle}>🏢 Present Address</Text>
-              {renderEditButton('present_address', addressData.present)}
-            </View>
-            <Text style={styles.addressLine}>
-              {[
-                addressData.present.address1,
-                addressData.present.address2,
-                addressData.present.address3
-              ].filter(Boolean).join(', ')}
-            </Text>
-            <Text style={styles.addressLine}>
-              {addressData.present.state} - {addressData.present.pincode}
-            </Text>
-            
-            <View style={styles.contactButtons}>
-              {addressData.present.tel_number1 && (
-                <TouchableOpacity 
-                  style={styles.contactBtn}
-                  onPress={() => openLink(`tel:${formatPhoneNumber(
-                    addressData.present.isd_code,
-                    addressData.present.std_code,
-                    addressData.present.tel_number1
-                  )}`)}
-                >
-                  <Text style={styles.contactBtnText}>Call Office</Text>
-                </TouchableOpacity>
-              )}
-              {addressData.present.mobile_number1 && (
-                <TouchableOpacity 
-                  style={styles.contactBtn}
-                  onPress={() => openLink(`tel:${addressData.present.isd_code}${addressData.present.mobile_number1}`)}
-                >
-                  <Text style={styles.contactBtnText}>Call Mobile</Text>
-                </TouchableOpacity>
-              )}
-            </View>
+
+ const renderContactInfo = () => {
+  if (!addressData) return null;
+
+  return (
+    <>
+      {/* Permanent Address */}
+      {addressData.permanent && renderInfoCard('Permanent Address', '🏠',
+        <View style={styles.contactSection}>
+          <Text style={styles.addressLine}>
+            {[
+              addressData.permanent.address1,
+              addressData.permanent.address2,
+              addressData.permanent.address3
+            ].filter(Boolean).join(', ')}
+          </Text>
+          <Text style={styles.addressLine}>
+            {addressData.permanent.state} - {addressData.permanent.pincode}
+          </Text>
+          
+          <View style={styles.contactButtons}>
+            {addressData.permanent.tel_number1 && (
+              <TouchableOpacity 
+                style={styles.contactBtn}
+                onPress={() => openLink(`tel:${formatPhoneNumber(
+                  addressData.permanent.isd_code,
+                  addressData.permanent.std_code,
+                  addressData.permanent.tel_number1
+                )}`)}
+              >
+                <Text style={styles.contactBtnText}>Call Landline</Text>
+              </TouchableOpacity>
+            )}
+            {addressData.permanent.mobile_number1 && (
+              <TouchableOpacity 
+                style={styles.contactBtn}
+                onPress={() => openLink(`tel:${addressData.permanent.isd_code}${addressData.permanent.mobile_number1}`)}
+              >
+                <Text style={styles.contactBtnText}>Call Mobile</Text>
+              </TouchableOpacity>
+            )}
           </View>
-        )}
+        </View>,
+        '#ffffff',
+        'permanent_address',    // editType
+        addressData.permanent   // editData
+      )}
+
+      {/* Present Address */}
+      {addressData.present && renderInfoCard('Present Address', '🏢',
+        <View style={styles.contactSection}>
+          <Text style={styles.addressLine}>
+            {[
+              addressData.present.address1,
+              addressData.present.address2,
+              addressData.present.address3
+            ].filter(Boolean).join(', ')}
+          </Text>
+          <Text style={styles.addressLine}>
+            {addressData.present.state} - {addressData.present.pincode}
+          </Text>
+          
+          <View style={styles.contactButtons}>
+            {addressData.present.tel_number1 && (
+              <TouchableOpacity 
+                style={styles.contactBtn}
+                onPress={() => openLink(`tel:${formatPhoneNumber(
+                  addressData.present.isd_code,
+                  addressData.present.std_code,
+                  addressData.present.tel_number1
+                )}`)}
+              >
+                <Text style={styles.contactBtnText}>Call Office</Text>
+              </TouchableOpacity>
+            )}
+            {addressData.present.mobile_number1 && (
+              <TouchableOpacity 
+                style={styles.contactBtn}
+                onPress={() => openLink(`tel:${addressData.present.isd_code}${addressData.present.mobile_number1}`)}
+              >
+                <Text style={styles.contactBtnText}>Call Mobile</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        </View>,
+        '#ffffff',
+        'present_address',    // editType
+        addressData.present   // editData
+      )}
+    </>
+  );
+};
+
+ const renderSocialMedia = () => {
+  if (!socialMediaData) return null;
+
+  const socialPlatforms = [
+    { key: 'facebook', icon: '📘', name: 'Facebook' },
+    { key: 'twitter', icon: '🐦', name: 'Twitter/X' },
+    { key: 'linkedin', icon: '💼', name: 'LinkedIn' },
+    { key: 'instagram', icon: '📸', name: 'Instagram' }
+  ];
+
+  const activePlatforms = socialPlatforms.filter(platform => 
+    socialMediaData[platform.key] && socialMediaData[platform.key].trim() !== ''
+  );
+
+  if (activePlatforms.length === 0) return null;
+
+  return renderInfoCard('Social Media Presence', '🌐',
+    <View style={styles.socialGrid}>
+      {activePlatforms.map((platform, index) => (
+        <TouchableOpacity
+          key={index}
+          style={styles.socialItem}
+          onPress={() => openLink(socialMediaData[platform.key])}
+        >
+          <Text style={styles.socialIcon}>{platform.icon}</Text>
+          <View style={styles.socialInfo}>
+            <Text style={styles.socialPlatform}>{platform.name}</Text>
+            <Text style={styles.socialHandle}>
+              {socialMediaData[platform.key].replace(/^https?:\/\/(www\.)?/, '')}
+            </Text>
+          </View>
+          <Text style={styles.socialArrow}>→</Text>
+        </TouchableOpacity>
+      ))}
+    </View>,
+    '#ffffff',
+    'social',        // editType
+    socialMediaData  // editData
+  );
+};
+
+
+ const renderTimeline = () => {
+  if (!timelineData || !Array.isArray(timelineData) || timelineData.length === 0) {
+    return renderInfoCard('Career Timeline', '📅',
+      <View style={styles.emptyState}>
+        <Text style={styles.emptyStateIcon}>📋</Text>
+        <Text style={styles.emptyStateText}>No timeline data available</Text>
       </View>
     );
-  };
+  }
 
-  const renderSocialMedia = () => {
-    if (!socialMediaData) return null;
-
-    const socialPlatforms = [
-      { key: 'facebook', icon: '📘', name: 'Facebook' },
-      { key: 'twitter', icon: '🐦', name: 'Twitter/X' },
-      { key: 'linkedin', icon: '💼', name: 'LinkedIn' },
-      { key: 'instagram', icon: '📸', name: 'Instagram' }
-    ];
-
-    const activePlatforms = socialPlatforms.filter(platform => 
-      socialMediaData[platform.key] && socialMediaData[platform.key].trim() !== ''
-    );
-
-    if (activePlatforms.length === 0) return null;
-
-    return renderInfoCard('Social Media Presence', '🌐',
-      <View style={styles.socialGrid}>
-        {activePlatforms.map((platform, index) => (
-          <TouchableOpacity
-            key={index}
-            style={styles.socialItem}
-            onPress={() => openLink(socialMediaData[platform.key])}
-          >
-            <Text style={styles.socialIcon}>{platform.icon}</Text>
-            <View style={styles.socialInfo}>
-              <Text style={styles.socialPlatform}>{platform.name}</Text>
-              <Text style={styles.socialHandle}>
-                {socialMediaData[platform.key].replace(/^https?:\/\/(www\.)?/, '')}
-              </Text>
+  return renderInfoCard('Career Timeline', '📅',
+    <View style={styles.timelineContainer}>
+      {timelineData.map((item, index) => (
+        <View key={index} style={styles.timelineItem}>
+          <View style={styles.timelineItemLeft}>
+            <View style={styles.timelineDateContainer}>
+              <Text style={styles.timelineDate}>{item.date || 'N/A'}</Text>
             </View>
-            <Text style={styles.socialArrow}>→</Text>
-          </TouchableOpacity>
-        ))}
-      </View>,
-      '#ffffff',
-      'social',
-      socialMediaData
-    );
-  };
-
-  const renderTimeline = () => {
-    console.log('Rendering timeline with data:', timelineData);
-    
-    if (!timelineData || !Array.isArray(timelineData) || timelineData.length === 0) {
-      return renderInfoCard('Career Timeline', '📅',
-        <View style={styles.emptyState}>
-          <Text style={styles.emptyStateIcon}>📋</Text>
-          <Text style={styles.emptyStateText}>No timeline data available</Text>
-        </View>
-      );
-    }
-
-    return renderInfoCard('Career Timeline', '📅',
-      <View style={styles.timelineContainer}>
-        {timelineData.map((item, index) => (
-          <View key={index} style={styles.timelineItem}>
-            <View style={styles.timelineItemLeft}>
-              <View style={styles.timelineDateContainer}>
-                <Text style={styles.timelineDate}>{item.date || 'N/A'}</Text>
-              </View>
-              <View style={styles.timelineConnector}>
-                <View style={styles.timelineDot} />
-                {index < timelineData.length - 1 && (
-                  <View style={styles.timelineLine} />
-                )}
-              </View>
-            </View>
-            
-            <View style={styles.timelineItemRight}>
-              <View style={styles.timelineContentCard}>
-                <View style={styles.timelineHeader}>
-                  <Text style={styles.timelineTitle}>
-                    {item.title || 'Position'}
-                  </Text>
-                  {renderEditButton('timeline', item)}
-                </View>
-                <Text style={styles.timelineDetails}>
-                  {item.title_details || 'No details available'}
-                </Text>
-                {item.additional_info && (
-                  <Text style={styles.timelineAdditionalInfo}>
-                    {item.additional_info}
-                  </Text>
-                )}
-              </View>
+            <View style={styles.timelineConnector}>
+              <View style={styles.timelineDot} />
+              {index < timelineData.length - 1 && (
+                <View style={styles.timelineLine} />
+              )}
             </View>
           </View>
-        ))}
-      </View>,
-      '#ffffff',
-      'timeline',
-      timelineData
-    );
-  };
+          
+          <View style={styles.timelineItemRight}>
+            <View style={styles.timelineContentCard}>
+              <View style={styles.timelineHeader}>
+                <Text style={styles.timelineTitle}>
+                  {item.title || 'Position'}
+                </Text>
+              </View>
+              <Text style={styles.timelineDetails}>
+                {item.title_details || 'No details available'}
+              </Text>
+              {item.additional_info && (
+                <Text style={styles.timelineAdditionalInfo}>
+                  {item.additional_info}
+                </Text>
+              )}
+            </View>
+          </View>
+        </View>
+      ))}
+    </View>,
+    '#ffffff',
+    'timeline',   // editType
+    timelineData  // editData
+  );
+};
 
   const renderContent = () => {
     if (activeTab === 'profile') {
@@ -1464,857 +2481,46 @@ const renderEducationInfo = () => {
     }
   };
 
-  return (
-    <ScrollView 
-      style={styles.container}
-      showsVerticalScrollIndicator={false}
-      refreshControl={
-        <RefreshControl 
-          refreshing={refreshing} 
-          onRefresh={onRefresh}
-          title="Refreshing..."
-        />
-      }
-    >
-      {renderModernHeader()}
-      {renderSegmentedControl()}
-      
-      <View style={styles.contentArea}>
-        {renderContent()}
-      </View>
-      
-      <View style={styles.bottomSpacing} />
-      
-      {/* Edit Modal */}
-      {renderEditModal()}
+return (
+  <ScrollView 
+    style={styles.container}
+    showsVerticalScrollIndicator={false}
+    refreshControl={
+      <RefreshControl 
+        refreshing={refreshing} 
+        onRefresh={onRefresh}
+        title="Refreshing..."
+      />
+    }
+  >
+    {renderModernHeader()}
+    {renderSegmentedControl()}
+    
+    <View style={styles.contentArea}>
+      {renderContent()}
+    </View>
+    
+    <View style={styles.bottomSpacing} />
+    
+    {/* Edit Modal */}
+    {renderEditModal()}
 
-      {/* Developer Input Modal */}
-      {renderDeveloperInputModal()}
-    </ScrollView>
-  );
+    {/* Developer Input Modal */}
+    {renderDeveloperInputModal()}
+
+    {/* Dropdown Modal */}
+    {renderDropdownModal()}
+
+    {/* Add Education Modal */}
+    {renderAddEducationModal()}
+
+    {/* ADD THIS NEW LINE: Education Edit Modal */}
+    {renderEducationEditModal()}
+  </ScrollView>
+);
+
 };
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#f0f2f5',
-  },
-  
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#f0f2f5',
-    padding: 20,
-  },
-  
-  loadingCard: {
-    backgroundColor: '#ffffff',
-    padding: 40,
-    borderRadius: 20,
-    alignItems: 'center',
-    elevation: 5,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-  },
-  
-  loadingText: {
-    marginTop: 20,
-    fontSize: 16,
-    color: '#666',
-    fontWeight: '500',
-  },
 
-  // Modern Header
-  modernHeader: {
-    backgroundColor: '#e16e2b',
-    paddingTop: 50,
-    paddingBottom: 25,
-    paddingHorizontal: 20,
-    position: 'relative',
-    overflow: 'hidden',
-  },
-  
-  headerPattern: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-  },
-  
-  patternCircle: {
-    position: 'absolute',
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    backgroundColor: 'rgba(255,255,255,0.1)',
-  },
-  
-  headerContent: {
-    zIndex: 1,
-  },
-  
-  profileRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    marginBottom: 20,
-  },
-  
-  avatarContainer: {
-    position: 'relative',
-    marginRight: 15,
-  },
-  
-  avatarImage: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    borderWidth: 3,
-    borderColor: '#ffffff',
-  },
-  
-  onlineIndicator: {
-    position: 'absolute',
-    bottom: 2,
-    right: 2,
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    backgroundColor: '#27ae60',
-    borderWidth: 3,
-    borderColor: '#ffffff',
-  },
-  
-  basicInfo: {
-    flex: 1,
-    paddingTop: 5,
-  },
-
-  nameRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-
-  nameContainer: {
-    flex: 1,
-  },
-  
-  leaderName: {
-    fontSize: 22,
-    fontWeight: 'bold',
-    color: '#ffffff',
-    marginBottom: 4,
-  },
-  
-  designation: {
-    fontSize: 14,
-    color: 'rgba(255,255,255,0.9)',
-    fontWeight: '500',
-    marginBottom: 8,
-  },
-  
-  locationRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 5,
-  },
-  
-  locationText: {
-    fontSize: 14,
-    color: 'rgba(255,255,255,0.9)',
-    flex: 1,
-  },
-  
-  partyContainer: {
-    backgroundColor: 'rgba(255,255,255,0.15)',
-    padding: 12,
-    borderRadius: 10,
-    marginBottom: 15,
-  },
-  
-  partyName: {
-    fontSize: 16,
-    color: '#ffffff',
-    fontWeight: '600',
-  },
-  
-  quickActionsRow: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    gap: 15,
-  },
-  
-  quickAction: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  
-  quickActionIcon: {
-    fontSize: 20,
-  },
-
-  // Enhanced Edit Button
-  editButton: {
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginLeft: 10,
-  },
-
-  editButtonActive: {
-    backgroundColor: 'rgba(255,215,0,0.3)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,215,0,0.5)',
-  },
-  
-  editButtonText: {
-    fontSize: 16,
-  },
-
-  // Developer Modal Styles (updated)
-  devModalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  devModalContent: {
-    backgroundColor: '#fff',
-    borderRadius: 15,
-    width: '85%',
-    elevation: 10,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 5 },
-    shadowOpacity: 0.3,
-    shadowRadius: 10,
-  },
-  devModalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 20,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
-  },
-  devModalTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#2c3e50',
-    flex: 1,
-  },
-  devModalCloseButton: {
-    backgroundColor: '#e74c3c',
-    borderRadius: 15,
-    width: 30,
-    height: 30,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  devModalCloseText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
-  devModalBody: {
-    padding: 20,
-  },
-  devModalDescription: {
-    fontSize: 14,
-    color: '#7f8c8d',
-    lineHeight: 20,
-    textAlign: 'left',
-  },
-  devModalFooter: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    padding: 20,
-    borderTopWidth: 1,
-    borderTopColor: '#f0f0f0',
-    gap: 10,
-  },
-  devModalButton: {
-    flex: 1,
-    paddingVertical: 12,
-    borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-    minHeight: 45,
-  },
-  devCancelButton: {
-    backgroundColor: '#95a5a6',
-  },
-  devCancelButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
-  devSaveButton: {
-    backgroundColor: '#27ae60',
-  },
-  devSaveButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
-
-  // Segmented Control
-  segmentedContainer: {
-    paddingHorizontal: 20,
-    paddingVertical: 15,
-  },
-  
-  segmentedControl: {
-    flexDirection: 'row',
-    backgroundColor: '#ffffff',
-    borderRadius: 25,
-    padding: 4,
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 3,
-  },
-  
-  segmentButton: {
-    flex: 1,
-    paddingVertical: 12,
-    alignItems: 'center',
-    borderRadius: 21,
-  },
-  
-  activeSegment: {
-    backgroundColor: '#e16e2b',
-  },
-  
-  segmentText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#666',
-  },
-  
-  activeSegmentText: {
-    color: '#ffffff',
-  },
-
-  // Content Area
-  contentArea: {
-    paddingHorizontal: 20,
-    paddingBottom: 10,
-  },
-
-  // Info Cards
-  infoCard: {
-    backgroundColor: '#ffffff',
-    borderRadius: 16,
-    marginBottom: 16,
-    elevation: 3,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 6,
-    overflow: 'hidden',
-  },
-  
-  cardHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: 20,
-    backgroundColor: '#f8f9fa',
-    borderBottomWidth: 1,
-    borderBottomColor: '#e9ecef',
-  },
-  
-  cardTitleContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  
-  cardIcon: {
-    fontSize: 20,
-    marginRight: 10,
-  },
-  
-  cardTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#2c3e50',
-  },
-
-  cardHeaderRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  
-  cardAccent: {
-    width: 4,
-    height: 30,
-    backgroundColor: '#e16e2b',
-    borderRadius: 2,
-  },
-  
-  cardBody: {
-    padding: 20,
-  },
-
-  // Info Rows
-  infoRows: {
-    gap: 12,
-  },
-  
-  infoRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
-  },
-  
-  infoLabel: {
-    fontSize: 14,
-    color: '#7f8c8d',
-    fontWeight: '500',
-    flex: 1,
-  },
-  
-  infoValue: {
-    fontSize: 14,
-    color: '#2c3e50',
-    fontWeight: '600',
-    flex: 2,
-    textAlign: 'right',
-  },
-
-  // Education
-  educationList: {
-    gap: 16,
-  },
-  
-  educationItem: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-  },
-  
-  educationLeft: {
-    marginRight: 15,
-    alignItems: 'center',
-  },
-  
-  educationNumber: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    backgroundColor: '#e16e2b',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  
-  educationNumberText: {
-    color: '#ffffff',
-    fontSize: 14,
-    fontWeight: 'bold',
-  },
-  
-  educationRight: {
-    flex: 1,
-  },
-  
-  educationDegree: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#2c3e50',
-    marginBottom: 4,
-  },
-  
-  educationInstitute: {
-    fontSize: 14,
-    color: '#7f8c8d',
-    marginBottom: 4,
-  },
-  
-  educationPlace: {
-    fontSize: 12,
-    color: '#95a5a6',
-  },
-
-  educationEditContainer: {
-    marginLeft: 10,
-    justifyContent: 'center',
-  },
-  
-  addEducationButton: {
-    backgroundColor: '#e16e2b',
-    padding: 12,
-    borderRadius: 8,
-    alignItems: 'center',
-    marginTop: 16,
-  },
-  
-  addEducationText: {
-    color: '#ffffff',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-
-  // Contact Sections
-  contactSections: {
-    gap: 20,
-  },
-  
-  contactSection: {
-    backgroundColor: '#f8f9fa',
-    padding: 16,
-    borderRadius: 12,
-    borderLeftWidth: 4,
-    borderLeftColor: '#e16e2b',
-  },
-  
-  contactSectionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 10,
-  },
-  
-  contactSectionTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#2c3e50',
-  },
-  
-  addressLine: {
-    fontSize: 14,
-    color: '#495057',
-    marginBottom: 6,
-    lineHeight: 20,
-  },
-  
-  contactButtons: {
-    flexDirection: 'row',
-    gap: 10,
-    marginTop: 12,
-  },
-  
-  contactBtn: {
-    backgroundColor: '#e16e2b',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-  },
-  
-  contactBtnText: {
-    color: '#ffffff',
-    fontSize: 12,
-    fontWeight: '600',
-  },
-
-  // Social Media
-  socialGrid: {
-    gap: 12,
-  },
-  
-  socialItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#f8f9fa',
-    padding: 16,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#e9ecef',
-  },
-  
-  socialIcon: {
-    fontSize: 24,
-    marginRight: 15,
-  },
-  
-  socialInfo: {
-    flex: 1,
-  },
-  
-  socialPlatform: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#2c3e50',
-    marginBottom: 2,
-  },
-  
-  socialHandle: {
-    fontSize: 12,
-    color: '#7f8c8d',
-  },
-  
-  socialArrow: {
-    fontSize: 18,
-    color: '#e16e2b',
-    fontWeight: 'bold',
-  },
-
-  // Timeline
-  timelineContainer: {
-    paddingVertical: 10,
-  },
-  
-  timelineItem: {
-    flexDirection: 'row',
-    marginBottom: 20,
-    alignItems: 'flex-start',
-  },
-  
-  timelineItemLeft: {
-    alignItems: 'center',
-    marginRight: 15,
-    minWidth: 80,
-  },
-  
-  timelineDateContainer: {
-    backgroundColor: '#e16e2b',
-    paddingHorizontal: 8,
-    paddingVertical: 6,
-    borderRadius: 12,
-    marginBottom: 10,
-    minWidth: 70,
-  },
-  
-  timelineDate: {
-    color: '#ffffff',
-    fontSize: 11,
-    fontWeight: 'bold',
-    textAlign: 'center',
-  },
-  
-  timelineConnector: {
-    alignItems: 'center',
-    flex: 1,
-  },
-  
-  timelineDot: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    backgroundColor: '#e16e2b',
-    marginBottom: 5,
-  },
-  
-  timelineLine: {
-    width: 2,
-    flex: 1,
-    backgroundColor: '#e9ecef',
-    minHeight: 30,
-  },
-  
-  timelineItemRight: {
-    flex: 1,
-    paddingTop: 5,
-  },
-  
-  timelineContentCard: {
-    backgroundColor: '#f8f9fa',
-    padding: 16,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#e9ecef',
-    borderLeftWidth: 4,
-    borderLeftColor: '#e16e2b',
-  },
-
-  timelineHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 6,
-  },
-  
-  timelineTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#2c3e50',
-    lineHeight: 22,
-    flex: 1,
-  },
-  
-  timelineDetails: {
-    fontSize: 14,
-    color: '#495057',
-    lineHeight: 20,
-  },
-
-  timelineAdditionalInfo: {
-    fontSize: 12,
-    color: '#6c757d',
-    marginTop: 4,
-    fontStyle: 'italic',
-    lineHeight: 18,
-  },
-
-  // Empty State
-  emptyState: {
-    alignItems: 'center',
-    paddingVertical: 40,
-  },
-  
-  emptyStateIcon: {
-    fontSize: 48,
-    marginBottom: 16,
-    opacity: 0.5,
-  },
-  
-  emptyStateText: {
-    fontSize: 16,
-    color: '#7f8c8d',
-    fontStyle: 'italic',
-    textAlign: 'center',
-    marginBottom: 8,
-  },
-
-  // Edit Modal Styles
-  editModalContainer: {
-    flex: 1,
-    backgroundColor: '#f0f2f5',
-  },
-
-  editModalContent: {
-    flex: 1,
-  },
-
-  editModalHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingVertical: 15,
-    backgroundColor: '#ffffff',
-    borderBottomWidth: 1,
-    borderBottomColor: '#e9ecef',
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 3,
-  },
-
-  editModalCloseButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#f8f9fa',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-
-  editModalCloseText: {
-    fontSize: 18,
-    color: '#6c757d',
-    fontWeight: 'bold',
-  },
-
-  editModalTitleContainer: {
-    alignItems: 'center',
-  },
-
-  editModalTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#2c3e50',
-  },
-
-  editModalSaveButton: {
-    backgroundColor: '#e16e2b',
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: 20,
-    minWidth: 80,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-
-  editModalSaveText: {
-    color: '#ffffff',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-
-  editModalBody: {
-    flex: 1,
-    padding: 20,
-  },
-
-  editFormContainer: {
-    gap: 20,
-  },
-
-  editSectionTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#2c3e50',
-    marginBottom: 20,
-    textAlign: 'center',
-  },
-
-  editInputContainer: {
-    backgroundColor: '#ffffff',
-    borderRadius: 12,
-    padding: 16,
-    elevation: 1,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-  },
-
-  editInputLabel: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#2c3e50',
-    marginBottom: 8,
-  },
-
-  editInput: {
-    borderWidth: 1,
-    borderColor: '#e9ecef',
-    borderRadius: 8,
-    padding: 12,
-    fontSize: 16,
-    color: '#495057',
-    backgroundColor: '#f8f9fa',
-    textAlignVertical: 'top',
-  },
-
-  noEditableFieldsContainer: {
-    alignItems: 'center',
-    paddingVertical: 40,
-  },
-  
-  noEditableFieldsText: {
-    fontSize: 16,
-    color: '#7f8c8d',
-    textAlign: 'center',
-    marginBottom: 8,
-  },
-  
-  noEditableFieldsSubText: {
-    fontSize: 12,
-    color: '#95a5a6',
-    textAlign: 'center',
-    fontStyle: 'italic',
-  },
-
-  // Bottom Spacing
-  bottomSpacing: {
-    height: 30,
-  },
-});
 
 export default KnowYourLeaderScreen;

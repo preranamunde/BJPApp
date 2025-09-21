@@ -36,9 +36,9 @@ const RegistrationScreen = ({ navigation, route }) => {
     pincode: '',
     district: '',
     state: '',
-    facebookId: '',
-    instagramId: '',
-    xId: '',
+    facebook: '', // Changed from facebookId to facebook
+    instagram: '', // Changed from instagramId to instagram
+    twitter: '', // Changed from xId to twitter
     password: '',
     confirmPassword: '',
     declaration: false,
@@ -115,9 +115,10 @@ const RegistrationScreen = ({ navigation, route }) => {
       if (profileData) {
         const loadedData = {
           ...profileData,
-          facebookId: profileData.facebookId || '',
-          instagramId: profileData.instagramId || '',
-          xId: profileData.xId || '',
+          // Map old field names to new API field names if they exist
+          facebook: profileData.facebook || profileData.facebookId || '',
+          instagram: profileData.instagram || profileData.instagramId || '',
+          twitter: profileData.twitter || profileData.xId || '',
           email: profileData.email || '',
           city: profileData.city || '',
           district: profileData.district || '',
@@ -523,112 +524,135 @@ const RegistrationScreen = ({ navigation, route }) => {
   };
 
   // UPDATED EDIT PROFILE HANDLER USING AUTHSERVICE
-  const handleEditProfile = async () => {
-    try {
-      const userData = await AsyncStorage.getItem('userData');
-      if (!userData) {
-        Alert.alert('Error', 'User session not found. Please login again.');
-        return;
-      }
+ // UPDATED EDIT PROFILE HANDLER USING APISERVICE WITH PROPER HEADERS
+const handleEditProfile = async () => {
+  try {
+    const userData = await AsyncStorage.getItem('userData');
+    if (!userData) {
+      Alert.alert('Error', 'User session not found. Please login again.');
+      return;
+    }
 
-      const parsedUserData = JSON.parse(userData);
-      const userId = parsedUserData.id || parsedUserData.userId;
+    const parsedUserData = JSON.parse(userData);
+    const userId = parsedUserData.id || parsedUserData.userId;
+    const userEmail = parsedUserData.email;
+    const userMobile = parsedUserData.mobile;
 
-      if (isProfileImageChanged && formData.profile_image) {
-        // POST with FormData (when image is updated)
-        console.log('🔄 Updating profile with image...');
-        
-        const formDataToSend = new FormData();
-        formDataToSend.append('userId', userId);
-        formDataToSend.append('name', formData.name);
-        formDataToSend.append('mobile', formData.mobile);
-        formDataToSend.append('email', formData.email);
-        formDataToSend.append('address', formData.address);
-        formDataToSend.append('city', formData.city);
-        formDataToSend.append('district', formData.district);
-        formDataToSend.append('state', formData.state);
-        formDataToSend.append('pincode', formData.pincode);
-        formDataToSend.append('facebookId', formData.facebookId || '');
-        formDataToSend.append('instagramId', formData.instagramId || '');
-        formDataToSend.append('xId', formData.xId || '');
+    if (!userEmail || !userMobile) {
+      Alert.alert('Error', 'User session incomplete. Please login again.');
+      return;
+    }
 
-        if (formData.profile_image && typeof formData.profile_image === 'object') {
-          formDataToSend.append('profile_image', {
-            uri: formData.profile_image.uri,
-            type: formData.profile_image.type || 'image/jpeg',
-            name: formData.profile_image.fileName || `profile-${Date.now()}.jpg`,
-          });
-        }
+    const endpoints = await ConfigService.getApiEndpoints();
 
-        // Use AuthService for the request
-        const result = await AuthService.updateProfile(formDataToSend, true);
-        
-        if (result.success) {
-          Alert.alert('Success!', 'Profile updated successfully!', [
-            {
-              text: 'OK',
-              onPress: () => navigation.goBack(),
-            },
-          ]);
-        } else {
-          throw new Error(result.message || 'Failed to update profile');
-        }
-      } else {
-        // PUT with JSON (when no image is updated)
-        console.log('🔄 Updating profile without image...');
-        
-        const updateData = {
-          userId,
-          name: formData.name,
-          mobile: formData.mobile,
-          email: formData.email,
-          address: formData.address,
-          city: formData.city,
-          district: formData.district,
-          state: formData.state,
-          pincode: formData.pincode,
-          facebookId: formData.facebookId || '',
-          instagramId: formData.instagramId || '',
-          xId: formData.xId || '',
-        };
-
-        // Use AuthService for the request
-        const result = await AuthService.updateProfile(updateData, false);
-        
-        if (result.success) {
-          Alert.alert('Success!', 'Profile updated successfully!', [
-            {
-              text: 'OK',
-              onPress: () => navigation.goBack(),
-            },
-          ]);
-        } else {
-          throw new Error(result.message || 'Failed to update profile');
-        }
-      }
-    } catch (error) {
-      console.error('❌ Edit Profile Error:', error);
+    if (isProfileImageChanged && formData.profile_image) {
+      // POST with FormData (when image is updated)
+      console.log('🔄 Updating profile with image...');
       
-      if (error.message.includes('Session expired') || error.message.includes('Authentication failed')) {
-        // Handle session expiration
-        Alert.alert('Session Expired', 'Your session has expired. Please login again.', [
+      const formDataToSend = new FormData();
+      formDataToSend.append('leader_regd_mobile_no', userMobile);
+      formDataToSend.append('user_email_id', userEmail);
+      formDataToSend.append('name', formData.name);
+      formDataToSend.append('mobile', formData.mobile);
+      formDataToSend.append('address', formData.address);
+      formDataToSend.append('city', formData.city);
+      formDataToSend.append('state', formData.state);
+      formDataToSend.append('pincode', formData.pincode);
+      formDataToSend.append('district', formData.district);
+      formDataToSend.append('facebook', formData.facebook || '');
+      formDataToSend.append('instagram', formData.instagram || '');
+      formDataToSend.append('twitter', formData.twitter || '');
+
+      if (formData.profile_image && typeof formData.profile_image === 'object') {
+        formDataToSend.append('profile_image', {
+          uri: formData.profile_image.uri,
+          type: formData.profile_image.type || 'image/jpeg',
+          name: formData.profile_image.fileName || `profile-${Date.now()}.jpg`,
+        });
+      }
+
+      // Use ApiService.authPost for FormData with proper headers
+      const result = await ApiService.authPost(
+        endpoints.user.updateProfile || `${await ConfigService.getBaseUrl()}/api/profile/`,
+        formDataToSend,
+        {}, // Additional headers (ApiService will add auth headers automatically)
+        true // isFormData = true
+      );
+      
+      if (result.success) {
+        Alert.alert('Success!', 'Profile updated successfully!', [
           {
             text: 'OK',
-            onPress: () => {
-              navigation.reset({
-                index: 0,
-                routes: [{ name: 'Login' }],
-              });
-            }
-          }
+            onPress: () => navigation.goBack(),
+          },
         ]);
-      } else if (error.message.includes('Network request failed') || error.name === 'TypeError') {
-        Alert.alert('Network Error', 'Unable to connect to server. Please check your internet connection and try again.');
       } else {
-        Alert.alert('Error', error.message || 'Failed to update profile. Please try again.');
+        throw new Error(result.message || 'Failed to update profile');
+      }
+    } else {
+      // PUT with JSON (when no image is updated)
+      console.log('🔄 Updating profile without image...');
+      
+      const updateData = {
+        leader_regd_mobile_no: userMobile,
+        user_email_id: userEmail,
+        name: formData.name,
+        mobile: formData.mobile,
+        address: formData.address,
+        city: formData.city,
+        state: formData.state,
+        pincode: formData.pincode,
+        district: formData.district,
+        facebook: formData.facebook || '',
+        instagram: formData.instagram || '',
+        twitter: formData.twitter || '',
+      };
+
+      // Use ApiService.authPut for JSON data with proper headers
+      const result = await ApiService.authPut(
+        endpoints.user.updateProfile || `${await ConfigService.getBaseUrl()}/api/profile/`,
+        updateData
+      );
+      
+      if (result.success) {
+        // Update local storage with new user data if returned
+        if (result.data && result.data.user) {
+          await AsyncStorage.setItem('userData', JSON.stringify(result.data.user));
+        }
+        
+        Alert.alert('Success!', 'Profile updated successfully!', [
+          {
+            text: 'OK',
+            onPress: () => navigation.goBack(),
+          },
+        ]);
+      } else {
+        throw new Error(result.message || 'Failed to update profile');
       }
     }
-  };
+  } catch (error) {
+    console.error('❌ Edit Profile Error:', error);
+    
+    if (error.message.includes('Session expired') || error.message.includes('Authentication failed')) {
+      // Handle session expiration
+      Alert.alert('Session Expired', 'Your session has expired. Please login again.', [
+        {
+          text: 'OK',
+          onPress: () => {
+            navigation.reset({
+              index: 0,
+              routes: [{ name: 'Login' }],
+            });
+          }
+        }
+      ]);
+    } else if (error.message.includes('Network request failed') || error.name === 'TypeError') {
+      Alert.alert('Network Error', 'Unable to connect to server. Please check your internet connection and try again.');
+    } else {
+      Alert.alert('Error', error.message || 'Failed to update profile. Please try again.');
+    }
+  }
+};
 
   // UPDATED REGISTRATION HANDLER USING APISERVICE
   const handleRegistration = async () => {
@@ -649,6 +673,10 @@ const RegistrationScreen = ({ navigation, route }) => {
       formDataToSend.append('district', formData.district);
       formDataToSend.append('state', formData.state);
       formDataToSend.append('pincode', formData.pincode);
+      // Updated social media fields to match API
+      formDataToSend.append('facebook', formData.facebook || '');
+      formDataToSend.append('instagram', formData.instagram || '');
+      formDataToSend.append('twitter', formData.twitter || '');
 
       if (formData.profile_image) {
         formDataToSend.append('profile_image', {
@@ -1102,33 +1130,34 @@ const RegistrationScreen = ({ navigation, route }) => {
             )}
           </View>
 
+          {/* Updated Social Media Fields */}
           <View style={styles.inputGroup}>
-            <Text style={styles.label}>FACEBOOK ID</Text>
+            <Text style={styles.label}>FACEBOOK</Text>
             <TextInput
               style={styles.input}
-              value={formData.facebookId}
-              onChangeText={(text) => handleInputChange('facebookId', text)}
-              placeholder="Enter Facebook ID (optional)"
+              value={formData.facebook}
+              onChangeText={(text) => handleInputChange('facebook', text)}
+              placeholder="Enter Facebook username or URL (optional)"
             />
           </View>
 
           <View style={styles.inputGroup}>
-            <Text style={styles.label}>INSTAGRAM ID</Text>
+            <Text style={styles.label}>INSTAGRAM</Text>
             <TextInput
               style={styles.input}
-              value={formData.instagramId}
-              onChangeText={(text) => handleInputChange('instagramId', text)}
-              placeholder="Enter Instagram ID (optional)"
+              value={formData.instagram}
+              onChangeText={(text) => handleInputChange('instagram', text)}
+              placeholder="Enter Instagram username or URL (optional)"
             />
           </View>
 
           <View style={styles.inputGroup}>
-            <Text style={styles.label}>X ID</Text>
+            <Text style={styles.label}>TWITTER</Text>
             <TextInput
               style={styles.input}
-              value={formData.xId}
-              onChangeText={(text) => handleInputChange('xId', text)}
-              placeholder="Enter X ID (optional)"
+              value={formData.twitter}
+              onChangeText={(text) => handleInputChange('twitter', text)}
+              placeholder="Enter Twitter username or URL (optional)"
             />
           </View>
 

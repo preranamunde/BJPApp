@@ -2,10 +2,6 @@ import { StyleSheet, Dimensions } from "react-native";
 
 const { width } = Dimensions.get("window");
 
-<<<<<<< HEAD
-=======
-
->>>>>>> d36dd34 (My latest changes)
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -120,29 +116,6 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
 
-<<<<<<< HEAD
-=======
-  // Role Indicator Styles
-  roleIndicatorContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 15,
-  },
-  roleIndicator: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 12,
-  },
-  roleIndicatorText: {
-    color: '#fff',
-    fontSize: 10,
-    fontWeight: 'bold',
-    marginLeft: 4,
-  },
-
->>>>>>> d36dd34 (My latest changes)
   // Admin Edit Buttons
   headerEditButton: {
     backgroundColor: 'rgba(255, 255, 255, 0.2)',
@@ -188,11 +161,7 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: '#2c3e50',
     marginLeft: 8,
-<<<<<<< HEAD
     flex: 1,
-=======
-      flex: 1, // Add this line
->>>>>>> d36dd34 (My latest changes)
   },
   cardContent: {
     padding: 15,
@@ -303,7 +272,6 @@ const styles = StyleSheet.create({
     borderColor: '#e1e8ed',
   },
   tableSubHeader: {
-<<<<<<< HEAD
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
@@ -319,19 +287,6 @@ const styles = StyleSheet.create({
     color: '#2c3e50',
     flex: 1,
   },
-=======
-    backgroundColor: '#f8f9fa',
-    padding: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#e1e8ed',
-  },
- tableSubHeaderText: {
-  fontSize: 14,
-  fontWeight: 'bold',
-  color: '#2c3e50',
-  flex: 1,
-},
->>>>>>> d36dd34 (My latest changes)
   tableHeader: {
     flexDirection: 'row',
     backgroundColor: '#3498db',
@@ -690,7 +645,6 @@ const styles = StyleSheet.create({
     gap: 10,
   },
 
-<<<<<<< HEAD
   // Section container for edit modals
   sectionContainer: {
     marginBottom: 10,
@@ -714,76 +668,82 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
   },
-=======
-  // Debug Card Styles
-  debugCard: {
-    backgroundColor: '#fff',
-    marginHorizontal: 15,
-    marginTop: 15,
-    borderRadius: 12,
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    borderWidth: 1,
-    borderColor: '#e9ecef',
-  },
-  debugText: {
-    fontSize: 12,
-    color: '#666',
-    lineHeight: 18,
-    fontFamily: 'monospace',
-  },
+// Replace the existing editButton and deleteButton styles with these:
 
-
-  // Add these to your AboutConstituencystyle.js file
-infoCardHeader: {
-  flexDirection: 'row',
-  justifyContent: 'space-between',
-  alignItems: 'flex-start',
-  marginBottom: 8,
-},
-miniEditButton: {
-  backgroundColor: '#e67e22',
-  borderRadius: 8,
-  padding: 4,
-  marginLeft: 4,
-},
-sectionContainer: {
-  marginBottom: 10,
-  borderRadius: 12,
-  overflow: 'hidden',
-  backgroundColor: '#fff',
-  elevation: 3,
-  shadowColor: '#000',
-  shadowOffset: { width: 0, height: 2 },
-  shadowOpacity: 0.1,
-  shadowRadius: 4,
-},
-// Add this to your styles
-
-tableSubHeader: {
-  flexDirection: 'row',
-  justifyContent: 'space-between',
+// Action Button (Three Dots)
+actionButton: {
+  backgroundColor: 'rgba(60, 66, 60, 0.2)',
+  width: 36,
+  height: 36,
+  borderRadius: 18,
+  justifyContent: 'center',
   alignItems: 'center',
-  backgroundColor: '#f8f9fa',
-  paddingHorizontal: 12,
-  paddingVertical: 8,
-  borderBottomWidth: 1,
-  borderBottomColor: '#e1e8ed',
+  marginLeft: 10,
 },
-cardHeaderLeft: {
-  flexDirection: 'row',
-  alignItems: 'center',
+
+actionButtonText: {
+  fontSize: 20,
+  color: '#ffffff',
+  fontWeight: 'bold',
+  lineHeight: 20,
+},
+
+// Dropdown Modal Styles
+dropdownOverlay: {
   flex: 1,
+  backgroundColor: 'rgba(0, 0, 0, 0.1)',
 },
-cardHeaderRight: {
+
+dropdownMenu: {
+  position: 'absolute',
+  backgroundColor: '#ffffff',
+  borderRadius: 8,
+  minWidth: 120,
+  elevation: 8,
+  shadowColor: '#000',
+  shadowOffset: { width: 0, height: 4 },
+  shadowOpacity: 0.25,
+  shadowRadius: 8,
+  paddingVertical: 8,
+},
+
+dropdownItem: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  paddingHorizontal: 16,
+  paddingVertical: 12,
+},
+
+dropdownItemIcon: {
+  fontSize: 16,
+  marginRight: 12,
+  width: 20,
+},
+
+dropdownItemText: {
+  fontSize: 16,
+  color: '#2c3e50',
+  fontWeight: '500',
+},
+
+dropdownDeleteItem: {
+  // Optional: add special styling for delete item
+},
+
+dropdownDeleteText: {
+  color: '#e74c3c',
+},
+
+dropdownSeparator: {
+  height: 1,
+  backgroundColor: '#e9ecef',
+  marginHorizontal: 8,
+},
+
+headerButtonsContainer: {
   flexDirection: 'row',
   alignItems: 'center',
 },
->>>>>>> d36dd34 (My latest changes)
-
   // Footer
   footer: {
     height: 30,

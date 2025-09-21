@@ -1,5 +1,6 @@
 import ConfigService from './ConfigService';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import EncryptedStorage from 'react-native-encrypted-storage';
 
 class ApiService {
   static DEFAULT_TIMEOUT = 30000; // 30 seconds
@@ -14,24 +15,37 @@ class ApiService {
   }
 
   // Get authorization headers
-  static async getAuthHeaders() {
-    try {
-      const token = await AsyncStorage.getItem('jwt_token');
-      const headers = this.getCommonHeaders();
-      
-      if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
-        console.log('🔐 Authorization header added');
-      } else {
-        console.warn('⚠️ No token available for auth headers');
-      }
-
-      return headers;
-    } catch (error) {
-      console.error('❌ Error getting auth headers:', error);
-      return this.getCommonHeaders();
+ static async getAuthHeaders() {
+  try {
+    const token = await AsyncStorage.getItem('jwt_token');
+    const headers = this.getCommonHeaders();
+    
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+      console.log('🔐 Authorization header added');
+    } else {
+      console.warn('⚠️ No token available for auth headers');
     }
+
+    // Add x-app-key header
+    try {
+      const appKey = await EncryptedStorage.getItem('APP_KEY');
+      if (appKey) {
+        headers['x-app-key'] = appKey;
+        console.log('🔑 x-app-key header added');
+      } else {
+        console.warn('⚠️ No app key found for headers');
+      }
+    } catch (error) {
+      console.error('❌ Error getting app key for headers:', error);
+    }
+
+    return headers;
+  } catch (error) {
+    console.error('❌ Error getting auth headers:', error);
+    return this.getCommonHeaders();
   }
+}
 
   // Generic request method with error handling and retry logic
   static async makeRequest(endpoint, options = {}, requiresAuth = false, retryCount = 0) {
@@ -303,9 +317,13 @@ class ApiService {
   }
 
   // Authenticated DELETE request
-  static async authDelete(endpoint, headers = {}) {
-    return this.authenticatedRequest(endpoint, { method: 'DELETE', headers });
-  }
+ static async authDelete(endpoint, body = null, headers = {}) {
+  return this.authenticatedRequest(endpoint, { 
+    method: 'DELETE', 
+    body, 
+    headers 
+  });
+}
 
   // PATCH request
   static async patch(endpoint, body = null, headers = {}, isFormData = false) {

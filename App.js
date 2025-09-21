@@ -607,6 +607,7 @@ const setupGlobalVariablesFromBootstrap = async (appOwnerInfo) => {
 };
 
 // Enhanced helper function to update user login status
+// Updated version of your updateUserLoginStatus function
 export const updateUserLoginStatus = async (email, accessToken, userData = null) => {
   try {
     console.log('🔄 === UPDATING USER LOGIN STATUS ===');
@@ -619,12 +620,16 @@ export const updateUserLoginStatus = async (email, accessToken, userData = null)
     
     // Store login credentials in both AsyncStorage and EncryptedStorage
     await AsyncStorage.setItem('userEmail', processedEmail);
+    await AsyncStorage.setItem('user_email_id', processedEmail); // ADD THIS LINE for ProfileAPI
     await AsyncStorage.setItem('userAccessToken', accessToken);
+    await AsyncStorage.setItem('jwt_token', accessToken); // ADD THIS LINE for consistency
     await EncryptedStorage.setItem('LOGGED_IN_EMAIL', processedEmail);
     await EncryptedStorage.setItem('ACCESS_TOKEN', accessToken);
     
     // Store additional user data if provided
     if (userData) {
+      // Ensure email is in userData as well
+      userData.email = userData.email || processedEmail;
       await AsyncStorage.setItem('userData', JSON.stringify(userData));
       console.log('💾 User data stored');
     }

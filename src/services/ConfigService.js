@@ -2,7 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 class ConfigService {
   static BASE_URL_KEY = 'app_base_url';
-  static DEFAULT_BASE_URL = 'https://32bbd03f8236.ngrok-free.app'; // 👈 Update this when ngrok gives new URL
+  static DEFAULT_BASE_URL = 'https://6efacf854841.ngrok-free.app'; // 👈 Update this when ngrok gives new URL
 
   // Initialize configuration with default values (always enforce DEFAULT_BASE_URL)
   static async initializeConfig() {
@@ -116,32 +116,59 @@ class ConfigService {
   }
 
   // Get all API endpoints
-  static async getApiEndpoints() {
-    const baseUrl = await this.getBaseUrl();
-    return {
+ // Get all API endpoints
+// Add these methods to your ConfigService.js getApiEndpoints() function
+
+static async getApiEndpoints() {
+  const baseUrl = await this.getBaseUrl();
+  return {
+    bootstrap: `${baseUrl}/api/bootstrap`,
+    auth: {
+      login: `${baseUrl}/api/auth/login`,
+      register: `${baseUrl}/api/auth/register`,
+      logout: `${baseUrl}/api/auth/logout`,
+      refreshToken: `${baseUrl}/api/auth/refresh-token`,
+      verifyEmail: `${baseUrl}/api/auth/verifyemail`,
+      sendOTP: `${baseUrl}/api/auth/sendotp`,
+      verifyEmailOTP: `${baseUrl}/api/auth/verifyemailotp`,
+    },
+    user: {
+      profile: `${baseUrl}/api/profile`,
+      updateProfile: `${baseUrl}/api/profile/`,
+      updateProfileImage: `${baseUrl}/api/profile/image`,
+    },
+    location: {
+      pincode: `${baseUrl}/api/pincodes`,
+    },
+    app: {
+      health: `${baseUrl}/api/health`,
       bootstrap: `${baseUrl}/api/bootstrap`,
-      auth: {
-        login: `${baseUrl}/api/auth/login`,
-        register: `${baseUrl}/api/auth/register`,
-        logout: `${baseUrl}/api/auth/logout`,
-        refreshToken: `${baseUrl}/api/auth/refresh-token`,
-        verifyEmail: `${baseUrl}/api/auth/verifyemail`,
-        sendOTP: `${baseUrl}/api/auth/sendotp`,
-        verifyEmailOTP: `${baseUrl}/api/auth/verifyemailotp`,
-      },
-      user: {
-        profile: `${baseUrl}/api/profile`,
-        updateProfile: `${baseUrl}/api/profile`,
-      },
-      location: {
-        pincode: `${baseUrl}/api/pincodes`,
-      },
-      app: {
-        health: `${baseUrl}/api/health`,
-        bootstrap: `${baseUrl}/api/bootstrap`,
-      }
-    };
-  }
+    },
+    coordinates: `${baseUrl}/api/coordinates`,
+    grievances: {
+      // Updated to use POST methods
+      getAll: `${baseUrl}/api/grievances/`, // POST method with body
+      getByStatus: `${baseUrl}/api/grievances/status/`, // POST method with body
+      search: `${baseUrl}/api/grievances/search`, // POST method with body
+      create: `${baseUrl}/api/grievances`, // POST method
+      update: `${baseUrl}/api/grievances/`, // PUT method
+      delete: `${baseUrl}/api/grievances/`, // DELETE method
+      count: `${baseUrl}/api/grievances/count`, // GET method
+      countByStatus: `${baseUrl}/api/grievances/countstatus`, // GET method
+    },
+    appointments: {
+      // Updated to use POST methods  
+      getAll: `${baseUrl}/api/appointments/`, // POST method with body
+      getByStatus: `${baseUrl}/api/appointments/status/`, // POST method with body
+      search: `${baseUrl}/api/appointments/search`, // POST method with body
+      create: `${baseUrl}/api/appointments`, // POST method
+      update: `${baseUrl}/api/appointments/`, // PUT method
+      delete: `${baseUrl}/api/appointments/`, // DELETE method
+      count: `${baseUrl}/api/appointments/count`, // GET method
+      countByStatus: `${baseUrl}/api/appointments/countstatus`, // GET method
+    },
+  };
+}
 
   static async getBootstrapEndpoint() {
     const baseUrl = await this.getBaseUrl();

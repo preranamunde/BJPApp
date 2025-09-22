@@ -161,33 +161,100 @@ const getCorrectUserEmail = async () => {
 };
 
 // Updated getUserInfo function
+// Enhanced getUserInfo with extensive debugging
 const getUserInfo = async () => {
   try {
-    console.log('=== GETTING USER INFO ===');
+    console.log('=== ENHANCED USER INFO DEBUGGING ===');
 
-    // Get LEADER mobile number (from app owner info)
+    // Get LEADER mobile number
     let leaderMobile = '';
     try {
       leaderMobile = (await EncryptedStorage.getItem('OWNER_MOBILE')) || '';
-
+      
       if (!leaderMobile) {
-        const appOwnerInfo = await AsyncStorage.getItem('appOwnerInfo');
+        const appOwnerInfo = await EncryptedStorage.getItem('AppOwnerInfo');
         if (appOwnerInfo) {
           const ownerInfo = JSON.parse(appOwnerInfo);
-          leaderMobile = (ownerInfo.client_mobile || ownerInfo.mobile || ownerInfo.regd_mobile_no || '').toString();
+          leaderMobile = (
+            ownerInfo.client_mobile ||
+            ownerInfo.mobile ||
+            ownerInfo.regd_mobile_no ||
+            ownerInfo.mobile_no ||
+            ''
+          ).toString();
         }
       }
 
-      leaderMobile = leaderMobile.trim();
+      if (!leaderMobile) {
+        const legacyAppOwnerInfo = await AsyncStorage.getItem('appOwnerInfo');
+        if (legacyAppOwnerInfo) {
+          const ownerInfo = JSON.parse(legacyAppOwnerInfo);
+          leaderMobile = (
+            ownerInfo.client_mobile ||
+            ownerInfo.mobile ||
+            ownerInfo.regd_mobile_no ||
+            ''
+          ).toString();
+        }
+      }
+
+      leaderMobile = leaderMobile.toString().trim();
     } catch (error) {
       console.warn('Error retrieving leader mobile:', error.message);
     }
 
-    // Get CURRENT USER email (the logged-in user)
-    let userEmail = await getCorrectUserEmail();
+    // Get USER email with comprehensive checking
+    let userEmail = '';
     
+    const emailSources = [
+      { key: 'userEmail', storage: AsyncStorage, label: 'AsyncStorage.userEmail' },
+      { key: 'user_email_id', storage: AsyncStorage, label: 'AsyncStorage.user_email_id' },
+      { key: 'email', storage: AsyncStorage, label: 'AsyncStorage.email' },
+      { key: 'LOGGED_IN_EMAIL', storage: EncryptedStorage, label: 'EncryptedStorage.LOGGED_IN_EMAIL' },
+      { key: 'USER_EMAIL', storage: EncryptedStorage, label: 'EncryptedStorage.USER_EMAIL' }
+    ];
+    
+    for (const source of emailSources) {
+      try {
+        const email = await source.storage.getItem(source.key);
+        console.log(`${source.label}:`, email);
+        
+        if (email && validateEmail(email)) {
+          userEmail = email.trim().toLowerCase();
+          console.log(`Found valid email in ${source.label}: ${userEmail}`);
+          break;
+        }
+      } catch (error) {
+        console.warn(`Error checking ${source.label}:`, error.message);
+      }
+    }
+    
+    // Check login response if still no email
     if (!userEmail) {
-      console.error('Failed to get valid user email');
+      try {
+        const loginResponseStr = await AsyncStorage.getItem('loginResponse');
+        if (loginResponseStr) {
+          const loginResponse = JSON.parse(loginResponseStr);
+          
+          const possibleEmails = [
+            loginResponse.user?.email,
+            loginResponse.email,
+            loginResponse.user_email,
+            loginResponse.user?.user_email,
+            loginResponse.user?.email_id
+          ];
+          
+          const validEmail = possibleEmails.find(email => validateEmail(email));
+          
+          if (validEmail) {
+            userEmail = validEmail.trim().toLowerCase();
+            console.log('Found valid email from login response:', userEmail);
+            await AsyncStorage.setItem('userEmail', userEmail);
+          }
+        }
+      } catch (error) {
+        console.warn('Error checking loginResponse for email:', error.message);
+      }
     }
 
     const userInfoData = {
@@ -195,10 +262,19 @@ const getUserInfo = async () => {
       userEmail: userEmail || '',
     };
 
-    console.log('=== USER INFO RESULT ===');
-    console.log('Leader Mobile (MP/Leader):', userInfoData.leaderMobile);
-    console.log('User Email (Current User):', userInfoData.userEmail);
-    console.log('Email Valid:', /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(userInfoData.userEmail));
+    console.log('=== FINAL USER INFO RESULT ===');
+    console.log('Leader Mobile:', userInfoData.leaderMobile);
+    console.log('User Email:', userInfoData.userEmail);
+    console.log('Email Valid:', validateEmail(userInfoData.userEmail));
+    console.log('Leader Mobile Valid:', userInfoData.leaderMobile.length >= 10);
+
+    if (!userInfoData.leaderMobile) {
+      console.error('CRITICAL: No leader mobile found');
+    }
+    
+    if (!userInfoData.userEmail) {
+      console.error('CRITICAL: No user email found');
+    }
 
     setUserInfo(userInfoData);
     return userInfoData;
@@ -210,6 +286,61 @@ const getUserInfo = async () => {
   }
 };
 
+const validateEmail = (email) => {
+  if (!email || typeof email !== 'string') {
+    console.log('Email validation failed: email is null, undefined, or not a string');
+    return false;
+  }
+  
+  const trimmedEmail = email.trim();
+  if (trimmedEmail.length === 0) {
+    console.log('Email validation failed: email is empty after trimming');
+    return false;
+  }
+  
+  const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+  const isValid = emailRegex.test(trimmedEmail);
+  
+  console.log(`Email validation: "${trimmedEmail}" - ${isValid ? 'VALID' : 'INVALID'}`);
+  return isValid;
+};
+
+ // Add this debug function to trace the exact email being sent
+const debugUserInfo = async () => {
+  console.log('=== DEBUGGING USER INFO ===');
+  
+  // Check all storage locations
+  const asyncStorageEmail = await AsyncStorage.getItem('userEmail');
+  const asyncStorageUserId = await AsyncStorage.getItem('user_email_id');
+  const encryptedEmail = await EncryptedStorage.getItem('LOGGED_IN_EMAIL');
+  const userData = await AsyncStorage.getItem('userData');
+  const loginResponse = await AsyncStorage.getItem('loginResponse');
+  
+  console.log('Storage Check:');
+  console.log('- AsyncStorage.userEmail:', asyncStorageEmail);
+  console.log('- AsyncStorage.user_email_id:', asyncStorageUserId);
+  console.log('- EncryptedStorage.LOGGED_IN_EMAIL:', encryptedEmail);
+  console.log('- userData exists:', !!userData);
+  console.log('- loginResponse exists:', !!loginResponse);
+  
+  if (userData) {
+    try {
+      const parsedUserData = JSON.parse(userData);
+      console.log('- userData.email:', parsedUserData.email);
+    } catch (e) {
+      console.log('- userData parse error:', e.message);
+    }
+  }
+  
+  const currentUserInfo = await getUserInfo();
+  console.log('Final getUserInfo result:', currentUserInfo);
+  
+  // Show alert with the actual email being sent
+  Alert.alert(
+    'Debug: Email Being Sent',
+    `Email: "${currentUserInfo.userEmail}"\nMobile: "${currentUserInfo.leaderMobile}"\n\nCheck console for full details.`
+  );
+};
 
 
 
@@ -326,14 +457,10 @@ const getUserInfo = async () => {
     }
   }, [route?.params]);
 
-  // Load data when PREVIEW tab is selected
- // Load data when PREVIEW or LIST tab is selected
 useEffect(() => {
-  if (['APPEAL', 'GRIEVANCE', 'COMPLAINTS'].includes(activeMainTab) && 
+  if (['APPEAL', 'GRIEVANCE', 'COMPLAINTS', 'APPOINTMENT'].includes(activeMainTab) && 
       isUserLoggedIn && (activeSubTab === 'PREVIEW' || activeSubTab === 'LIST')) {
-    loadSubmittedData();
-  } else if (activeMainTab === 'APPOINTMENT' && isUserLoggedIn && (activeSubTab === 'PREVIEW' || activeSubTab === 'LIST')) {
-    loadAppointments();
+    loadSubmittedData(); // This now handles both appointments and grievances
   }
 }, [activeMainTab, activeSubTab, isUserLoggedIn]);
 
@@ -777,103 +904,194 @@ const handleSubTabClick = (subTab) => {
 // Updated loadSubmittedData function
 // Updated loadSubmittedData function
 // Corrected loadSubmittedData function - GET with body
+// Updated loadSubmittedData function - GET with query parameters including request type
+// Replace your existing loadSubmittedData function with this corrected version
 const loadSubmittedData = async () => {
   try {
     setIsLoadingData(true);
-    console.log('Starting loadSubmittedData with BODY approach...');
+    console.log('Starting loadSubmittedDsata with GET method...');
 
     const currentUserInfo = await getUserInfo();
-    
+
     if (!currentUserInfo?.leaderMobile || !currentUserInfo?.userEmail) {
       Alert.alert('Missing Information', 'User information is missing.');
       setSubmittedData([]);
       return;
     }
 
-    const headers = await getAuthHeaders(getRequestType());
-    const baseUrl = await ConfigService.getBaseUrl();
-    
     const cleanMobile = currentUserInfo.leaderMobile.toString().trim();
     const cleanEmail = currentUserInfo.userEmail.trim().toLowerCase();
+
+    // Validate email format
+    if (!validateEmail(cleanEmail)) {
+      Alert.alert('Invalid Email', 'Your email format is invalid. Please logout and login again.');
+      setSubmittedData([]);
+      return;
+    }
+
+    const headers = await getAuthHeaders(getRequestType());
+    const baseUrl = await ConfigService.getBaseUrl();
+    const requestType = getRequestType();
     
-    console.log('Trying GET with body approach...');
+    let apiUrl;
     
-    // Try the same approach as "Search an AppGrievComp by Regn No" from Postman
-    const apiUrl = `${baseUrl}/api/grievances/search`;
-    
-    const requestBody = {
+    // 🔥 FIX: Route to correct endpoint based on activeMainTab
+    if (activeMainTab === 'APPOINTMENT') {
+      // Use appointments endpoint for appointments
+      apiUrl = `${baseUrl}/api/appointments/?request_type=APPOINTMENT&leader_regd_mobile_no=${encodeURIComponent(cleanMobile)}&user_email_id=${encodeURIComponent(cleanEmail)}`;
+    } else {
+      // Use grievances endpoint for APPEAL, GRIEVANCE, COMPLAINTS
+      apiUrl = `${baseUrl}/api/grievances/?request_type=${encodeURIComponent(requestType)}&leader_regd_mobile_no=${encodeURIComponent(cleanMobile)}&user_email_id=${encodeURIComponent(cleanEmail)}`;
+    }
+
+    console.log('API URL with query params:', apiUrl);
+    console.log('Request Type being sent:', requestType);
+    console.log('Request params:', {
+      request_type: activeMainTab === 'APPOINTMENT' ? 'APPOINTMENT' : requestType,
       leader_regd_mobile_no: cleanMobile,
       user_email_id: cleanEmail
-      // Note: No regn_no since we want all records
-    };
-    
-    console.log('API URL:', apiUrl);
-    console.log('Request body:', requestBody);
+    });
 
     const response = await fetch(apiUrl, {
       method: 'GET',
       headers: {
         ...headers,
-        'Content-Type': 'application/json'
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
       },
-      body: JSON.stringify(requestBody) // GET with body like in Postman
     });
 
     console.log('Response status:', response.status);
-    const responseText = await response.text();
-    console.log('Response text:', responseText);
 
-    if (!response.ok) {
-      // If search fails, try the status endpoint approach
-      console.log('Search failed, trying status endpoint...');
+    if (response.ok) {
+      const responseText = await response.text();
+      console.log('Success - Raw response:', responseText);
       
-      const statusUrl = `${baseUrl}/api/grievances/status/`;
-      const statusBody = {
-        leader_regd_mobile_no: cleanMobile,
-        user_email_id: cleanEmail,
-        request_type: getRequestType(),
-        status: "Open" // Try with Open status first
-      };
-      
-      const statusResponse = await fetch(statusUrl, {
-        method: 'GET', // Note: Postman shows this as GET with body
-        headers: {
-          ...headers,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(statusBody)
+      try {
+        const responseData = JSON.parse(responseText);
+        const dataArray = Array.isArray(responseData) ? responseData : [responseData];
+        const validData = dataArray.filter(item => item && typeof item === 'object');
+        
+        setSubmittedData(validData);
+
+        if (validData.length === 0) {
+          Alert.alert('No Data', `No ${requestType.toLowerCase()} found.`);
+        } else {
+          console.log(`Successfully loaded ${validData.length} ${requestType.toLowerCase()} record(s)`);
+        }
+      } catch (parseError) {
+        console.error('JSON parsing error:', parseError);
+        Alert.alert('Data Error', 'Invalid response format from server.');
+        setSubmittedData([]);
+      }
+
+    } else {
+      const errorText = await response.text();
+      console.error('API Error:', {
+        status: response.status,
+        statusText: response.statusText,
+        errorText: errorText,
+        requestParams: {
+          request_type: activeMainTab === 'APPOINTMENT' ? 'APPOINTMENT' : requestType,
+          mobile: cleanMobile,
+          email: cleanEmail
+        }
       });
       
-      console.log('Status response:', statusResponse.status);
-      const statusResponseText = await statusResponse.text();
-      console.log('Status response text:', statusResponseText);
-      
-      if (statusResponse.ok) {
-        let responseData = JSON.parse(statusResponseText);
-        const dataArray = Array.isArray(responseData) ? responseData : [responseData];
-        setSubmittedData(dataArray);
-        return;
-      } else {
-        Alert.alert('Error', `Failed to load data: ${statusResponseText}`);
-        setSubmittedData([]);
-        return;
+      let errorMessage = 'Failed to load data.';
+      try {
+        const errorData = JSON.parse(errorText);
+        errorMessage = errorData.message || errorData.error || errorMessage;
+      } catch (e) {
+        errorMessage = errorText || errorMessage;
       }
-    }
 
-    // Process successful response
-    let responseData = JSON.parse(responseText);
-    const dataArray = Array.isArray(responseData) ? responseData : [responseData];
-    setSubmittedData(dataArray);
-    
-    if (dataArray.length === 0) {
-      Alert.alert('No Data', 'No submitted data found.');
-    } else {
-      Alert.alert('Success!', `Loaded ${dataArray.length} record(s).`);
+      Alert.alert('Load Failed', `Status: ${response.status}\n${errorMessage}`);
+      setSubmittedData([]);
     }
 
   } catch (error) {
     console.error('Network Error:', error);
-    Alert.alert('Network Error', error.message);
+    Alert.alert('Network Error', `Unable to connect: ${error.message}`);
+    setSubmittedData([]);
+  } finally {
+    setIsLoadingData(false);
+  }
+};
+
+// Alternative version if the main one doesn't work
+const loadSubmittedDataAlternative = async () => {
+  try {
+    setIsLoadingData(true);
+    console.log('Starting loadSubmittedData ALTERNATIVE with GET method...');
+
+    const currentUserInfo = await getUserInfo();
+
+    if (!currentUserInfo?.leaderMobile || !currentUserInfo?.userEmail) {
+      Alert.alert('Missing Information', 'User information is missing.');
+      setSubmittedData([]);
+      return;
+    }
+
+    const cleanMobile = currentUserInfo.leaderMobile.toString().trim();
+    const cleanEmail = currentUserInfo.userEmail.trim().toLowerCase();
+
+    if (!validateEmail(cleanEmail)) {
+      Alert.alert('Invalid Email', 'Your email format is invalid. Please logout and login again.');
+      setSubmittedData([]);
+      return;
+    }
+
+    const headers = await getAuthHeaders(getRequestType());
+    const baseUrl = await ConfigService.getBaseUrl();
+    const requestType = getRequestType();
+
+    // Try without /search - just like appointments but for grievances
+    const apiUrl = `${baseUrl}/api/grievances?request_type=${encodeURIComponent(requestType)}&leader_regd_mobile_no=${encodeURIComponent(cleanMobile)}&user_email_id=${encodeURIComponent(cleanEmail)}`;
+
+    console.log('ALTERNATIVE API URL:', apiUrl);
+
+    const response = await fetch(apiUrl, {
+      method: 'GET',
+      headers: {
+        ...headers,
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+      },
+    });
+
+    console.log('ALTERNATIVE Response status:', response.status);
+
+    if (response.ok) {
+      const responseText = await response.text();
+      console.log('ALTERNATIVE Success - Raw response:', responseText);
+      
+      try {
+        const responseData = JSON.parse(responseText);
+        const dataArray = Array.isArray(responseData) ? responseData : [responseData];
+        const validData = dataArray.filter(item => item && typeof item === 'object');
+        
+        setSubmittedData(validData);
+
+        if (validData.length === 0) {
+          Alert.alert('No Data', `No ${requestType.toLowerCase()} found.`);
+        } else {
+          console.log(`ALTERNATIVE: Successfully loaded ${validData.length} ${requestType.toLowerCase()} record(s)`);
+        }
+      } catch (parseError) {
+        console.error('ALTERNATIVE JSON parsing error:', parseError);
+        Alert.alert('Data Error', 'Invalid response format from server.');
+        setSubmittedData([]);
+      }
+    } else {
+      const errorText = await response.text();
+      console.error('ALTERNATIVE API Error:', errorText);
+      Alert.alert('Load Failed', `Status: ${response.status}\nError: ${errorText}`);
+      setSubmittedData([]);
+    }
+  } catch (error) {
+    console.error('ALTERNATIVE Network Error:', error);
+    Alert.alert('Network Error', `Unable to connect: ${error.message}`);
     setSubmittedData([]);
   } finally {
     setIsLoadingData(false);
@@ -886,93 +1104,159 @@ const loadSubmittedData = async () => {
 
  // Updated loadAppointments function
 // Updated loadAppointments function
+// Corrected loadAppointments function - GET with query parameters
+// Try different approaches to match your Postman exactly
+// FINAL loadAppointments function - GET method with query parameters
 const loadAppointments = async () => {
   try {
     setIsLoadingData(true);
-    console.log('Starting loadAppointments...');
+    console.log('Starting loadAppointments with GET method...');
 
     const currentUserInfo = await getUserInfo();
-    
+
     if (!currentUserInfo?.leaderMobile || !currentUserInfo?.userEmail) {
-      Alert.alert('Missing Information', 'Unable to load appointments.');
+      Alert.alert('Missing Information', 'Unable to load appointments. User information not found.');
       setSubmittedData([]);
       return;
     }
 
-    const headers = await getAuthHeaders('APPOINTMENT');
-    const baseUrl = await ConfigService.getBaseUrl();
-    
+    // Clean and validate parameters
     const cleanMobile = currentUserInfo.leaderMobile.toString().trim();
     const cleanEmail = currentUserInfo.userEmail.trim().toLowerCase();
 
-    const apiUrl = `${baseUrl}/api/appointments/`;
+    // Validate email format
+    if (!validateEmail(cleanEmail)) {
+      Alert.alert('Invalid Email', 'Your email format is invalid. Please logout and login again.');
+      setSubmittedData([]);
+      return;
+    }
 
-    // Create body with mobile and email
-    const body = JSON.stringify({
+    console.log('Request params:', {
+      request_type: 'APPOINTMENT',
       leader_regd_mobile_no: cleanMobile,
-      user_email_id: cleanEmail,
+      user_email_id: cleanEmail
     });
 
-    console.log('Appointments API URL:', apiUrl, 'Body:', body);
+    const headers = await getAuthHeaders('APPOINTMENT');
+    const baseUrl = await ConfigService.getBaseUrl();
 
-    const response = await fetch(apiUrl, {
-      method: 'GET',   // Still GET
-      headers: headers,
-      body: body,      // Pass data in body
+    // Construct GET URL with query parameters including request_type, email and mobile  
+    const getUrl = `${baseUrl}/api/appointments/?request_type=APPOINTMENT&leader_regd_mobile_no=${encodeURIComponent(cleanMobile)}&user_email_id=${encodeURIComponent(cleanEmail)}`;
+    
+    console.log('GET URL:', getUrl);
+
+    const response = await fetch(getUrl, {
+      method: 'GET',
+      headers: {
+        ...headers,
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+      },
     });
 
-    console.log('Appointments Response status:', response.status);
+    console.log('Response status:', response.status);
 
-    const responseText = await response.text();
-
-    if (!response.ok) {
-      let errorMessage = 'Failed to load appointments';
+    if (response.ok) {
+      const responseText = await response.text();
+      console.log('Success - Raw response:', responseText);
+      
       try {
-        const errorData = JSON.parse(responseText);
+        const responseData = JSON.parse(responseText);
+        console.log('Parsed response data:', responseData);
+        
+        const dataArray = Array.isArray(responseData) ? responseData : [responseData];
+        const validData = dataArray.filter(item => item && typeof item === 'object');
+        
+        setSubmittedData(validData);
+
+        if (validData.length === 0) {
+          Alert.alert('No Data', 'No appointments found for this user.');
+        } else {
+          console.log(`Successfully loaded ${validData.length} appointment(s)`);
+        }
+
+      } catch (parseError) {
+        console.error('JSON parsing error:', parseError);
+        Alert.alert('Data Error', 'Invalid response format from server.');
+        setSubmittedData([]);
+      }
+
+    } else {
+      const errorText = await response.text();
+      console.error('API Error:', {
+        status: response.status,
+        statusText: response.statusText,
+        errorText: errorText,
+        requestParams: {
+          request_type: 'APPOINTMENT',
+          mobile: cleanMobile,
+          email: cleanEmail
+        }
+      });
+
+      let errorMessage = 'Failed to load appointments.';
+      
+      try {
+        const errorData = JSON.parse(errorText);
         errorMessage = errorData.message || errorData.error || errorMessage;
       } catch (e) {
-        errorMessage = responseText || errorMessage;
+        errorMessage = errorText || errorMessage;
       }
 
-      if (errorMessage.includes('Invalid User email id')) {
-        Alert.alert(
-          'Email Not Found',
-          `The email "${cleanEmail}" is not found in appointments database.\n\nPlease logout and login again.`
-        );
-      } else {
-        Alert.alert('Error', errorMessage);
-      }
-
+      Alert.alert('Load Failed', `Status: ${response.status}\n${errorMessage}`);
       setSubmittedData([]);
-      return;
     }
 
-    let responseData;
-    try {
-      responseData = JSON.parse(responseText);
-    } catch (parseError) {
-      console.error('Appointments JSON Parse Error:', parseError);
-      Alert.alert('Error', 'Invalid server response.');
-      setSubmittedData([]);
-      return;
-    }
-
-    const dataArray = Array.isArray(responseData) ? responseData : [responseData];
-    setSubmittedData(dataArray);
-
-    if (dataArray.length === 0) {
-      Alert.alert('No Data', 'No appointments found for this user.');
-    }
-
-  } catch (error) {
-    console.error('Appointments Network Error:', error);
-    Alert.alert('Network Error', `Failed to load appointments: ${error.message}`);
+  } catch (networkError) {
+    console.error('Network Error:', networkError);
+    Alert.alert('Network Error', `Unable to connect to server: ${networkError.message}`);
     setSubmittedData([]);
   } finally {
     setIsLoadingData(false);
   }
 };
 
+
+// Alternative simplified version if you want minimal error handling
+const loadAppointmentsSimple = async () => {
+  try {
+    setIsLoadingData(true);
+    
+    const currentUserInfo = await getUserInfo();
+    if (!currentUserInfo?.leaderMobile || !currentUserInfo?.userEmail) {
+      Alert.alert('Error', 'User information not found');
+      return;
+    }
+
+    const cleanMobile = currentUserInfo.leaderMobile.toString().trim();
+    const cleanEmail = currentUserInfo.userEmail.trim().toLowerCase();
+    
+    const headers = await getAuthHeaders('APPOINTMENT');
+    const baseUrl = await ConfigService.getBaseUrl();
+    
+    const url = `${baseUrl}/api/appointments/?leader_regd_mobile_no=${encodeURIComponent(cleanMobile)}&user_email_id=${encodeURIComponent(cleanEmail)}`;
+    
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: headers,
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+      const dataArray = Array.isArray(data) ? data : [data];
+      setSubmittedData(dataArray.filter(item => item && typeof item === 'object'));
+    } else {
+      throw new Error(`API Error: ${response.status}`);
+    }
+
+  } catch (error) {
+    console.error('Error loading appointments:', error);
+    Alert.alert('Error', 'Failed to load appointments');
+    setSubmittedData([]);
+  } finally {
+    setIsLoadingData(false);
+  }
+};
 
 
 
@@ -987,59 +1271,94 @@ const loadAppointments = async () => {
 const loadDataByStatus = async (status = selectedStatus) => {
   try {
     setIsLoadingData(true);
-    console.log('🔄 Loading data by status:', status);
+    console.log('Loading data by status with GET method:', status);
 
     const currentUserInfo = await getUserInfo();
 
     if (!currentUserInfo.leaderMobile || !currentUserInfo.userEmail) {
       Alert.alert('Missing Information', 'Unable to load data.');
+      setSubmittedData([]);
+      return;
+    }
+
+    const cleanMobile = currentUserInfo.leaderMobile.toString().trim();
+    const cleanEmail = currentUserInfo.userEmail.trim().toLowerCase();
+
+    // Validate email format
+    if (!validateEmail(cleanEmail)) {
+      Alert.alert('Invalid Email', 'Your email format is invalid.');
+      setSubmittedData([]);
       return;
     }
 
     const baseUrl = await ConfigService.getBaseUrl();
     let apiUrl;
-    let requestBody;
 
+    // 🔥 FIX: Route to correct status endpoint based on activeMainTab
     if (activeMainTab === 'APPOINTMENT') {
-      apiUrl = `${baseUrl}/api/appointments/status/`;
-      requestBody = {
-        leader_regd_mobile_no: currentUserInfo.leaderMobile,
-        user_email_id: currentUserInfo.userEmail,
-        status: status,
-      };
+      // GET method for appointments status filter
+      apiUrl = `${baseUrl}/api/appointments/status?request_type=APPOINTMENT&leader_regd_mobile_no=${encodeURIComponent(cleanMobile)}&user_email_id=${encodeURIComponent(cleanEmail)}&status=${encodeURIComponent(status)}`;
     } else {
+      // GET method for grievances status filter
       const requestType = getRequestType();
-      apiUrl = `${baseUrl}/api/grievances/status/`;
-      requestBody = {
-        leader_regd_mobile_no: currentUserInfo.leaderMobile,
-        user_email_id: currentUserInfo.userEmail,
-        request_type: requestType,
-        status: status,
-      };
+      apiUrl = `${baseUrl}/api/grievances/status?request_type=${encodeURIComponent(requestType)}&leader_regd_mobile_no=${encodeURIComponent(cleanMobile)}&user_email_id=${encodeURIComponent(cleanEmail)}&status=${encodeURIComponent(status)}`;
     }
 
-    console.log('🌐 Status API URL:', apiUrl);
-    console.log('📋 Request Body:', requestBody);
+    console.log('Status filter API URL:', apiUrl);
 
-    // Use ApiService.authPost for POST requests with body
-    const result = await ApiService.authPost(apiUrl, requestBody);
-    console.log('📦 Status API Result:', result);
+    const headers = await getAuthHeaders(activeMainTab === 'APPOINTMENT' ? 'APPOINTMENT' : getRequestType());
 
-    if (result.success && result.data) {
-      const dataArray = Array.isArray(result.data) ? result.data : [result.data];
-      setSubmittedData(dataArray);
+    const response = await fetch(apiUrl, {
+      method: 'GET',
+      headers: {
+        ...headers,
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+      },
+    });
+
+    console.log('Status filter response status:', response.status);
+
+    if (response.ok) {
+      const responseText = await response.text();
+      console.log('Status filter success response:', responseText);
       
-      if (dataArray.length === 0) {
-        Alert.alert('No Data', `No ${getRequestType().toLowerCase()}s found with status: ${status}`);
+      try {
+        const responseData = JSON.parse(responseText);
+        const dataArray = Array.isArray(responseData) ? responseData : [responseData];
+        const validData = dataArray.filter(item => item && typeof item === 'object');
+        
+        setSubmittedData(validData);
+        
+        if (validData.length === 0) {
+          Alert.alert('No Data', `No ${getRequestType().toLowerCase()}s found with status: ${status}`);
+        } else {
+          console.log(`Successfully loaded ${validData.length} records with status: ${status}`);
+        }
+      } catch (parseError) {
+        console.error('JSON parsing error:', parseError);
+        Alert.alert('Data Error', 'Invalid response format from server.');
+        setSubmittedData([]);
       }
+
     } else {
-      console.warn('⚠️ Status API call failed:', result.message);
-      Alert.alert('Error', result.message || 'Failed to load data by status.');
+      const errorText = await response.text();
+      console.error('Status filter API error:', errorText);
+      
+      let errorMessage = 'Failed to load data by status.';
+      try {
+        const errorData = JSON.parse(errorText);
+        errorMessage = errorData.message || errorData.error || errorMessage;
+      } catch (e) {
+        errorMessage = errorText || errorMessage;
+      }
+
+      Alert.alert('Load Failed', `Status: ${response.status}\n${errorMessage}`);
       setSubmittedData([]);
     }
 
   } catch (error) {
-    console.error('❌ Error in loadDataByStatus:', error);
+    console.error('Error in loadDataByStatus:', error);
     Alert.alert('Network Error', 'Failed to connect to server.');
     setSubmittedData([]);
   } finally {

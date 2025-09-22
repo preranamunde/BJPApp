@@ -2,7 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 class ConfigService {
   static BASE_URL_KEY = 'app_base_url';
-  static DEFAULT_BASE_URL = 'https://6efacf854841.ngrok-free.app'; // 👈 Update this when ngrok gives new URL
+  static DEFAULT_BASE_URL = 'https://d1dcb97670b8.ngrok-free.app'; // 👈 Update this when ngrok gives new URL
 
   // Initialize configuration with default values (always enforce DEFAULT_BASE_URL)
   static async initializeConfig() {
@@ -146,24 +146,24 @@ static async getApiEndpoints() {
     },
     coordinates: `${baseUrl}/api/coordinates`,
     grievances: {
-      // Updated to use POST methods
-      getAll: `${baseUrl}/api/grievances/`, // POST method with body
-      getByStatus: `${baseUrl}/api/grievances/status/`, // POST method with body
-      search: `${baseUrl}/api/grievances/search`, // POST method with body
-      create: `${baseUrl}/api/grievances`, // POST method
-      update: `${baseUrl}/api/grievances/`, // PUT method
-      delete: `${baseUrl}/api/grievances/`, // DELETE method
+      // Updated to use GET methods with query parameters
+      getAll: `${baseUrl}/api/grievances/search`, // GET method with query params
+      getByStatus: `${baseUrl}/api/grievances/status`, // GET method with query params  
+      search: `${baseUrl}/api/grievances/search`, // GET method with query params
+      create: `${baseUrl}/api/grievances`, // POST method (remains same)
+      update: `${baseUrl}/api/grievances/`, // PUT method (remains same)
+      delete: `${baseUrl}/api/grievances/`, // DELETE method (remains same)
       count: `${baseUrl}/api/grievances/count`, // GET method
       countByStatus: `${baseUrl}/api/grievances/countstatus`, // GET method
     },
     appointments: {
-      // Updated to use POST methods  
-      getAll: `${baseUrl}/api/appointments/`, // POST method with body
-      getByStatus: `${baseUrl}/api/appointments/status/`, // POST method with body
-      search: `${baseUrl}/api/appointments/search`, // POST method with body
-      create: `${baseUrl}/api/appointments`, // POST method
-      update: `${baseUrl}/api/appointments/`, // PUT method
-      delete: `${baseUrl}/api/appointments/`, // DELETE method
+      // Updated to use GET methods with query parameters
+      getAll: `${baseUrl}/api/appointments/`, // GET method with query params
+      getByStatus: `${baseUrl}/api/appointments/status`, // GET method with query params
+      search: `${baseUrl}/api/appointments/search`, // GET method with query params  
+      create: `${baseUrl}/api/appointments`, // POST method (remains same)
+      update: `${baseUrl}/api/appointments/`, // PUT method (remains same)
+      delete: `${baseUrl}/api/appointments/`, // DELETE method (remains same)
       count: `${baseUrl}/api/appointments/count`, // GET method
       countByStatus: `${baseUrl}/api/appointments/countstatus`, // GET method
     },

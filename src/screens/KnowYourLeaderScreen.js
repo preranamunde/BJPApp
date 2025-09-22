@@ -345,13 +345,25 @@ const [educationEditLoading, setEducationEditLoading] = useState(false);
     }
   };
 
- const fetchEducationalDetails = async (memberIdentifier) => {
+const fetchEducationalDetails = async (memberIdentifier) => {
   try {
     const baseUrl = await ConfigService.getBaseUrl();
-    const endpoint = `${baseUrl}/api/edudata/${memberIdentifier}`;
+    
+    // Get current user info for email parameter
+    const currentUserInfo = await getCurrentUserRole();
+    const userEmailId = currentUserInfo.loggedin_email || '';
+    
+    // Build the endpoint with query parameters (note the trailing slash after /api/edudata/)
+    const endpoint = `${baseUrl}/api/edudata/?leader_regd_mobile_no=${encodeURIComponent(memberIdentifier)}&user_email_id=${encodeURIComponent(userEmailId)}`;
+    
+    console.log('🔍 Fetching education data from:', endpoint);
+    console.log('📧 Using email:', userEmailId);
+    console.log('📱 Using mobile:', memberIdentifier);
 
-    // ✅ use authGet to include Authorization + x-app-key headers
+    // Use authGet to include Authorization + x-app-key headers
     const result = await ApiService.authGet(endpoint);
+
+    console.log('📚 Education API Response:', result);
 
     return {
       success: result.success,
@@ -359,7 +371,7 @@ const [educationEditLoading, setEducationEditLoading] = useState(false);
       error: result.success ? null : result.error || result.message
     };
   } catch (error) {
-    console.error('API Error (edudata):', error);
+    console.error('❌ API Error (edudata):', error);
     return { success: false, error: error.message };
   }
 };
@@ -675,19 +687,18 @@ const deleteCurrentEducation = async () => {
             // Get base URL
             const baseUrl = await ConfigService.getBaseUrl();
 
-            // Prepare request payload for DELETE method (matching your Postman request)
-            const requestPayload = {
+            // Build query parameters instead of request body
+            const queryParams = new URLSearchParams({
               leader_regd_mobile_no: userInfo.regdMobileNo,
               user_email_id: userInfo.userEmailId,
               eduId: currentEducationEntry._id || currentEducationEntry.eduId
-            };
+            }).toString();
 
-            console.log('🗑️ Deleting education entry:', requestPayload);
+            console.log('🗑️ Deleting education entry with query params:', queryParams);
 
-            // Use authDelete since education endpoint requires authentication
+            // Use authDelete with query parameters (no body)
             const result = await ApiService.authDelete(
-              `${baseUrl}/api/edudata/entry`,
-              requestPayload
+              `${baseUrl}/api/edudata/entry?${queryParams}`
             );
 
             if (result.success) {

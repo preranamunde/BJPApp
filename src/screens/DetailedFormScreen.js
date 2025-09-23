@@ -79,6 +79,7 @@ const DetailedFormScreen = ({ route, navigation }) => {
 
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [data, setData] = useState(null);
   const [userRole, setUserRole] = useState('user'); // Add user role state
 
@@ -239,48 +240,60 @@ const DetailedFormScreen = ({ route, navigation }) => {
     fetchDetails();
   }, [regnNo, userEmail, leaderMobile, requestType, type]);
 
- const handleSave = async () => {
+const handleSave = async () => {
   if (!data) return;
 
   try {
     setUpdating(true);
 
-    const body = {
-      status: requestStatus,
-      action_taken_comments: reviewComments,
-      updated_by: updatedBy,
-    };
-
-    console.log('Updating with data:', body);
-
     const currentRequestType = requestType || type || 'Grievance';
     const headers = await getAuthHeaders(currentRequestType);
     const baseUrl = await ConfigService.getBaseUrl();
     
-    // Use the correct endpoint structure for updates
     let apiEndpoint;
+    let requestBody;
+    let url;
+    
     if (currentRequestType === 'APPOINTMENT') {
-      apiEndpoint = '/api/appointments';  // Remove /search for updates
+      // ✅ APPOINTMENT UPDATE: Send ALL data in request body (as per Postman)
+      apiEndpoint = '/api/appointments/';
+      url = `${baseUrl}${apiEndpoint}`;
+      
+      requestBody = {
+        leader_regd_mobile_no: leaderMobile,
+        user_email_id: userEmail,
+        regn_no: regnNo,
+        status: requestStatus,
+        action_taken_comments: reviewComments,
+        updated_by: updatedBy
+      };
+      
+      console.log('Appointment Update URL:', url);
+      console.log('Appointment Update Body:', JSON.stringify(requestBody, null, 2));
+      
     } else {
-      apiEndpoint = '/api/grievances';    // Remove /search for updates
+      // ✅ GRIEVANCE UPDATE: Use query params + body (as currently working)
+      apiEndpoint = '/api/grievances/';
+      const encodedMobile = encodeURIComponent(leaderMobile);
+      const encodedEmail = encodeURIComponent(userEmail);
+      const encodedRegnNo = encodeURIComponent(regnNo);
+      
+      url = `${baseUrl}${apiEndpoint}?leader_regd_mobile_no=${encodedMobile}&user_email_id=${encodedEmail}&regn_no=${encodedRegnNo}`;
+      
+      requestBody = {
+        status: requestStatus,
+        action_taken_comments: reviewComments,
+        updated_by: updatedBy,
+      };
+      
+      console.log('Grievance Update URL:', url);
+      console.log('Grievance Update Body:', JSON.stringify(requestBody, null, 2));
     }
-    
-    // Use query parameters for the update endpoint (same as Postman)
-    const encodedMobile = encodeURIComponent(leaderMobile);
-    const encodedEmail = encodeURIComponent(userEmail);
-    const encodedRegnNo = encodeURIComponent(regnNo);
-    
-    // FIXED: Use the base endpoint with query parameters (not /search)
-    const url = `${baseUrl}${apiEndpoint}/?leader_regd_mobile_no=${encodedMobile}&user_email_id=${encodedEmail}&regn_no=${encodedRegnNo}`;
-
-    console.log('Update URL:', url);
-    console.log('Update Headers:', headers);
-    console.log('Update Body:', JSON.stringify(body));
 
     const response = await fetch(url, {
       method: 'PUT',
       headers,
-      body: JSON.stringify(body),
+      body: JSON.stringify(requestBody),
     });
 
     console.log('Update Response Status:', response.status);
@@ -303,6 +316,102 @@ const DetailedFormScreen = ({ route, navigation }) => {
   } finally {
     setUpdating(false);
   }
+};
+
+// NEW: Delete functionality
+const handleDelete = async () => {
+  if (!data) return;
+
+  const currentRequestType = requestType || type || 'Grievance';
+
+  // Show confirmation dialog
+  Alert.alert(
+    'Confirm Delete',
+    `Are you sure you want to delete this ${currentRequestType.toLowerCase()}? This action cannot be undone.`,
+    [
+      {
+        text: 'Cancel',
+        style: 'cancel'
+      },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            setDeleting(true);
+
+            const headers = await getAuthHeaders(currentRequestType);
+            const baseUrl = await ConfigService.getBaseUrl();
+            
+            let url;
+            let requestBody = null;
+            
+            if (currentRequestType === 'APPOINTMENT') {
+              // ✅ APPOINTMENT DELETE: Based on Postman - uses query params + body
+              const encodedMobile = encodeURIComponent(leaderMobile);
+              const encodedEmail = encodeURIComponent(userEmail);
+              const encodedRegnNo = encodeURIComponent(regnNo);
+              
+              url = `${baseUrl}/api/appointments/?leader_regd_mobile_no=${encodedMobile}&user_email_id=${encodedEmail}&regn_no=${encodedRegnNo}`;
+              
+              // Body is optional for appointments delete, but let's include it as per Postman example
+              requestBody = {
+                leader_regd_mobile_no: leaderMobile,
+                user_email_id: userEmail,
+                regn_no: regnNo
+              };
+              
+              console.log('Appointment Delete URL:', url);
+              console.log('Appointment Delete Body:', JSON.stringify(requestBody, null, 2));
+              
+            } else {
+              // ✅ GRIEVANCE DELETE: Use query params (no body needed)
+              const encodedMobile = encodeURIComponent(leaderMobile);
+              const encodedEmail = encodeURIComponent(userEmail);
+              const encodedRegnNo = encodeURIComponent(regnNo);
+              
+              url = `${baseUrl}/api/grievances/?leader_regd_mobile_no=${encodedMobile}&user_email_id=${encodedEmail}&regn_no=${encodedRegnNo}`;
+              
+              console.log('Grievance Delete URL:', url);
+            }
+
+            const deleteOptions = {
+              method: 'DELETE',
+              headers,
+            };
+
+            // Add body only if needed (for appointments)
+            if (requestBody) {
+              deleteOptions.body = JSON.stringify(requestBody);
+            }
+
+            const response = await fetch(url, deleteOptions);
+
+            console.log('Delete Response Status:', response.status);
+
+            if (!response.ok) {
+              const errorText = await response.text();
+              console.error('Delete Error Response:', errorText);
+              throw new Error(`Delete failed: ${response.status} - ${errorText}`);
+            }
+
+            const responseData = await response.json();
+            console.log('Delete Success Response:', responseData);
+
+            Alert.alert('Success', `${currentRequestType} deleted successfully`, [
+              { text: 'OK', onPress: () => navigation.goBack() },
+            ]);
+            
+          } catch (error) {
+            console.error('Error deleting:', error);
+            Alert.alert('Error', `Failed to delete: ${error.message}`);
+          } finally {
+            setDeleting(false);
+          }
+        }
+      }
+    ]
+  );
 };
 
   if (loading) {
@@ -336,12 +445,31 @@ const DetailedFormScreen = ({ route, navigation }) => {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
-      {/* Header */}
+      {/* Header with Delete Icon */}
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>
-          {(requestType || type || 'Item').toUpperCase()} DETAILS
-        </Text>
-        <Text style={styles.headerSubtitle}>Registration No: {data.regn_no || data.registration_number || data.id || regnNo}</Text>
+        <View style={styles.headerContent}>
+          <View>
+            <Text style={styles.headerTitle}>
+              {(requestType || type || 'Item').toUpperCase()} DETAILS
+            </Text>
+            <Text style={styles.headerSubtitle}>Registration No: {data.regn_no || data.registration_number || data.id || regnNo}</Text>
+          </View>
+          
+          {/* DELETE ICON - Only show for admin users */}
+          {userRole === 'admin' && (
+            <TouchableOpacity
+              style={[styles.deleteIcon, deleting && styles.disabledButton]}
+              onPress={handleDelete}
+              disabled={deleting || updating}
+            >
+              {deleting ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Text style={styles.deleteIconText}>🗑️</Text>
+              )}
+            </TouchableOpacity>
+          )}
+        </View>
       </View>
 
       {/* Non-editable fields */}
@@ -430,9 +558,9 @@ const DetailedFormScreen = ({ route, navigation }) => {
 
         {userRole === 'admin' && (
           <TouchableOpacity
-            style={[styles.saveButton, updating && styles.disabledButton]}
+            style={[styles.saveButton, (updating || deleting) && styles.disabledButton]}
             onPress={handleSave}
-            disabled={updating}
+            disabled={updating || deleting}
           >
             {updating ? (
               <View style={styles.loadingContainer}>
@@ -483,6 +611,10 @@ const styles = StyleSheet.create({
     padding: 20,
     borderRadius: 15,
     marginBottom: 20,
+  },
+  headerContent: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
   },
   headerTitle: {
@@ -495,6 +627,21 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#fff',
     opacity: 0.9,
+  },
+  // NEW: Delete Icon Styles
+  deleteIcon: {
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    borderRadius: 25,
+    width: 50,
+    height: 50,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.3)',
+  },
+  deleteIconText: {
+    fontSize: 20,
+    color: '#fff',
   },
   noDataTitle: {
     fontSize: 24,

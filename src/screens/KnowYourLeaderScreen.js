@@ -294,22 +294,32 @@ const [educationEditLoading, setEducationEditLoading] = useState(false);
   };
 
   // Individual API calls using ApiService and ConfigService (unchanged)
-  const fetchMemberCoordinates = async (memberIdentifier) => {
-    try {
-      const baseUrl = await ConfigService.getBaseUrl();
-      const endpoint = `${baseUrl}/api/coordinates/${memberIdentifier}`;
-      const result = await ApiService.get(endpoint);
-      
-      return {
-        success: result.success,
-        data: result.success ? result.data : null,
-        error: result.success ? null : result.error || result.message
-      };
-    } catch (error) {
-      console.error('API Error (coordinates):', error);
-      return { success: false, error: error.message };
-    }
-  };
+const fetchMemberCoordinates = async (memberIdentifier) => {
+  try {
+    const baseUrl = await ConfigService.getBaseUrl();
+    
+    // Get current user info for email parameter
+    const currentUserInfo = await getCurrentUserRole();
+    const userEmailId = currentUserInfo.loggedin_email || '';
+    
+    // Build the endpoint with query parameters
+    const endpoint = `${baseUrl}/api/coordinates/?leader_regd_mobile_no=${encodeURIComponent(memberIdentifier)}&user_email_id=${encodeURIComponent(userEmailId)}`;
+    
+    console.log('🔍 Fetching coordinates data from:', endpoint);
+
+    // Use authGet which should include x-app-key header
+    const result = await ApiService.authGet(endpoint);
+
+    return {
+      success: result.success,
+      data: result.success ? result.data : null,
+      error: result.success ? null : result.error || result.message
+    };
+  } catch (error) {
+    console.error('❌ API Error (coordinates):', error);
+    return { success: false, error: error.message };
+  }
+};
 
   const fetchSocialMedia = async (memberIdentifier) => {
     try {
@@ -411,22 +421,36 @@ const fetchEducationalDetails = async (memberIdentifier) => {
     }
   };
 
-  const fetchTimeline = async (memberIdentifier) => {
-    try {
-      const baseUrl = await ConfigService.getBaseUrl();
-      const endpoint = `${baseUrl}/api/leadertimeline/${memberIdentifier}`;
-      const result = await ApiService.get(endpoint);
-      
-      return {
-        success: result.success,
-        data: result.success ? result.data : null,
-        error: result.success ? null : result.error || result.message
-      };
-    } catch (error) {
-      console.error('API Error (leadertimeline):', error);
-      return { success: false, error: error.message };
-    }
-  };
+const fetchTimeline = async (memberIdentifier) => {
+  try {
+    const baseUrl = await ConfigService.getBaseUrl();
+    
+    // Get current user info for email parameter
+    const currentUserInfo = await getCurrentUserRole();
+    const userEmailId = currentUserInfo.loggedin_email || '';
+    
+    // Build the endpoint with query parameters (similar to education API)
+    const endpoint = `${baseUrl}/api/leadertimeline/?leader_regd_mobile_no=${encodeURIComponent(memberIdentifier)}&user_email_id=${encodeURIComponent(userEmailId)}`;
+    
+    console.log('🔍 Fetching timeline data from:', endpoint);
+    console.log('📧 Using email:', userEmailId);
+    console.log('📱 Using mobile:', memberIdentifier);
+
+    // Use authGet to include Authorization + x-app-key headers
+    const result = await ApiService.authGet(endpoint);
+
+    console.log('📅 Timeline API Response:', result);
+
+    return {
+      success: result.success,
+      data: result.success ? result.data : null,
+      error: result.success ? null : result.error || result.message
+    };
+  } catch (error) {
+    console.error('❌ API Error (leadertimeline):', error);
+    return { success: false, error: error.message };
+  }
+};
 
   const submitEducationEntry = async () => {
   try {
@@ -739,31 +763,33 @@ const deleteCurrentEducation = async () => {
   );
 };
   // PUT API calls for updating data using ApiService (unchanged but with enhanced logging)
-  const updateMemberCoordinates = async (memberIdentifier, data) => {
-    try {
-      console.log('🔄 Updating member coordinates as admin...');
-      const baseUrl = await ConfigService.getBaseUrl();
-      const endpoint = `${baseUrl}/api/coordinates/${memberIdentifier}`;
-      
-      const requestBody = {
-        leader_coordinates: {
-          regd_mobile_no: memberIdentifier,
-          ...data
-        }
-      };
-      
-      const result = await ApiService.put(endpoint, requestBody);
-      console.log('✅ Member coordinates update result:', result.success);
-      return {
-        success: result.success,
-        data: result.success ? result.data : null,
-        error: result.success ? null : result.error || result.message
-      };
-    } catch (error) {
-      console.error('❌ API Error (update coordinates):', error);
-      return { success: false, error: error.message };
-    }
-  };
+const updateMemberCoordinates = async (memberIdentifier, data) => {
+  try {
+    console.log('🔄 Updating member coordinates as admin...');
+    const baseUrl = await ConfigService.getBaseUrl();
+    const endpoint = `${baseUrl}/api/coordinates/${memberIdentifier}`;
+    
+    const requestBody = {
+      user_email_id: 'sanjay.jaiswal@gmail.com',
+      leader_coordinates: {
+        regd_mobile_no: memberIdentifier,
+        ...data
+      }
+    };
+    
+    // Use authPut instead of put
+    const result = await ApiService.authPut(endpoint, requestBody);
+    console.log('✅ Member coordinates update result:', result.success);
+    return {
+      success: result.success,
+      data: result.success ? result.data : null,
+      error: result.success ? null : result.error || result.message
+    };
+  } catch (error) {
+    console.error('❌ API Error (update coordinates):', error);
+    return { success: false, error: error.message };
+  }
+};
 
 const deleteMemberCoordinates = async (memberIdentifier) => {
   try {

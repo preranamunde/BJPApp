@@ -272,18 +272,17 @@ const handleSave = async () => {
       console.log('Appointment Update Body:', JSON.stringify(requestBody, null, 2));
       
     } else {
-      // ✅ GRIEVANCE UPDATE: Use query params + body (as currently working)
+      // ✅ GRIEVANCE UPDATE: FIXED - Send ALL data in body, no query params (as per Postman screenshots)
       apiEndpoint = '/api/grievances/';
-      const encodedMobile = encodeURIComponent(leaderMobile);
-      const encodedEmail = encodeURIComponent(userEmail);
-      const encodedRegnNo = encodeURIComponent(regnNo);
-      
-      url = `${baseUrl}${apiEndpoint}?leader_regd_mobile_no=${encodedMobile}&user_email_id=${encodedEmail}&regn_no=${encodedRegnNo}`;
+      url = `${baseUrl}${apiEndpoint}`;
       
       requestBody = {
+        leader_regd_mobile_no: leaderMobile,
+        user_email_id: userEmail,
+        regn_no: regnNo,
         status: requestStatus,
         action_taken_comments: reviewComments,
-        updated_by: updatedBy,
+        updated_by: updatedBy
       };
       
       console.log('Grievance Update URL:', url);
@@ -318,7 +317,7 @@ const handleSave = async () => {
   }
 };
 
-// NEW: Delete functionality
+// FIXED: Delete functionality updated to match Postman collection
 const handleDelete = async () => {
   if (!data) return;
 
@@ -344,28 +343,19 @@ const handleDelete = async () => {
             const baseUrl = await ConfigService.getBaseUrl();
             
             let url;
-            let requestBody = null;
             
             if (currentRequestType === 'APPOINTMENT') {
-              // ✅ APPOINTMENT DELETE: Based on Postman - uses query params + body
+              // ✅ APPOINTMENT DELETE: Uses query params (as per Postman)
               const encodedMobile = encodeURIComponent(leaderMobile);
               const encodedEmail = encodeURIComponent(userEmail);
               const encodedRegnNo = encodeURIComponent(regnNo);
               
               url = `${baseUrl}/api/appointments/?leader_regd_mobile_no=${encodedMobile}&user_email_id=${encodedEmail}&regn_no=${encodedRegnNo}`;
               
-              // Body is optional for appointments delete, but let's include it as per Postman example
-              requestBody = {
-                leader_regd_mobile_no: leaderMobile,
-                user_email_id: userEmail,
-                regn_no: regnNo
-              };
-              
               console.log('Appointment Delete URL:', url);
-              console.log('Appointment Delete Body:', JSON.stringify(requestBody, null, 2));
               
             } else {
-              // ✅ GRIEVANCE DELETE: Use query params (no body needed)
+              // ✅ GRIEVANCE DELETE: FIXED - Uses query params (as per Postman screenshot)
               const encodedMobile = encodeURIComponent(leaderMobile);
               const encodedEmail = encodeURIComponent(userEmail);
               const encodedRegnNo = encodeURIComponent(regnNo);
@@ -375,17 +365,11 @@ const handleDelete = async () => {
               console.log('Grievance Delete URL:', url);
             }
 
-            const deleteOptions = {
+            const response = await fetch(url, {
               method: 'DELETE',
               headers,
-            };
-
-            // Add body only if needed (for appointments)
-            if (requestBody) {
-              deleteOptions.body = JSON.stringify(requestBody);
-            }
-
-            const response = await fetch(url, deleteOptions);
+              // No body needed for deletes based on Postman collection
+            });
 
             console.log('Delete Response Status:', response.status);
 

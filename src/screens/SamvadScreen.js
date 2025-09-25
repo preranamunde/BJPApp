@@ -40,7 +40,7 @@ const [appointments, setAppointments] = useState([]);
 
 const statusOptions = [
   { label: 'Open', value: 'Open' },
-  { label: 'In Progress', value: 'Progress' },
+  { label: 'In Progress', value: 'In Progress' },  // No space
   { label: 'Resolved', value: 'Resolved' },
   { label: 'Cancelled', value: 'Cancelled' }
 ];

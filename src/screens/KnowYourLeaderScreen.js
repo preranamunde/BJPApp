@@ -86,6 +86,27 @@ const [editingEducationData, setEditingEducationData] = useState({
   university: '',
   place: ''
 });
+
+// Add these with your existing state declarations
+const [addTimelineModalVisible, setAddTimelineModalVisible] = useState(false);
+const [addTimelineData, setAddTimelineData] = useState({
+  date: '',
+  title: '',
+  title_details: '',
+  additional_info: ''
+});
+const [addTimelineLoading, setAddTimelineLoading] = useState(false);
+
+// Add these with your existing state declarations
+const [editTimelineModalVisible, setEditTimelineModalVisible] = useState(false);
+const [currentTimelineIndex, setCurrentTimelineIndex] = useState(0);
+const [editingTimelineData, setEditingTimelineData] = useState({
+  date: '',
+  title: '',
+  title_details: '',
+  additional_info: ''
+});
+const [timelineEditLoading, setTimelineEditLoading] = useState(false);
 const [educationEditLoading, setEducationEditLoading] = useState(false);
   useEffect(() => {
     initializeApp();
@@ -321,39 +342,68 @@ const fetchMemberCoordinates = async (memberIdentifier) => {
   }
 };
 
-  const fetchSocialMedia = async (memberIdentifier) => {
-    try {
-      const baseUrl = await ConfigService.getBaseUrl();
-      const endpoint = `${baseUrl}/api/socialmedia/${memberIdentifier}`;
-      const result = await ApiService.get(endpoint);
-      
-      return {
-        success: result.success,
-        data: result.success ? result.data : null,
-        error: result.success ? null : result.error || result.message
-      };
-    } catch (error) {
-      console.error('API Error (socialmedia):', error);
-      return { success: false, error: error.message };
-    }
-  };
+const fetchSocialMedia = async (memberIdentifier) => {
+  try {
+    const baseUrl = await ConfigService.getBaseUrl();
+    
+    // Get current user info for email parameter
+    const currentUserInfo = await getCurrentUserRole();
+    const userEmailId = currentUserInfo.loggedin_email || '';
+    
+    // Use query parameters
+    const endpoint = `${baseUrl}/api/socialmedia/?leader_regd_mobile_no=${encodeURIComponent(memberIdentifier)}&user_email_id=${encodeURIComponent(userEmailId)}`;
+    
+    // Use authGet to include Authorization + x-app-key headers
+    const result = await ApiService.authGet(endpoint);
+    
+    return {
+      success: result.success,
+      data: result.success ? result.data : null,
+      error: result.success ? null : result.error || result.message
+    };
+  } catch (error) {
+    console.error('API Error (socialmedia):', error);
+    return { success: false, error: error.message };
+  }
+};
 
-  const fetchPersonalDetails = async (memberIdentifier) => {
-    try {
-      const baseUrl = await ConfigService.getBaseUrl();
-      const endpoint = `${baseUrl}/api/personaldetails/${memberIdentifier}`;
-      const result = await ApiService.get(endpoint);
-      
-      return {
-        success: result.success,
-        data: result.success ? result.data : null,
-        error: result.success ? null : result.error || result.message
-      };
-    } catch (error) {
-      console.error('API Error (personaldetails):', error);
-      return { success: false, error: error.message };
-    }
-  };
+const fetchPersonalDetails = async (memberIdentifier) => {
+  try {
+    const baseUrl = await ConfigService.getBaseUrl();
+    
+    // Get current user info for email parameter
+    const currentUserInfo = await getCurrentUserRole();
+    const userEmailId = currentUserInfo.loggedin_email || '';
+    
+    const endpoint = `${baseUrl}/api/personaldetails/?leader_regd_mobile_no=${encodeURIComponent(memberIdentifier)}&user_email_id=${encodeURIComponent(userEmailId)}`;
+    
+    console.log('🔍 Fetching personal details from:', endpoint);
+    console.log('📧 Using email:', userEmailId);
+    console.log('📱 Using mobile:', memberIdentifier);
+
+    // Get app key manually and add to headers
+    const EncryptedStorage = require('react-native-encrypted-storage').default;
+    const appKey = await EncryptedStorage.getItem('APP_KEY');
+    
+    const headers = {
+      'x-app-key': appKey
+    };
+
+    // Use regular get with x-app-key header (no Authorization needed per Postman)
+    const result = await ApiService.get(endpoint, headers);
+
+    console.log('👤 Personal Details API Response:', result);
+
+    return {
+      success: result.success,
+      data: result.success ? result.data : null,
+      error: result.success ? null : result.error || result.message
+    };
+  } catch (error) {
+    console.error('❌ API Error (personaldetails):', error);
+    return { success: false, error: error.message };
+  }
+};
 
 const fetchEducationalDetails = async (memberIdentifier) => {
   try {
@@ -387,39 +437,55 @@ const fetchEducationalDetails = async (memberIdentifier) => {
 };
 
 
-  const fetchPermanentAddress = async (memberIdentifier) => {
-    try {
-      const baseUrl = await ConfigService.getBaseUrl();
-      const endpoint = `${baseUrl}/api/permaddress/${memberIdentifier}`;
-      const result = await ApiService.get(endpoint);
-      
-      return {
-        success: result.success,
-        data: result.success ? result.data : null,
-        error: result.success ? null : result.error || result.message
-      };
-    } catch (error) {
-      console.error('API Error (permaddress):', error);
-      return { success: false, error: error.message };
-    }
-  };
+const fetchPermanentAddress = async (memberIdentifier) => {
+  try {
+    const baseUrl = await ConfigService.getBaseUrl();
+    
+    // Get current user info for email parameter
+    const currentUserInfo = await getCurrentUserRole();
+    const userEmailId = currentUserInfo.loggedin_email || '';
+    
+    // Use query parameters
+    const endpoint = `${baseUrl}/api/permaddress/?leader_regd_mobile_no=${encodeURIComponent(memberIdentifier)}&user_email_id=${encodeURIComponent(userEmailId)}`;
+    
+    // Use authGet to include Authorization + x-app-key headers
+    const result = await ApiService.authGet(endpoint);
+    
+    return {
+      success: result.success,
+      data: result.success ? result.data : null,
+      error: result.success ? null : result.error || result.message
+    };
+  } catch (error) {
+    console.error('API Error (permaddress):', error);
+    return { success: false, error: error.message };
+  }
+};
 
-  const fetchPresentAddress = async (memberIdentifier) => {
-    try {
-      const baseUrl = await ConfigService.getBaseUrl();
-      const endpoint = `${baseUrl}/api/preaddress/${memberIdentifier}`;
-      const result = await ApiService.get(endpoint);
-      
-      return {
-        success: result.success,
-        data: result.success ? result.data : null,
-        error: result.success ? null : result.error || result.message
-      };
-    } catch (error) {
-      console.error('API Error (preaddress):', error);
-      return { success: false, error: error.message };
-    }
-  };
+const fetchPresentAddress = async (memberIdentifier) => {
+  try {
+    const baseUrl = await ConfigService.getBaseUrl();
+    
+    // Get current user info for email parameter
+    const currentUserInfo = await getCurrentUserRole();
+    const userEmailId = currentUserInfo.loggedin_email || '';
+    
+    // Use query parameters
+    const endpoint = `${baseUrl}/api/preaddress/?leader_regd_mobile_no=${encodeURIComponent(memberIdentifier)}&user_email_id=${encodeURIComponent(userEmailId)}`;
+    
+    // Use authGet to include Authorization + x-app-key headers
+    const result = await ApiService.authGet(endpoint);
+    
+    return {
+      success: result.success,
+      data: result.success ? result.data : null,
+      error: result.success ? null : result.error || result.message
+    };
+  } catch (error) {
+    console.error('API Error (preaddress):', error);
+    return { success: false, error: error.message };
+  }
+};
 
 const fetchTimeline = async (memberIdentifier) => {
   try {
@@ -568,7 +634,212 @@ const openEducationEditModal = () => {
   });
   setEditEducationModalVisible(true);
 };
+const openTimelineEditModal = () => {
+  if (!timelineData || !Array.isArray(timelineData) || timelineData.length === 0) {
+    Alert.alert('No Timeline Data', 'No timeline entries found to edit.');
+    return;
+  }
 
+  // Start with the first timeline entry
+  setCurrentTimelineIndex(0);
+  setEditingTimelineData({
+    date: timelineData[0].date || '',
+    title: timelineData[0].title || '',
+    title_details: timelineData[0].title_details || '',
+    additional_info: timelineData[0].additional_info || ''
+  });
+  setEditTimelineModalVisible(true);
+};
+
+const navigateTimeline = (direction) => {
+  if (!timelineData || !Array.isArray(timelineData)) return;
+
+  let newIndex;
+  if (direction === 'next') {
+    newIndex = currentTimelineIndex < timelineData.length - 1 ? currentTimelineIndex + 1 : 0;
+  } else {
+    newIndex = currentTimelineIndex > 0 ? currentTimelineIndex - 1 : timelineData.length - 1;
+  }
+
+  setCurrentTimelineIndex(newIndex);
+  setEditingTimelineData({
+    date: timelineData[newIndex].date || '',
+    title: timelineData[newIndex].title || '',
+    title_details: timelineData[newIndex].title_details || '',
+    additional_info: timelineData[newIndex].additional_info || ''
+  });
+};
+
+const handleTimelineInputChange = (field, value) => {
+  setEditingTimelineData(prev => ({
+    ...prev,
+    [field]: value
+  }));
+};
+
+const saveCurrentTimeline = async () => {
+  try {
+    // Validate current timeline data
+    if (!editingTimelineData.date.trim()) {
+      Alert.alert('Validation Error', 'Please enter date');
+      return;
+    }
+    if (!editingTimelineData.title.trim()) {
+      Alert.alert('Validation Error', 'Please enter title');
+      return;
+    }
+    if (!editingTimelineData.title_details.trim()) {
+      Alert.alert('Validation Error', 'Please enter title details');
+      return;
+    }
+
+    setTimelineEditLoading(true);
+
+    // Get user information
+    const currentUserInfo = await getCurrentUserRole();
+    const userEmailId = currentUserInfo.loggedin_email || 'sanjay.jaiswal@gmail.com';
+    
+    if (!memberId) {
+      Alert.alert('Error', 'Member ID not available. Please try refreshing the screen.');
+      return;
+    }
+
+    // Get the current timeline entry to extract timelineId
+    const currentTimelineEntry = timelineData[currentTimelineIndex];
+    if (!currentTimelineEntry._id && !currentTimelineEntry.timelineId) {
+      Alert.alert('Error', 'Timeline ID not found. Cannot update entry.');
+      return;
+    }
+
+    // Get base URL
+    const baseUrl = await ConfigService.getBaseUrl();
+
+    // Prepare request payload for PUT method (matching your Postman structure)
+    const requestPayload = {
+      leader_regd_mobile_no: memberId,
+      user_email_id: userEmailId,
+      timelineId: currentTimelineEntry._id || currentTimelineEntry.timelineId,
+      timeline: {
+        date: editingTimelineData.date.trim(),
+        title: editingTimelineData.title.trim(),
+        title_details: editingTimelineData.title_details.trim(),
+        additional_info: editingTimelineData.additional_info.trim()
+      }
+    };
+
+    console.log('📤 Updating timeline entry:', requestPayload);
+
+    const result = await ApiService.authPut(
+  `${baseUrl}/api/leadertimeline/`,  // ✅ Correct endpoint
+  requestPayload
+);
+
+    if (result.success) {
+      Alert.alert('Success', 'Timeline entry updated successfully!', [
+        {
+          text: 'OK',
+          onPress: () => {
+            // Refresh timeline data
+            loadInitialData(memberId);
+          }
+        }
+      ]);
+    } else {
+      throw new Error(result.message || result.error || 'Failed to update timeline entry');
+    }
+
+  } catch (error) {
+    console.error('❌ Error updating timeline entry:', error);
+    Alert.alert('Update Failed', `Failed to update timeline entry: ${error.message}`);
+  } finally {
+    setTimelineEditLoading(false);
+  }
+};
+
+const deleteCurrentTimeline = async () => {
+  const currentTimelineEntry = timelineData[currentTimelineIndex];
+  
+  Alert.alert(
+    'Delete Timeline Entry',
+    `Are you sure you want to delete this timeline entry?\n\n${editingTimelineData.title}`,
+    [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            setTimelineEditLoading(true);
+
+            // Get user information
+            const currentUserInfo = await getCurrentUserRole();
+            const userEmailId = currentUserInfo.loggedin_email || 'sanjay.jaiswal@gmail.com';
+            
+            if (!memberId) {
+              Alert.alert('Error', 'Member ID not available. Please try refreshing the screen.');
+              return;
+            }
+
+            // Check if timeline ID exists
+            if (!currentTimelineEntry._id && !currentTimelineEntry.timelineId) {
+              Alert.alert('Error', 'Timeline ID not found. Cannot delete entry.');
+              return;
+            }
+
+            // Get base URL
+            const baseUrl = await ConfigService.getBaseUrl();
+
+            // Build query parameters based on your Postman DELETE structure
+            const queryParams = new URLSearchParams({
+              leader_regd_mobile_no: memberId,
+              user_email_id: userEmailId,
+              timelineId: currentTimelineEntry._id || currentTimelineEntry.timelineId
+            }).toString();
+
+            console.log('🗑️ Deleting timeline entry with query params:', queryParams);
+
+            // Use authDelete which automatically includes Authorization and x-app-key headers
+            const result = await ApiService.authDelete(
+              `${baseUrl}/api/leadertimeline/entry?${queryParams}`
+            );
+
+            if (result.success) {
+              Alert.alert('Success', 'Timeline entry deleted successfully!', [
+                {
+                  text: 'OK',
+                  onPress: () => {
+                    // Check if this was the last timeline entry
+                    if (timelineData.length <= 1) {
+                      // Close modal if no more entries
+                      setEditTimelineModalVisible(false);
+                    } else {
+                      // Adjust current index if needed
+                      const newIndex = currentTimelineIndex >= timelineData.length - 1 ? 
+                        0 : currentTimelineIndex;
+                      
+                      setCurrentTimelineIndex(newIndex);
+                    }
+                    
+                    // Refresh timeline data
+                    loadInitialData(memberId);
+                  }
+                }
+              ]);
+            } else {
+              throw new Error(result.message || result.error || 'Failed to delete timeline entry');
+            }
+
+          } catch (error) {
+            console.error('❌ Error deleting timeline entry:', error);
+            Alert.alert('Delete Failed', `Failed to delete timeline entry: ${error.message}`);
+          } finally {
+            setTimelineEditLoading(false);
+          }
+        }
+      }
+    ]
+  );
+};
 const navigateEducation = (direction) => {
   if (!educationData || !Array.isArray(educationData)) return;
 
@@ -765,50 +1036,69 @@ const deleteCurrentEducation = async () => {
   // PUT API calls for updating data using ApiService (unchanged but with enhanced logging)
 const updateMemberCoordinates = async (memberIdentifier, data) => {
   try {
-    console.log('🔄 Updating member coordinates as admin...');
+    console.log('Updating member coordinates as admin...');
     const baseUrl = await ConfigService.getBaseUrl();
-    const endpoint = `${baseUrl}/api/coordinates/${memberIdentifier}`;
+    
+    // Get current user info for email parameter
+    const currentUserInfo = await getCurrentUserRole();
+    const userEmailId = currentUserInfo.loggedin_email || '';
+    
+    const endpoint = `${baseUrl}/api/coordinates/`;
     
     const requestBody = {
-      user_email_id: 'sanjay.jaiswal@gmail.com',
+      leader_regd_mobile_no: memberIdentifier,
+      user_email_id: userEmailId,
       leader_coordinates: {
-        regd_mobile_no: memberIdentifier,
         ...data
+        // Remove regd_mobile_no from data as it's already in the root level
       }
     };
     
-    // Use authPut instead of put
+    // Use authPut to include Authorization + x-app-key headers
     const result = await ApiService.authPut(endpoint, requestBody);
-    console.log('✅ Member coordinates update result:', result.success);
+    
+    console.log('Member coordinates update result:', result.success);
     return {
       success: result.success,
       data: result.success ? result.data : null,
       error: result.success ? null : result.error || result.message
     };
   } catch (error) {
-    console.error('❌ API Error (update coordinates):', error);
+    console.error('API Error (update coordinates):', error);
     return { success: false, error: error.message };
   }
 };
 
 const deleteMemberCoordinates = async (memberIdentifier) => {
   try {
-    console.log('🗑️ Deleting member coordinates as admin...');
+    console.log('Deleting member coordinates as admin...');
     const baseUrl = await ConfigService.getBaseUrl();
-    const endpoint = `${baseUrl}/api/coordinates/${memberIdentifier}`;
     
-    const result = await ApiService.delete(endpoint);
-    console.log('🔍 Delete API Response:', result);
+    // Get current user info for email parameter
+    const currentUserInfo = await getCurrentUserRole();
+    const userEmailId = currentUserInfo.loggedin_email || '';
+    
+    // Build query parameters
+    const queryParams = new URLSearchParams({
+      leader_regd_mobile_no: memberIdentifier,
+      user_email_id: userEmailId
+    }).toString();
+    
+    const endpoint = `${baseUrl}/api/coordinates/?${queryParams}`;
+    
+    // Use authDelete to include Authorization + x-app-key headers
+    const result = await ApiService.authDelete(endpoint);
+    
+    console.log('Delete API Response:', result);
     
     if (result.success) {
-      console.log('✅ Member coordinates deleted successfully');
+      console.log('Member coordinates deleted successfully');
       return {
         success: true,
         data: result.data,
         error: null
       };
     } else {
-      // Handle the error properly - the error might be an object
       let errorMessage = 'Delete failed';
       
       if (result.error) {
@@ -821,7 +1111,7 @@ const deleteMemberCoordinates = async (memberIdentifier) => {
         errorMessage = result.message;
       }
       
-      console.log('❌ Delete failed:', errorMessage);
+      console.log('Delete failed:', errorMessage);
       return {
         success: false,
         data: null,
@@ -829,109 +1119,70 @@ const deleteMemberCoordinates = async (memberIdentifier) => {
       };
     }
   } catch (error) {
-    console.error('❌ API Error (delete coordinates):', error);
+    console.error('API Error (delete coordinates):', error);
     return { 
       success: false, 
       error: error.message || 'Network error occurred' 
     };
   }
 };
-  const updateSocialMedia = async (memberIdentifier, data) => {
-    try {
-      console.log('🔄 Updating social media as admin...');
-      const baseUrl = await ConfigService.getBaseUrl();
-      const endpoint = `${baseUrl}/api/socialmedia/${memberIdentifier}`;
-      
-      const requestBody = {
-        social_media: {
-          regd_mobile_no: memberIdentifier,
-          ...data
-        }
-      };
-      
-      const result = await ApiService.put(endpoint, requestBody);
-      console.log('✅ Social media update result:', result.success);
-      return {
-        success: result.success,
-        data: result.success ? result.data : null,
-        error: result.success ? null : result.error || result.message
-      };
-    } catch (error) {
-      console.error('❌ API Error (update social media):', error);
-      return { success: false, error: error.message };
-    }
-  };
-
-  const deleteSocialMedia = async (memberIdentifier) => {
+ const updateSocialMedia = async (memberIdentifier, data) => {
   try {
-    console.log('🗑️ Deleting social media as admin...');
+    console.log('Updating social media as admin...');
     const baseUrl = await ConfigService.getBaseUrl();
-    const endpoint = `${baseUrl}/api/socialmedia/${memberIdentifier}`;
     
-    const result = await ApiService.delete(endpoint);
-    console.log('🔍 Delete Social Media API Response:', result);
+    // Get current user info for email parameter
+    const currentUserInfo = await getCurrentUserRole();
+    const userEmailId = currentUserInfo.loggedin_email || '';
     
-    if (result.success) {
-      console.log('✅ Social media deleted successfully');
-      return { success: true, data: result.data, error: null };
-    } else {
-      let errorMessage = 'Delete failed';
-      if (result.error) {
-        if (typeof result.error === 'string') {
-          errorMessage = result.error;
-        } else if (typeof result.error === 'object') {
-          errorMessage = result.error.message || result.error.error || JSON.stringify(result.error);
-        }
-      } else if (result.message) {
-        errorMessage = result.message;
+    const endpoint = `${baseUrl}/api/socialmedia/`;
+    
+    // Request body structure from Postman
+    const requestBody = {
+      leader_regd_mobile_no: memberIdentifier,
+      user_email_id: userEmailId,
+      social_media: {
+        ...data
       }
-      
-      console.log('❌ Delete failed:', errorMessage);
-      return { success: false, data: null, error: errorMessage };
-    }
+    };
+    
+    // Use authPut to include Authorization + x-app-key headers
+    const result = await ApiService.authPut(endpoint, requestBody);
+    
+    console.log('Social media update result:', result.success);
+    return {
+      success: result.success,
+      data: result.success ? result.data : null,
+      error: result.success ? null : result.error || result.message
+    };
   } catch (error) {
-    console.error('❌ API Error (delete social media):', error);
-    return { success: false, error: error.message || 'Network error occurred' };
+    console.error('API Error (update social media):', error);
+    return { success: false, error: error.message };
   }
 };
 
-
-  const updatePersonalDetails = async (memberIdentifier, data) => {
-    try {
-      console.log('🔄 Updating personal details as admin...');
-      const baseUrl = await ConfigService.getBaseUrl();
-      const endpoint = `${baseUrl}/api/personaldetails/${memberIdentifier}`;
-      
-      const requestBody = {
-        personal_details: {
-          regd_mobile_no: memberIdentifier,
-          ...data
-        }
-      };
-      
-      const result = await ApiService.put(endpoint, requestBody);
-      console.log('✅ Personal details update result:', result.success);
-      return {
-        success: result.success,
-        data: result.success ? result.data : null,
-        error: result.success ? null : result.error || result.message
-      };
-    } catch (error) {
-      console.error('❌ API Error (update personal details):', error);
-      return { success: false, error: error.message };
-    }
-  };
-
-  const deletePersonalDetails = async (memberIdentifier) => {
+const deleteSocialMedia = async (memberIdentifier) => {
   try {
-    console.log('🗑️ Deleting personal details as admin...');
+    console.log('Deleting social media as admin...');
     const baseUrl = await ConfigService.getBaseUrl();
-    const endpoint = `${baseUrl}/api/personaldetails/${memberIdentifier}`;
     
-    const result = await ApiService.delete(endpoint);
+    // Get current user info for email parameter
+    const currentUserInfo = await getCurrentUserRole();
+    const userEmailId = currentUserInfo.loggedin_email || '';
+    
+    // Build query parameters
+    const queryParams = new URLSearchParams({
+      leader_regd_mobile_no: memberIdentifier,
+      user_email_id: userEmailId
+    }).toString();
+    
+    const endpoint = `${baseUrl}/api/socialmedia/?${queryParams}`;
+    
+    // Use authDelete to include Authorization + x-app-key headers
+    const result = await ApiService.authDelete(endpoint);
     
     if (result.success) {
-      console.log('✅ Personal details deleted successfully');
+      console.log('Social media deleted successfully');
       return { success: true, data: result.data, error: null };
     } else {
       let errorMessage = 'Delete failed';
@@ -942,7 +1193,81 @@ const deleteMemberCoordinates = async (memberIdentifier) => {
       return { success: false, data: null, error: errorMessage };
     }
   } catch (error) {
-    console.error('❌ API Error (delete personal details):', error);
+    console.error('API Error (delete social media):', error);
+    return { success: false, error: error.message || 'Network error occurred' };
+  }
+};
+
+const updatePersonalDetails = async (memberIdentifier, data) => {
+  try {
+    console.log('Updating personal details as admin...');
+    const baseUrl = await ConfigService.getBaseUrl();
+    
+    // Get current user info for email parameter
+    const currentUserInfo = await getCurrentUserRole();
+    const userEmailId = currentUserInfo.loggedin_email || '';
+    
+    // Simple endpoint without query parameters
+    const endpoint = `${baseUrl}/api/personaldetails/`;
+    
+    // Request body - fields at root level (NOT nested in personal_details)
+    const requestBody = {
+      leader_regd_mobile_no: memberIdentifier,
+      user_email_id: userEmailId,
+      ...data  // Spread data at root level
+    };
+    
+    console.log('PUT request payload:', requestBody);
+    
+    // Use authPut to include Authorization + x-app-key headers
+    const result = await ApiService.authPut(endpoint, requestBody);
+    
+    console.log('Personal details update result:', result.success);
+    
+    return {
+      success: result.success,
+      data: result.success ? result.data : null,
+      error: result.success ? null : result.error || result.message
+    };
+  } catch (error) {
+    console.error('API Error (update personal details):', error);
+    return { success: false, error: error.message };
+  }
+};
+
+const deletePersonalDetails = async (memberIdentifier) => {
+  try {
+    console.log('Deleting personal details as admin...');
+    const baseUrl = await ConfigService.getBaseUrl();
+    
+    // Get current user info for email parameter
+    const currentUserInfo = await getCurrentUserRole();
+    const userEmailId = currentUserInfo.loggedin_email || '';
+    
+    // Build query parameters (NOT path parameter)
+    const queryParams = new URLSearchParams({
+      leader_regd_mobile_no: memberIdentifier,
+      user_email_id: userEmailId
+    }).toString();
+    
+    const endpoint = `${baseUrl}/api/personaldetails/?${queryParams}`;
+    
+    // Use authDelete to include Authorization + x-app-key headers
+    const result = await ApiService.authDelete(endpoint);
+    
+    if (result.success) {
+      console.log('Personal details deleted successfully');
+      return { success: true, data: result.data, error: null };
+    } else {
+      let errorMessage = 'Delete failed';
+      if (result.error) {
+        errorMessage = typeof result.error === 'string' ? result.error : 
+                      result.error.message || JSON.stringify(result.error);
+      }
+      return { success: false, data: null, error: errorMessage };
+    }
+  } catch (error) {
+    console.error('API Error (delete personal details):', error);
     return { success: false, error: error.message || 'Network error occurred' };
   }
 };
@@ -997,42 +1322,63 @@ const deleteMemberCoordinates = async (memberIdentifier) => {
   }
 };
 
-  const updatePermanentAddress = async (memberIdentifier, data) => {
-    try {
-      console.log('🔄 Updating permanent address as admin...');
-      const baseUrl = await ConfigService.getBaseUrl();
-      const endpoint = `${baseUrl}/api/permaddress/${memberIdentifier}`;
-      
-      const requestBody = {
-        perm_address: {
-          regd_mobile_no: memberIdentifier,
-          ...data
-        }
-      };
-      
-      const result = await ApiService.put(endpoint, requestBody);
-      console.log('✅ Permanent address update result:', result.success);
-      return {
-        success: result.success,
-        data: result.success ? result.data : null,
-        error: result.success ? null : result.error || result.message
-      };
-    } catch (error) {
-      console.error('❌ API Error (update permanent address):', error);
-      return { success: false, error: error.message };
-    }
-  };
-
-  const deletePermanentAddress = async (memberIdentifier) => {
+ const updatePermanentAddress = async (memberIdentifier, data) => {
   try {
-    console.log('🗑️ Deleting permanent address as admin...');
+    console.log('Updating permanent address as admin...');
     const baseUrl = await ConfigService.getBaseUrl();
-    const endpoint = `${baseUrl}/api/permaddress/${memberIdentifier}`;
     
-    const result = await ApiService.delete(endpoint);
+    // Get current user info for email parameter
+    const currentUserInfo = await getCurrentUserRole();
+    const userEmailId = currentUserInfo.loggedin_email || '';
+    
+    const endpoint = `${baseUrl}/api/permaddress/`;
+    
+    // Request body structure from Postman
+    const requestBody = {
+      user_email_id: userEmailId,
+      perm_address: {
+        regd_mobile_no: memberIdentifier,
+        ...data
+      }
+    };
+    
+    // Use authPut to include Authorization + x-app-key headers
+    const result = await ApiService.authPut(endpoint, requestBody);
+    
+    console.log('Permanent address update result:', result.success);
+    return {
+      success: result.success,
+      data: result.success ? result.data : null,
+      error: result.success ? null : result.error || result.message
+    };
+  } catch (error) {
+    console.error('API Error (update permanent address):', error);
+    return { success: false, error: error.message };
+  }
+};
+
+const deletePermanentAddress = async (memberIdentifier) => {
+  try {
+    console.log('Deleting permanent address as admin...');
+    const baseUrl = await ConfigService.getBaseUrl();
+    
+    // Get current user info for email parameter
+    const currentUserInfo = await getCurrentUserRole();
+    const userEmailId = currentUserInfo.loggedin_email || '';
+    
+    // Build query parameters
+    const queryParams = new URLSearchParams({
+      leader_regd_mobile_no: memberIdentifier,
+      user_email_id: userEmailId
+    }).toString();
+    
+    const endpoint = `${baseUrl}/api/permaddress/?${queryParams}`;
+    
+    // Use authDelete to include Authorization + x-app-key headers
+    const result = await ApiService.authDelete(endpoint);
     
     if (result.success) {
-      console.log('✅ Permanent address deleted successfully');
+      console.log('Permanent address deleted successfully');
       return { success: true, data: result.data, error: null };
     } else {
       let errorMessage = 'Delete failed';
@@ -1043,47 +1389,68 @@ const deleteMemberCoordinates = async (memberIdentifier) => {
       return { success: false, data: null, error: errorMessage };
     }
   } catch (error) {
-    console.error('❌ API Error (delete permanent address):', error);
+    console.error('API Error (delete permanent address):', error);
     return { success: false, error: error.message || 'Network error occurred' };
   }
 };
 
-  const updatePresentAddress = async (memberIdentifier, data) => {
-    try {
-      console.log('🔄 Updating present address as admin...');
-      const baseUrl = await ConfigService.getBaseUrl();
-      const endpoint = `${baseUrl}/api/preaddress/${memberIdentifier}`;
-      
-      const requestBody = {
-        present_address: {
-          regd_mobile_no: memberIdentifier,
-          ...data
-        }
-      };
-      
-      const result = await ApiService.put(endpoint, requestBody);
-      console.log('✅ Present address update result:', result.success);
-      return {
-        success: result.success,
-        data: result.success ? result.data : null,
-        error: result.success ? null : result.error || result.message
-      };
-    } catch (error) {
-      console.error('❌ API Error (update present address):', error);
-      return { success: false, error: error.message };
-    }
-  };
-
-  const deletePresentAddress = async (memberIdentifier) => {
+ const updatePresentAddress = async (memberIdentifier, data) => {
   try {
-    console.log('🗑️ Deleting present address as admin...');
+    console.log('Updating present address as admin...');
     const baseUrl = await ConfigService.getBaseUrl();
-    const endpoint = `${baseUrl}/api/preaddress/${memberIdentifier}`;
     
-    const result = await ApiService.delete(endpoint);
+    // Get current user info for email parameter
+    const currentUserInfo = await getCurrentUserRole();
+    const userEmailId = currentUserInfo.loggedin_email || '';
+    
+    const endpoint = `${baseUrl}/api/preaddress/`;
+    
+    // Request body structure from Postman
+    const requestBody = {
+      user_email_id: userEmailId,
+      present_address: {
+        regd_mobile_no: memberIdentifier,
+        ...data
+      }
+    };
+    
+    // Use authPut to include Authorization + x-app-key headers
+    const result = await ApiService.authPut(endpoint, requestBody);
+    
+    console.log('Present address update result:', result.success);
+    return {
+      success: result.success,
+      data: result.success ? result.data : null,
+      error: result.success ? null : result.error || result.message
+    };
+  } catch (error) {
+    console.error('API Error (update present address):', error);
+    return { success: false, error: error.message };
+  }
+};
+
+const deletePresentAddress = async (memberIdentifier) => {
+  try {
+    console.log('Deleting present address as admin...');
+    const baseUrl = await ConfigService.getBaseUrl();
+    
+    // Get current user info for email parameter
+    const currentUserInfo = await getCurrentUserRole();
+    const userEmailId = currentUserInfo.loggedin_email || '';
+    
+    // Build query parameters
+    const queryParams = new URLSearchParams({
+      leader_regd_mobile_no: memberIdentifier,
+      user_email_id: userEmailId
+    }).toString();
+    
+    const endpoint = `${baseUrl}/api/preaddress/?${queryParams}`;
+    
+    // Use authDelete to include Authorization + x-app-key headers
+    const result = await ApiService.authDelete(endpoint);
     
     if (result.success) {
-      console.log('✅ Present address deleted successfully');
+      console.log('Present address deleted successfully');
       return { success: true, data: result.data, error: null };
     } else {
       let errorMessage = 'Delete failed';
@@ -1094,7 +1461,7 @@ const deleteMemberCoordinates = async (memberIdentifier) => {
       return { success: false, data: null, error: errorMessage };
     }
   } catch (error) {
-    console.error('❌ API Error (delete present address):', error);
+    console.error('API Error (delete present address):', error);
     return { success: false, error: error.message || 'Network error occurred' };
   }
 };
@@ -1633,21 +2000,23 @@ const renderDropdownModal = () => {
           top: dropdownPosition.y, 
           left: dropdownPosition.x 
         }]}>
-          <TouchableOpacity
-            style={styles.dropdownItem}
-            onPress={() => {
-              setDropdownVisible(false);
-              // Handle education edit differently
-              if (currentDropdownType === 'education') {
-                openEducationEditModal();
-              } else {
-                openEditModal(currentDropdownType, currentDropdownData);
-              }
-            }}
-          >
-            <Text style={styles.dropdownItemIcon}>✏️</Text>
-            <Text style={styles.dropdownItemText}>Edit</Text>
-          </TouchableOpacity>
+         <TouchableOpacity
+  style={styles.dropdownItem}
+  onPress={() => {
+    setDropdownVisible(false);
+    // Handle education and timeline edit differently
+    if (currentDropdownType === 'education') {
+      openEducationEditModal();
+    } else if (currentDropdownType === 'timeline') {
+      openTimelineEditModal();
+    } else {
+      openEditModal(currentDropdownType, currentDropdownData);
+    }
+  }}
+>
+  <Text style={styles.dropdownItemIcon}>✏️</Text>
+  <Text style={styles.dropdownItemText}>Edit</Text>
+</TouchableOpacity>
           
           <View style={styles.dropdownSeparator} />
           
@@ -1942,6 +2311,177 @@ const renderEducationEditModal = () => {
               <View style={styles.infoContainer}>
                 <Text style={styles.infoText}>
                   Use Previous/Next to navigate between education entries. 
+                  Save to update current entry or Delete to remove it permanently.
+                </Text>
+              </View>
+            </View>
+          </ScrollView>
+        </KeyboardAvoidingView>
+      </SafeAreaView>
+    </Modal>
+  );
+};
+
+const renderTimelineEditModal = () => {
+  if (!timelineData || !Array.isArray(timelineData) || timelineData.length === 0) {
+    return null;
+  }
+
+  return (
+    <Modal
+      visible={editTimelineModalVisible}
+      animationType="slide"
+      presentationStyle="formSheet"
+      onRequestClose={() => setEditTimelineModalVisible(false)}
+    >
+      <SafeAreaView style={styles.editModalContainer}>
+        <KeyboardAvoidingView 
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={styles.editModalContent}
+        >
+          {/* Modal Header */}
+          <View style={styles.editModalHeader}>
+            <TouchableOpacity
+              onPress={() => setEditTimelineModalVisible(false)}
+              style={styles.editModalCloseButton}
+            >
+              <Text style={styles.editModalCloseText}>✕</Text>
+            </TouchableOpacity>
+            <View style={styles.editModalTitleContainer}>
+              <Text style={styles.editModalTitle}>Edit Timeline</Text>
+            </View>
+            <View style={styles.headerButtonsContainer}>
+              <TouchableOpacity
+                onPress={saveCurrentTimeline}
+                style={styles.editModalSaveButton}
+                disabled={timelineEditLoading}
+              >
+                {timelineEditLoading ? (
+                  <ActivityIndicator size="small" color="#ffffff" />
+                ) : (
+                  <Text style={styles.editModalSaveText}>Save</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          {/* Timeline Navigation Header */}
+          <View style={styles.educationNavHeader}>
+            <View style={styles.navigationControls}>
+              <TouchableOpacity
+                style={[
+                  styles.navButton,
+                  timelineData.length <= 1 && styles.navButtonDisabled
+                ]}
+                onPress={() => navigateTimeline('previous')}
+                disabled={timelineData.length <= 1 || timelineEditLoading}
+              >
+                <Text style={[
+                  styles.navButtonText,
+                  timelineData.length <= 1 && styles.navButtonTextDisabled
+                ]}>
+                  Previous
+                </Text>
+              </TouchableOpacity>
+
+              <View style={styles.navIndicator}>
+                <Text style={styles.navIndicatorText}>
+                  {currentTimelineIndex + 1} of {timelineData.length}
+                </Text>
+              </View>
+
+              <TouchableOpacity
+                style={[
+                  styles.navButton,
+                  timelineData.length <= 1 && styles.navButtonDisabled
+                ]}
+                onPress={() => navigateTimeline('next')}
+                disabled={timelineData.length <= 1 || timelineEditLoading}
+              >
+                <Text style={[
+                  styles.navButtonText,
+                  timelineData.length <= 1 && styles.navButtonTextDisabled
+                ]}>
+                  Next
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          {/* Modal Body */}
+          <ScrollView style={styles.editModalBody}>
+            <View style={styles.editFormContainer}>
+              <Text style={styles.editSectionTitle}>
+                Timeline Entry {currentTimelineIndex + 1}
+              </Text>
+              
+              {/* Date Field */}
+              <View style={styles.editInputContainer}>
+                <Text style={styles.editInputLabel}>DATE *</Text>
+                <TextInput
+                  style={styles.editInput}
+                  value={editingTimelineData.date}
+                  onChangeText={(text) => handleTimelineInputChange('date', text)}
+                  placeholder="e.g., 25/05/2024"
+                  multiline={false}
+                />
+              </View>
+
+              {/* Title Field */}
+              <View style={styles.editInputContainer}>
+                <Text style={styles.editInputLabel}>TITLE *</Text>
+                <TextInput
+                  style={styles.editInput}
+                  value={editingTimelineData.title}
+                  onChangeText={(text) => handleTimelineInputChange('title', text)}
+                  placeholder="e.g., Member of Lok Sabha"
+                  multiline={false}
+                />
+              </View>
+
+              {/* Title Details Field */}
+              <View style={styles.editInputContainer}>
+                <Text style={styles.editInputLabel}>TITLE DETAILS *</Text>
+                <TextInput
+                  style={[styles.editInput, { height: 80 }]}
+                  value={editingTimelineData.title_details}
+                  onChangeText={(text) => handleTimelineInputChange('title_details', text)}
+                  placeholder="e.g., Elected to Lok Sabha during General Election 2024"
+                  multiline={true}
+                  numberOfLines={3}
+                />
+              </View>
+
+              {/* Additional Info Field */}
+              <View style={styles.editInputContainer}>
+                <Text style={styles.editInputLabel}>ADDITIONAL INFO</Text>
+                <TextInput
+                  style={[styles.editInput, { height: 80 }]}
+                  value={editingTimelineData.additional_info}
+                  onChangeText={(text) => handleTimelineInputChange('additional_info', text)}
+                  placeholder="e.g., Key contributions and impact on citizens"
+                  multiline={true}
+                  numberOfLines={3}
+                />
+              </View>
+
+              {/* Action Buttons */}
+              <View style={styles.actionButtonsContainer}>
+                <TouchableOpacity
+                  style={styles.deleteEducationButton}
+                  onPress={deleteCurrentTimeline}
+                  disabled={timelineEditLoading}
+                >
+                  <Text style={styles.deleteEducationButtonText}>
+                    Delete This Entry
+                  </Text>
+                </TouchableOpacity>
+              </View>
+
+              {/* Info Text */}
+              <View style={styles.infoContainer}>
+                <Text style={styles.infoText}>
+                  Use Previous/Next to navigate between timeline entries. 
                   Save to update current entry or Delete to remove it permanently.
                 </Text>
               </View>
@@ -2450,59 +2990,163 @@ const renderEducationInfo = () => {
   );
 };
 
+const submitTimelineEntry = async () => {
+  try {
+    // Validate form data
+    if (!addTimelineData.date.trim()) {
+      Alert.alert('Validation Error', 'Please enter date');
+      return;
+    }
+    if (!addTimelineData.title.trim()) {
+      Alert.alert('Validation Error', 'Please enter title');
+      return;
+    }
+    if (!addTimelineData.title_details.trim()) {
+      Alert.alert('Validation Error', 'Please enter title details');
+      return;
+    }
 
- const renderTimeline = () => {
-  if (!timelineData || !Array.isArray(timelineData) || timelineData.length === 0) {
-    return renderInfoCard('Career Timeline', '📅',
-      <View style={styles.emptyState}>
-        <Text style={styles.emptyStateIcon}>📋</Text>
-        <Text style={styles.emptyStateText}>No timeline data available</Text>
-      </View>
+    setAddTimelineLoading(true);
+
+    // Get user information
+    const currentUserInfo = await getCurrentUserRole();
+    const userEmailId = currentUserInfo.loggedin_email || 'sanjay.jaiswal@gmail.com';
+    
+    if (!memberId) {
+      Alert.alert('Error', 'Member ID not available. Please try refreshing the screen.');
+      return;
+    }
+
+    // Get base URL
+    const baseUrl = await ConfigService.getBaseUrl();
+
+    // Prepare request payload matching your Postman request
+    const requestPayload = {
+      user_email_id: userEmailId,
+      leader_timeline: {
+        regd_mobile_no: memberId,
+        timeline: [
+          {
+            date: addTimelineData.date.trim(),
+            title: addTimelineData.title.trim(),
+            title_details: addTimelineData.title_details.trim(),
+            additional_info: addTimelineData.additional_info.trim() || ''
+          }
+        ]
+      }
+    };
+
+    console.log('📤 Submitting timeline entry:', requestPayload);
+
+    // Use authPost since timeline endpoint requires authentication
+    const result = await ApiService.authPost(
+      `${baseUrl}/api/leadertimeline`,
+      requestPayload
     );
-  }
 
+    if (result.success) {
+      Alert.alert(
+        'Success', 
+        'Timeline entry added successfully!',
+        [
+          {
+            text: 'OK',
+            onPress: () => {
+              // Reset form
+              setAddTimelineData({
+                date: '',
+                title: '',
+                title_details: '',
+                additional_info: ''
+              });
+              
+              // Close modal
+              setAddTimelineModalVisible(false);
+              
+              // Refresh timeline data
+              if (memberId) {
+                loadInitialData(memberId);
+              }
+            }
+          }
+        ]
+      );
+    } else {
+      throw new Error(result.message || 'Failed to add timeline entry');
+    }
+
+  } catch (error) {
+    console.error('❌ Error submitting timeline entry:', error);
+    
+    // Handle specific error cases
+    if (error.message && error.message.includes('network')) {
+      Alert.alert('Network Error', 'Please check your internet connection and try again.');
+    } else {
+      Alert.alert('Error', `Failed to add timeline entry: ${error.message}`);
+    }
+  } finally {
+    setAddTimelineLoading(false);
+  }
+};
+const renderTimeline = () => {
   return renderInfoCard('Career Timeline', '📅',
     <View style={styles.timelineContainer}>
-      {timelineData.map((item, index) => (
-        <View key={index} style={styles.timelineItem}>
-          <View style={styles.timelineItemLeft}>
-            <View style={styles.timelineDateContainer}>
-              <Text style={styles.timelineDate}>{item.date || 'N/A'}</Text>
-            </View>
-            <View style={styles.timelineConnector}>
-              <View style={styles.timelineDot} />
-              {index < timelineData.length - 1 && (
-                <View style={styles.timelineLine} />
-              )}
-            </View>
-          </View>
-          
-          <View style={styles.timelineItemRight}>
-            <View style={styles.timelineContentCard}>
-              <View style={styles.timelineHeader}>
-                <Text style={styles.timelineTitle}>
-                  {item.title || 'Position'}
-                </Text>
+      {/* Show existing timeline data */}
+      {timelineData && Array.isArray(timelineData) && timelineData.length > 0 ? (
+        timelineData.map((item, index) => (
+          <View key={index} style={styles.timelineItem}>
+            <View style={styles.timelineItemLeft}>
+              <View style={styles.timelineDateContainer}>
+                <Text style={styles.timelineDate}>{item.date || 'N/A'}</Text>
               </View>
-              <Text style={styles.timelineDetails}>
-                {item.title_details || 'No details available'}
-              </Text>
-              {item.additional_info && (
-                <Text style={styles.timelineAdditionalInfo}>
-                  {item.additional_info}
+              <View style={styles.timelineConnector}>
+                <View style={styles.timelineDot} />
+                {index < timelineData.length - 1 && (
+                  <View style={styles.timelineLine} />
+                )}
+              </View>
+            </View>
+            
+            <View style={styles.timelineItemRight}>
+              <View style={styles.timelineContentCard}>
+                <View style={styles.timelineHeader}>
+                  <Text style={styles.timelineTitle}>
+                    {item.title || 'Position'}
+                  </Text>
+                </View>
+                <Text style={styles.timelineDetails}>
+                  {item.title_details || 'No details available'}
                 </Text>
-              )}
+                {item.additional_info && (
+                  <Text style={styles.timelineAdditionalInfo}>
+                    {item.additional_info}
+                  </Text>
+                )}
+              </View>
             </View>
           </View>
+        ))
+      ) : (
+        <View style={styles.emptyState}>
+          <Text style={styles.emptyStateIcon}>📋</Text>
+          <Text style={styles.emptyStateText}>No timeline data available</Text>
         </View>
-      ))}
+      )}
+      
+      {/* Add Timeline Button */}
+      <TouchableOpacity
+        style={styles.addEducationButton}
+        onPress={() => setAddTimelineModalVisible(true)}
+      >
+        <Text style={styles.addEducationIcon}>+</Text>
+        <Text style={styles.addEducationText}>Add New Timeline Entry</Text>
+      </TouchableOpacity>
     </View>,
     '#ffffff',
-    'timeline',   // editType
-    timelineData  // editData
+    'timeline',
+    timelineData
   );
 };
-
   const renderContent = () => {
     if (activeTab === 'profile') {
       return (
@@ -2517,6 +3161,124 @@ const renderEducationInfo = () => {
       return renderTimeline();
     }
   };
+
+  const renderAddTimelineModal = () => {
+  return (
+    <Modal
+      visible={addTimelineModalVisible}
+      animationType="slide"
+      presentationStyle="formSheet"
+      onRequestClose={() => setAddTimelineModalVisible(false)}
+    >
+      <SafeAreaView style={styles.editModalContainer}>
+        <KeyboardAvoidingView 
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={styles.editModalContent}
+        >
+          {/* Modal Header */}
+          <View style={styles.editModalHeader}>
+            <TouchableOpacity
+              onPress={() => setAddTimelineModalVisible(false)}
+              style={styles.editModalCloseButton}
+            >
+              <Text style={styles.editModalCloseText}>✕</Text>
+            </TouchableOpacity>
+            <View style={styles.editModalTitleContainer}>
+              <Text style={styles.editModalTitle}>Add New Timeline Entry</Text>
+            </View>
+            <TouchableOpacity
+              onPress={submitTimelineEntry}
+              style={styles.editModalSaveButton}
+              disabled={addTimelineLoading}
+            >
+              {addTimelineLoading ? (
+                <ActivityIndicator size="small" color="#ffffff" />
+              ) : (
+                <Text style={styles.editModalSaveText}>Save</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+
+          {/* Modal Body */}
+          <ScrollView style={styles.editModalBody}>
+            <View style={styles.editFormContainer}>
+              <Text style={styles.editSectionTitle}>Timeline Details</Text>
+              
+              {/* Date Field */}
+              <View style={styles.editInputContainer}>
+                <Text style={styles.editInputLabel}>DATE *</Text>
+                <TextInput
+                  style={styles.editInput}
+                  value={addTimelineData.date}
+                  onChangeText={(text) => setAddTimelineData({
+                    ...addTimelineData,
+                    date: text
+                  })}
+                  placeholder="e.g., 25/05/2024"
+                  multiline={false}
+                />
+              </View>
+
+              {/* Title Field */}
+              <View style={styles.editInputContainer}>
+                <Text style={styles.editInputLabel}>TITLE *</Text>
+                <TextInput
+                  style={styles.editInput}
+                  value={addTimelineData.title}
+                  onChangeText={(text) => setAddTimelineData({
+                    ...addTimelineData,
+                    title: text
+                  })}
+                  placeholder="e.g., Member of Lok Sabha"
+                  multiline={false}
+                />
+              </View>
+
+              {/* Title Details Field */}
+              <View style={styles.editInputContainer}>
+                <Text style={styles.editInputLabel}>TITLE DETAILS *</Text>
+                <TextInput
+                  style={[styles.editInput, { height: 80 }]}
+                  value={addTimelineData.title_details}
+                  onChangeText={(text) => setAddTimelineData({
+                    ...addTimelineData,
+                    title_details: text
+                  })}
+                  placeholder="e.g., Elected to Lok Sabha during General Election 2024"
+                  multiline={true}
+                  numberOfLines={3}
+                />
+              </View>
+
+              {/* Additional Info Field */}
+              <View style={styles.editInputContainer}>
+                <Text style={styles.editInputLabel}>ADDITIONAL INFO</Text>
+                <TextInput
+                  style={[styles.editInput, { height: 80 }]}
+                  value={addTimelineData.additional_info}
+                  onChangeText={(text) => setAddTimelineData({
+                    ...addTimelineData,
+                    additional_info: text
+                  })}
+                  placeholder="e.g., Key contributions and impact on citizens"
+                  multiline={true}
+                  numberOfLines={3}
+                />
+              </View>
+
+              {/* Info Text */}
+              <View style={styles.infoContainer}>
+                <Text style={styles.infoText}>
+                  Date, Title, and Title Details are required. Additional Info is optional but recommended for better context.
+                </Text>
+              </View>
+            </View>
+          </ScrollView>
+        </KeyboardAvoidingView>
+      </SafeAreaView>
+    </Modal>
+  );
+};
 
 return (
   <ScrollView 
@@ -2551,8 +3313,14 @@ return (
     {/* Add Education Modal */}
     {renderAddEducationModal()}
 
-    {/* ADD THIS NEW LINE: Education Edit Modal */}
+    {/* Education Edit Modal */}
     {renderEducationEditModal()}
+
+    {/* Add Timeline Modal */}
+    {renderAddTimelineModal()}
+
+    {/* Timeline Edit Modal - ADD THIS LINE */}
+    {renderTimelineEditModal()}
   </ScrollView>
 );
 

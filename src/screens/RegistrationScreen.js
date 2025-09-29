@@ -95,6 +95,10 @@ const RegistrationScreen = ({ navigation, route }) => {
     return () => clearInterval(interval);
   }, [otpTimer]);
 
+  // Add this utility function before the RegistrationScreen component
+  const capitalizeAfterSpace = (text) => {
+    return text.replace(/\b\w/g, (char) => char.toUpperCase());
+  };
   const loadUserProfile = async () => {
     try {
       let profileData = route?.params?.userProfile;
@@ -148,9 +152,17 @@ const RegistrationScreen = ({ navigation, route }) => {
   };
 
   const handleInputChange = (field, value) => {
+    // Apply capitalization to text fields (but not mobile, pincode, email, or social media)
+    const fieldsToCapitalize = ['name', 'address', 'city', 'district', 'state'];
+    let processedValue = value;
+
+    if (fieldsToCapitalize.includes(field)) {
+      processedValue = capitalizeAfterSpace(value);
+    }
+
     setFormData(prev => ({
       ...prev,
-      [field]: value
+      [field]: processedValue
     }));
 
     // Reset email verification when email changes (only in registration mode)
@@ -232,39 +244,39 @@ const RegistrationScreen = ({ navigation, route }) => {
   };
 
   // UPDATED EMAIL VERIFICATION USING APISERVICE
- const handleEmailVerification = async () => {
-  if (isEditMode) return; // Disabled in edit mode
+  const handleEmailVerification = async () => {
+    if (isEditMode) return; // Disabled in edit mode
 
-  if (!formData.email || !validateEmail(formData.email)) {
-    Alert.alert('Error', 'Please enter a valid email address');
-    return;
-  }
-
-  if (!apiEndpoints) {
-    Alert.alert('Error', 'API configuration not loaded');
-    return;
-  }
-
-  setEmailVerificationState('loading');
-
-  try {
-    const result = await ApiService.post(apiEndpoints.auth.verifyEmail, {
-      email: formData.email,
-    });
-
-    if (result.success) {
-      setEmailVerificationState('verify'); 
-      // Removed: Alert for "You can now send OTP"
-      // Instead, enable OTP input/button in UI
-    } else {
-      setEmailVerificationState('input');
-      Alert.alert('Error', result.message || 'Failed to verify email. Please try again.');
+    if (!formData.email || !validateEmail(formData.email)) {
+      Alert.alert('Error', 'Please enter a valid email address');
+      return;
     }
-  } catch (error) {
-    setEmailVerificationState('input');
-    Alert.alert('Error', 'Failed to verify email. Please try again.');
-  }
-};
+
+    if (!apiEndpoints) {
+      Alert.alert('Error', 'API configuration not loaded');
+      return;
+    }
+
+    setEmailVerificationState('loading');
+
+    try {
+      const result = await ApiService.post(apiEndpoints.auth.verifyEmail, {
+        email: formData.email,
+      });
+
+      if (result.success) {
+        setEmailVerificationState('verify');
+        // Removed: Alert for "You can now send OTP"
+        // Instead, enable OTP input/button in UI
+      } else {
+        setEmailVerificationState('input');
+        Alert.alert('Error', result.message || 'Failed to verify email. Please try again.');
+      }
+    } catch (error) {
+      setEmailVerificationState('input');
+      Alert.alert('Error', 'Failed to verify email. Please try again.');
+    }
+  };
 
   const validateEmail = (email) => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
@@ -288,7 +300,7 @@ const RegistrationScreen = ({ navigation, route }) => {
       });
 
       console.log('OTP Send API response:', result);
-      
+
       if (result.success && (result.data?.message === 'OTP sent to email successfully' || result.message === 'OTP sent to email successfully')) {
         setVerificationToken('dummy-token');
         setEmailVerificationState('otp');
@@ -496,6 +508,13 @@ const RegistrationScreen = ({ navigation, route }) => {
       Alert.alert('Error', 'Please enter a valid 6-digit pincode');
       return false;
     }
+
+    // UPDATED: Enforce pincode verification in both registration AND edit mode
+    if (!isPincodeVerified) {
+      Alert.alert('Error', 'Please verify your pincode to auto-fill district and state information');
+      return false;
+    }
+
     if (!formData.district.trim()) {
       Alert.alert('Error', 'Please enter your district');
       return false;
@@ -524,135 +543,135 @@ const RegistrationScreen = ({ navigation, route }) => {
   };
 
   // UPDATED EDIT PROFILE HANDLER USING AUTHSERVICE
- // UPDATED EDIT PROFILE HANDLER USING APISERVICE WITH PROPER HEADERS
-const handleEditProfile = async () => {
-  try {
-    const userData = await AsyncStorage.getItem('userData');
-    if (!userData) {
-      Alert.alert('Error', 'User session not found. Please login again.');
-      return;
-    }
-
-    const parsedUserData = JSON.parse(userData);
-    const userId = parsedUserData.id || parsedUserData.userId;
-    const userEmail = parsedUserData.email;
-    const userMobile = parsedUserData.mobile;
-
-    if (!userEmail || !userMobile) {
-      Alert.alert('Error', 'User session incomplete. Please login again.');
-      return;
-    }
-
-    const endpoints = await ConfigService.getApiEndpoints();
-
-    if (isProfileImageChanged && formData.profile_image) {
-      // POST with FormData (when image is updated)
-      console.log('🔄 Updating profile with image...');
-      
-      const formDataToSend = new FormData();
-      formDataToSend.append('leader_regd_mobile_no', userMobile);
-      formDataToSend.append('user_email_id', userEmail);
-      formDataToSend.append('name', formData.name);
-      formDataToSend.append('mobile', formData.mobile);
-      formDataToSend.append('address', formData.address);
-      formDataToSend.append('city', formData.city);
-      formDataToSend.append('state', formData.state);
-      formDataToSend.append('pincode', formData.pincode);
-      formDataToSend.append('district', formData.district);
-      formDataToSend.append('facebook', formData.facebook || '');
-      formDataToSend.append('instagram', formData.instagram || '');
-      formDataToSend.append('twitter', formData.twitter || '');
-
-      if (formData.profile_image && typeof formData.profile_image === 'object') {
-        formDataToSend.append('profile_image', {
-          uri: formData.profile_image.uri,
-          type: formData.profile_image.type || 'image/jpeg',
-          name: formData.profile_image.fileName || `profile-${Date.now()}.jpg`,
-        });
+  // UPDATED EDIT PROFILE HANDLER USING APISERVICE WITH PROPER HEADERS
+  const handleEditProfile = async () => {
+    try {
+      const userData = await AsyncStorage.getItem('userData');
+      if (!userData) {
+        Alert.alert('Error', 'User session not found. Please login again.');
+        return;
       }
 
-      // Use ApiService.authPost for FormData with proper headers
-      const result = await ApiService.authPost(
-        endpoints.user.updateProfile || `${await ConfigService.getBaseUrl()}/api/profile/`,
-        formDataToSend,
-        {}, // Additional headers (ApiService will add auth headers automatically)
-        true // isFormData = true
-      );
-      
-      if (result.success) {
-        Alert.alert('Success!', 'Profile updated successfully!', [
-          {
-            text: 'OK',
-            onPress: () => navigation.goBack(),
-          },
-        ]);
-      } else {
-        throw new Error(result.message || 'Failed to update profile');
-      }
-    } else {
-      // PUT with JSON (when no image is updated)
-      console.log('🔄 Updating profile without image...');
-      
-      const updateData = {
-        leader_regd_mobile_no: userMobile,
-        user_email_id: userEmail,
-        name: formData.name,
-        mobile: formData.mobile,
-        address: formData.address,
-        city: formData.city,
-        state: formData.state,
-        pincode: formData.pincode,
-        district: formData.district,
-        facebook: formData.facebook || '',
-        instagram: formData.instagram || '',
-        twitter: formData.twitter || '',
-      };
+      const parsedUserData = JSON.parse(userData);
+      const userId = parsedUserData.id || parsedUserData.userId;
+      const userEmail = parsedUserData.email;
+      const userMobile = parsedUserData.mobile;
 
-      // Use ApiService.authPut for JSON data with proper headers
-      const result = await ApiService.authPut(
-        endpoints.user.updateProfile || `${await ConfigService.getBaseUrl()}/api/profile/`,
-        updateData
-      );
-      
-      if (result.success) {
-        // Update local storage with new user data if returned
-        if (result.data && result.data.user) {
-          await AsyncStorage.setItem('userData', JSON.stringify(result.data.user));
+      if (!userEmail || !userMobile) {
+        Alert.alert('Error', 'User session incomplete. Please login again.');
+        return;
+      }
+
+      const endpoints = await ConfigService.getApiEndpoints();
+
+      if (isProfileImageChanged && formData.profile_image) {
+        // POST with FormData (when image is updated)
+        console.log('🔄 Updating profile with image...');
+
+        const formDataToSend = new FormData();
+        formDataToSend.append('leader_regd_mobile_no', userMobile);
+        formDataToSend.append('user_email_id', userEmail);
+        formDataToSend.append('name', formData.name);
+        formDataToSend.append('mobile', formData.mobile);
+        formDataToSend.append('address', formData.address);
+        formDataToSend.append('city', formData.city);
+        formDataToSend.append('state', formData.state);
+        formDataToSend.append('pincode', formData.pincode);
+        formDataToSend.append('district', formData.district);
+        formDataToSend.append('facebook', formData.facebook || '');
+        formDataToSend.append('instagram', formData.instagram || '');
+        formDataToSend.append('twitter', formData.twitter || '');
+
+        if (formData.profile_image && typeof formData.profile_image === 'object') {
+          formDataToSend.append('profile_image', {
+            uri: formData.profile_image.uri,
+            type: formData.profile_image.type || 'image/jpeg',
+            name: formData.profile_image.fileName || `profile-${Date.now()}.jpg`,
+          });
         }
-        
-        Alert.alert('Success!', 'Profile updated successfully!', [
-          {
-            text: 'OK',
-            onPress: () => navigation.goBack(),
-          },
-        ]);
+
+        // Use ApiService.authPost for FormData with proper headers
+        const result = await ApiService.authPost(
+          endpoints.user.updateProfile || `${await ConfigService.getBaseUrl()}/api/profile/`,
+          formDataToSend,
+          {}, // Additional headers (ApiService will add auth headers automatically)
+          true // isFormData = true
+        );
+
+        if (result.success) {
+          Alert.alert('Success!', 'Profile updated successfully!', [
+            {
+              text: 'OK',
+              onPress: () => navigation.goBack(),
+            },
+          ]);
+        } else {
+          throw new Error(result.message || 'Failed to update profile');
+        }
       } else {
-        throw new Error(result.message || 'Failed to update profile');
-      }
-    }
-  } catch (error) {
-    console.error('❌ Edit Profile Error:', error);
-    
-    if (error.message.includes('Session expired') || error.message.includes('Authentication failed')) {
-      // Handle session expiration
-      Alert.alert('Session Expired', 'Your session has expired. Please login again.', [
-        {
-          text: 'OK',
-          onPress: () => {
-            navigation.reset({
-              index: 0,
-              routes: [{ name: 'Login' }],
-            });
+        // PUT with JSON (when no image is updated)
+        console.log('🔄 Updating profile without image...');
+
+        const updateData = {
+          leader_regd_mobile_no: userMobile,
+          user_email_id: userEmail,
+          name: formData.name,
+          mobile: formData.mobile,
+          address: formData.address,
+          city: formData.city,
+          state: formData.state,
+          pincode: formData.pincode,
+          district: formData.district,
+          facebook: formData.facebook || '',
+          instagram: formData.instagram || '',
+          twitter: formData.twitter || '',
+        };
+
+        // Use ApiService.authPut for JSON data with proper headers
+        const result = await ApiService.authPut(
+          endpoints.user.updateProfile || `${await ConfigService.getBaseUrl()}/api/profile/`,
+          updateData
+        );
+
+        if (result.success) {
+          // Update local storage with new user data if returned
+          if (result.data && result.data.user) {
+            await AsyncStorage.setItem('userData', JSON.stringify(result.data.user));
           }
+
+          Alert.alert('Success!', 'Profile updated successfully!', [
+            {
+              text: 'OK',
+              onPress: () => navigation.goBack(),
+            },
+          ]);
+        } else {
+          throw new Error(result.message || 'Failed to update profile');
         }
-      ]);
-    } else if (error.message.includes('Network request failed') || error.name === 'TypeError') {
-      Alert.alert('Network Error', 'Unable to connect to server. Please check your internet connection and try again.');
-    } else {
-      Alert.alert('Error', error.message || 'Failed to update profile. Please try again.');
+      }
+    } catch (error) {
+      console.error('❌ Edit Profile Error:', error);
+
+      if (error.message.includes('Session expired') || error.message.includes('Authentication failed')) {
+        // Handle session expiration
+        Alert.alert('Session Expired', 'Your session has expired. Please login again.', [
+          {
+            text: 'OK',
+            onPress: () => {
+              navigation.reset({
+                index: 0,
+                routes: [{ name: 'Login' }],
+              });
+            }
+          }
+        ]);
+      } else if (error.message.includes('Network request failed') || error.name === 'TypeError') {
+        Alert.alert('Network Error', 'Unable to connect to server. Please check your internet connection and try again.');
+      } else {
+        Alert.alert('Error', error.message || 'Failed to update profile. Please try again.');
+      }
     }
-  }
-};
+  };
 
   // UPDATED REGISTRATION HANDLER USING APISERVICE
   const handleRegistration = async () => {
@@ -757,7 +776,7 @@ const handleEditProfile = async () => {
   const renderProfileImage = () => {
     if (formData.profile_image) {
       let imageSource;
-      
+
       // Check if it's a new image (object with uri) or existing image (string filename)
       if (typeof formData.profile_image === 'object' && formData.profile_image.uri) {
         imageSource = { uri: formData.profile_image.uri };
@@ -767,7 +786,7 @@ const handleEditProfile = async () => {
           const baseUrl = await ConfigService.getBaseUrl();
           return `${baseUrl}/uploads/profile_images/${formData.profile_image}`;
         };
-        
+
         // For existing images, we'll use the async pattern or fallback
         imageSource = { uri: `${apiEndpoints?.user?.profile || ''}/uploads/profile_images/${formData.profile_image}` };
       }
@@ -812,14 +831,14 @@ const handleEditProfile = async () => {
             style={[
               styles.emailInput,
               isEmailVerified && styles.verifiedInput,
-              isEditMode && styles.disabledInput // Disabled style in edit mode
+              isEditMode && styles.disabledInput
             ]}
             value={formData.email}
             onChangeText={(text) => handleInputChange('email', text)}
-            placeholder="Enter your email address"
+            placeholder=""
             keyboardType="email-address"
             autoCapitalize="none"
-            editable={!isEditMode} // Disabled in edit mode
+            editable={!isEditMode}
           />
 
           {/* Always show verified icon in edit mode */}
@@ -862,12 +881,7 @@ const handleEditProfile = async () => {
           )}
         </View>
 
-        {/* Show helper text in edit mode */}
-        {isEditMode && (
-          <Text style={styles.helperText}>
-            Email address cannot be changed in edit mode
-          </Text>
-        )}
+
 
         {/* OTP section only shown in registration mode */}
         {!isEditMode && emailVerificationState === 'otp' && (
@@ -926,7 +940,7 @@ const handleEditProfile = async () => {
             ]}
             value={formData.pincode}
             onChangeText={(text) => handleInputChange('pincode', text)}
-            placeholder="Enter 6-digit pincode"
+            placeholder=""
             keyboardType="numeric"
             maxLength={6}
             editable={!isPincodeVerified}
@@ -962,24 +976,6 @@ const handleEditProfile = async () => {
             </TouchableOpacity>
           )}
         </View>
-
-        {pincodeVerificationState === 'error' && (
-          <Text style={styles.errorText}>
-            Pincode verification failed. You can enter district, city and state manually below.
-          </Text>
-        )}
-
-        {isPincodeVerified && (
-          <Text style={styles.successText}>
-            ✓ Pincode verified - District, City & State auto-filled
-          </Text>
-        )}
-
-        {formData.pincode.length === 6 && pincodeVerificationState === 'input' && (
-          <Text style={styles.helperText}>
-            Tap the verify icon to auto-fill district, city & state, or enter manually below
-          </Text>
-        )}
       </View>
     );
   };
@@ -1028,27 +1024,25 @@ const handleEditProfile = async () => {
               style={[styles.input, isEditMode && styles.disabledInput]}
               value={formData.mobile}
               onChangeText={(text) => handleInputChange('mobile', text)}
-              placeholder="Enter 10-digit mobile number"
+              placeholder=""
               keyboardType="phone-pad"
               maxLength={10}
               editable={!isEditMode}
             />
-            {isEditMode && (
-              <Text style={styles.helperText}>
-                Mobile number cannot be changed as it's your identity
-              </Text>
-            )}
           </View>
+
 
           <View style={styles.inputGroup}>
             <Text style={styles.label}>NAME *</Text>
             <TextInput
-              style={styles.input}
+              style={[styles.input, isEditMode && styles.disabledInput]}
               value={formData.name}
               onChangeText={(text) => handleInputChange('name', text)}
-              placeholder="Enter your full name"
+              placeholder=""
+              editable={!isEditMode}
             />
           </View>
+
 
           <View style={styles.inputGroup}>
             <Text style={styles.label}>EMAIL ADDRESS *</Text>
@@ -1061,7 +1055,7 @@ const handleEditProfile = async () => {
               style={[styles.input, styles.multilineInput]}
               value={formData.address}
               onChangeText={(text) => handleInputChange('address', text)}
-              placeholder="Enter your complete address"
+              placeholder=""
               multiline
               numberOfLines={3}
             />
@@ -1077,14 +1071,9 @@ const handleEditProfile = async () => {
               ]}
               value={formData.city}
               onChangeText={(text) => handleInputChange('city', text)}
-              placeholder={isPincodeVerified ? "Auto-filled from pincode verification" : "Enter your city"}
-              editable={true} // Always allow manual input
+              placeholder=""
+              editable={true}
             />
-            {isPincodeVerified && (
-              <Text style={styles.helperText}>
-                Auto-filled from pincode. You can edit if needed.
-              </Text>
-            )}
           </View>
 
           <View style={styles.inputGroup}>
@@ -1101,14 +1090,9 @@ const handleEditProfile = async () => {
               ]}
               value={formData.district}
               onChangeText={(text) => handleInputChange('district', text)}
-              placeholder={isPincodeVerified ? "Auto-filled from pincode verification" : "Enter your district"}
-              editable={true} // Always allow manual input
+              placeholder=""
+              editable={true}
             />
-            {isPincodeVerified && (
-              <Text style={styles.helperText}>
-                Auto-filled from pincode. You can edit if needed.
-              </Text>
-            )}
           </View>
 
           <View style={styles.inputGroup}>
@@ -1120,14 +1104,9 @@ const handleEditProfile = async () => {
               ]}
               value={formData.state}
               onChangeText={(text) => handleInputChange('state', text)}
-              placeholder={isPincodeVerified ? "Auto-filled from pincode verification" : "Enter your state"}
-              editable={true} // Always allow manual input
+              placeholder=""
+              editable={true}
             />
-            {isPincodeVerified && (
-              <Text style={styles.helperText}>
-                Auto-filled from pincode. You can edit if needed.
-              </Text>
-            )}
           </View>
 
           {/* Updated Social Media Fields */}
@@ -1137,7 +1116,7 @@ const handleEditProfile = async () => {
               style={styles.input}
               value={formData.facebook}
               onChangeText={(text) => handleInputChange('facebook', text)}
-              placeholder="Enter Facebook username or URL (optional)"
+              placeholder=""
             />
           </View>
 
@@ -1147,7 +1126,7 @@ const handleEditProfile = async () => {
               style={styles.input}
               value={formData.instagram}
               onChangeText={(text) => handleInputChange('instagram', text)}
-              placeholder="Enter Instagram username or URL (optional)"
+              placeholder=""
             />
           </View>
 
@@ -1157,7 +1136,7 @@ const handleEditProfile = async () => {
               style={styles.input}
               value={formData.twitter}
               onChangeText={(text) => handleInputChange('twitter', text)}
-              placeholder="Enter Twitter username or URL (optional)"
+              placeholder=""
             />
           </View>
 
@@ -1171,7 +1150,7 @@ const handleEditProfile = async () => {
                     style={styles.passwordInput}
                     value={formData.password}
                     onChangeText={(text) => handleInputChange('password', text)}
-                    placeholder="Enter password (min 6 characters)"
+                    placeholder=""
                     secureTextEntry={!showPassword}
                   />
                   <TouchableOpacity
@@ -1194,7 +1173,7 @@ const handleEditProfile = async () => {
                     style={styles.passwordInput}
                     value={formData.confirmPassword}
                     onChangeText={(text) => handleInputChange('confirmPassword', text)}
-                    placeholder="Confirm your password"
+                    placeholder=""
                     secureTextEntry={!showConfirmPassword}
                   />
                   <TouchableOpacity

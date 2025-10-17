@@ -2,7 +2,10 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 class ConfigService {
   static BASE_URL_KEY = 'app_base_url';
-  static DEFAULT_BASE_URL = 'https://0eba92fa1802.ngrok-free.app'; // 👈 Update this when ngrok gives new URL
+  static DEFAULT_BASE_URL = 'https://22d1e7f43dd9.ngrok-free.app'; // 👈 Update this when ngrok gives new URL
+
+
+  
 
   // Initialize configuration with default values (always enforce DEFAULT_BASE_URL)
   static async initializeConfig() {
@@ -13,6 +16,7 @@ class ConfigService {
       console.error('❌ Error initializing configuration:', error);
     }
   }
+
 
   // Set base URL
   static async setBaseUrl(baseUrl) {
@@ -145,6 +149,12 @@ static async getApiEndpoints() {
       bootstrap: `${baseUrl}/api/bootstrap`,
     },
     coordinates: `${baseUrl}/api/coordinates`,
+    assemblyConstituencies: {
+  getAll: `${baseUrl}/api/assemblyconstituencies/`,
+  create: `${baseUrl}/api/assemblyconstituencies`,
+  update: `${baseUrl}/api/assemblyconstituencies/`,
+  delete: `${baseUrl}/api/assemblyconstituencies/`,
+},
     grievances: {
       // Updated to use GET methods with query parameters
       getAll: `${baseUrl}/api/grievances/search`, // GET method with query params

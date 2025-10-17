@@ -102,6 +102,9 @@ const AboutConstituencyScreen = ({ navigation }) => {
 
   const [sectionDropdowns, setSectionDropdowns] = useState({});
   const [sectionDropdownPositions, setSectionDropdownPositions] = useState({});
+  const [dropdownVisible, setDropdownVisible] = useState(false);
+  const [dropdownPosition, setDropdownPosition] = useState({ x: 0, y: 0 });
+
 
   const showSectionDropdown = (sectionKey, event) => {
     if (!isAdmin) {
@@ -153,6 +156,88 @@ const AboutConstituencyScreen = ({ navigation }) => {
     electorsBreakdown: {}
   });
 
+
+  const [addAssemblyModalVisible, setAddAssemblyModalVisible] = useState(false);
+  const [assemblyFormList, setAssemblyFormList] = useState([
+    { ac_number: '', ac_name: '', district: '', type: '' }
+  ]); // Array to hold multiple constituencies
+  const [saveLoading, setSaveLoading] = useState(false);
+  // Add these with your other state declarations at the top
+  const [editAssemblyModalVisible, setEditAssemblyModalVisible] = useState(false);
+  const [currentAssemblyIndex, setCurrentAssemblyIndex] = useState(0);
+  const [editingAssemblyData, setEditingAssemblyData] = useState({
+    ac_number: '',
+    ac_name: '',
+    district: '',
+    type: ''
+  });
+  const [assemblyEditLoading, setAssemblyEditLoading] = useState(false);
+  const [editAssemblyFormList, setEditAssemblyFormList] = useState([]);
+  const [isAddingMoreInEdit, setIsAddingMoreInEdit] = useState(false);
+  // Add new constituency form to the list
+  const handleAddMoreConstituency = () => {
+    setAssemblyFormList([
+      ...assemblyFormList,
+      { ac_number: '', ac_name: '', district: '', type: '' }
+    ]);
+  };
+
+  // ✅ ADD MORE CONSTITUENCY IN EDIT MODE
+  const handleAddMoreInEdit = () => {
+    setIsAddingMoreInEdit(true);
+    setEditAssemblyFormList([
+      { ac_number: '', ac_name: '', district: '', type: '' }
+    ]);
+  };
+
+  // ✅ UPDATE EDIT FORM LIST
+  const handleEditAssemblyFormListChange = (index, field, value) => {
+    const updatedList = [...editAssemblyFormList];
+    updatedList[index][field] = value;
+    setEditAssemblyFormList(updatedList);
+  };
+
+  // ✅ ADD MORE FORM TO EDIT LIST
+  const handleAddMoreToEditList = () => {
+    setEditAssemblyFormList([
+      ...editAssemblyFormList,
+      { ac_number: '', ac_name: '', district: '', type: '' }
+    ]);
+  };
+
+  // ✅ REMOVE FROM EDIT LIST
+  const handleRemoveFromEditList = (index) => {
+    if (editAssemblyFormList.length === 1) {
+      Alert.alert('Cannot Remove', 'At least one constituency form is required');
+      return;
+    }
+    const updatedList = editAssemblyFormList.filter((_, i) => i !== index);
+    setEditAssemblyFormList(updatedList);
+  };
+
+  // ✅ CANCEL ADD MORE IN EDIT
+  const handleCancelAddMoreInEdit = () => {
+    setIsAddingMoreInEdit(false);
+    setEditAssemblyFormList([]);
+  };
+
+
+  // Update specific constituency in the list
+  const handleAssemblyFormListChange = (index, field, value) => {
+    const updatedList = [...assemblyFormList];
+    updatedList[index][field] = value;
+    setAssemblyFormList(updatedList);
+  };
+
+  // Remove constituency from the list
+  const handleRemoveConstituency = (index) => {
+    if (assemblyFormList.length === 1) {
+      Alert.alert('Cannot Remove', 'At least one constituency form is required');
+      return;
+    }
+    const updatedList = assemblyFormList.filter((_, i) => i !== index);
+    setAssemblyFormList(updatedList);
+  };
   // Initialize component data
   useEffect(() => {
     initializeComponent();
@@ -353,44 +438,77 @@ const AboutConstituencyScreen = ({ navigation }) => {
   const fetchConstituencyData = async (mobileNo) => {
     try {
       setError(null);
-
       ConstituencyLoggingService.constInfo('📡 === FETCHING CONSTITUENCY DATA ===', { mobileNo });
 
-      // Get base URL from ConfigService (following App.js pattern)
       const baseUrl = await ConfigService.getBaseUrl();
       ConstituencyLoggingService.constInfo('🌐 Using base URL:', baseUrl);
 
-      // Fetch constituency profile data
-      const profileResult = await ApiService.get(
-        `${baseUrl}/api/constituencyprofile/${mobileNo}`,
-        {
-          'x-user-id': loggedInEmail || 'anonymous_user',
-          'x-user-role': userRole,
-        }
-      );
+      // Get email for API call
+      let emailToUse = loggedInEmail || ownerEmail;
 
-      if (!profileResult.success) {
-        throw new Error(`Failed to fetch constituency profile: ${profileResult.message}`);
+      if (!emailToUse) {
+        try {
+          const appOwnerInfoStr = await EncryptedStorage.getItem('AppOwnerInfo');
+          if (appOwnerInfoStr) {
+            const appOwnerInfo = JSON.parse(appOwnerInfoStr);
+            emailToUse = appOwnerInfo.email || appOwnerInfo.user_email || appOwnerInfo.emailId || '';
+          }
+        } catch (error) {
+          ConstituencyLoggingService.constError('Error getting email from AppOwnerInfo', error);
+        }
       }
 
-      ConstituencyLoggingService.constInfo('✅ Constituency profile fetched successfully');
-      setConstituencyData(profileResult.data);
+      if (!emailToUse) {
+        ConstituencyLoggingService.constWarn('No email found, using placeholder');
+        emailToUse = 'sanjay.jaiswal@gmail.com';
+      }
 
-      // Fetch assembly constituencies data
-      const assemblyResult = await ApiService.get(
-        `${baseUrl}/api/assemblyconstituencies/${mobileNo}`,
-        {
-          'x-user-id': loggedInEmail || 'anonymous_user',
-          'x-user-role': userRole,
-        }
-      );
+      // ========== FETCH CONSTITUENCY PROFILE (NEW) ==========
+      const constituencyUrl = `${baseUrl}/api/constituencyprofile/?leader_regd_mobile_no=${mobileNo}&user_email_id=${encodeURIComponent(emailToUse)}`;
+
+      ConstituencyLoggingService.constInfo('Fetching constituency profile from:', constituencyUrl);
+
+      // Use authGet since this requires authentication
+      const constituencyResult = await ApiService.authGet(constituencyUrl);
+
+      if (constituencyResult.success && constituencyResult.data) {
+        const constituencyProfileData = constituencyResult.data.constitency_profile || constituencyResult.data.constituency_profile || constituencyResult.data;
+
+        ConstituencyLoggingService.constInfo('✅ Constituency profile fetched successfully');
+        setConstituencyData(constituencyProfileData);
+      } else {
+        ConstituencyLoggingService.constWarn('⚠️ No constituency profile found, using mock data');
+        // Set empty/mock data if no profile exists
+        setConstituencyData({
+          const_name: 'Constituency Information',
+          const_no: '',
+          state: '',
+          district: '',
+          constituency_type: 'Lok Sabha',
+          reservation_status: '',
+          established: '',
+          sitting_member: '',
+          member_party: '',
+          assembly_segment_count: '',
+          overview: '',
+          geography: '',
+          eci_url: ''
+        });
+      }
+
+      // ========== FETCH ASSEMBLY CONSTITUENCIES ==========
+      const assemblyUrl = `${baseUrl}/api/assemblyconstituencies/?leader_regd_mobile_no=${mobileNo}&user_email_id=${encodeURIComponent(emailToUse)}`;
+
+      ConstituencyLoggingService.constInfo('Fetching assembly constituencies from:', assemblyUrl);
+
+      const assemblyResult = await ApiService.authGet(assemblyUrl);
 
       if (assemblyResult.success) {
         const assemblyData = assemblyResult.data;
-
         let constituencies = [];
-        if (assemblyData && assemblyData.assembly_constituencies && Array.isArray(assemblyData.assembly_constituencies.assembly_const)) {
-          constituencies = assemblyData.assembly_constituencies.assembly_const;
+
+        if (assemblyData && assemblyData.assembly_constituencies) {
+          constituencies = assemblyData.assembly_constituencies.assembly_const || [];
         } else if (assemblyData && Array.isArray(assemblyData.assembly_const)) {
           constituencies = assemblyData.assembly_const;
         } else if (Array.isArray(assemblyData)) {
@@ -400,7 +518,8 @@ const AboutConstituencyScreen = ({ navigation }) => {
         ConstituencyLoggingService.constInfo('✅ Assembly constituencies fetched', { count: constituencies.length });
         setAssemblyConstituencies(constituencies);
       } else {
-        ConstituencyLoggingService.constWarn('⚠️ Assembly constituencies data not available', assemblyResult.message);
+        ConstituencyLoggingService.constWarn('⚠️ Failed to fetch assembly constituencies');
+        setAssemblyConstituencies([]);
       }
 
     } catch (err) {
@@ -687,51 +806,83 @@ const AboutConstituencyScreen = ({ navigation }) => {
     }
 
     setUpdateLoading(true);
+
     try {
       const sections = getFieldSections();
       const section = sections[sectionKey];
       const sectionData = editFormSections[sectionKey];
 
-      ConstituencyLoggingService.constInfo(`🔄 === UPDATING ${section.title.toUpperCase()} ===`, { mobileNo: regdMobileNo });
+      ConstituencyLoggingService.constInfo(
+        `🔄 === UPDATING ${section.title.toUpperCase()} ===`,
+        { mobileNo: regdMobileNo }
+      );
 
+      // Clean form data
       const cleanedFormData = {};
-      Object.keys(sectionData).forEach(key => {
+      Object.keys(sectionData).forEach((key) => {
         const value = sectionData[key];
         if (value !== null && value !== undefined && value.toString().trim() !== '') {
           cleanedFormData[key] = value.toString().trim();
         }
       });
 
+      if (Object.keys(cleanedFormData).length === 0) {
+        Alert.alert('Nothing to update', 'Please modify at least one field.');
+        setUpdateLoading(false);
+        return;
+      }
+
       const baseUrl = await ConfigService.getBaseUrl();
 
+      // Get email
+      let emailToUse = loggedInEmail || ownerEmail;
+      if (!emailToUse) {
+        try {
+          const appOwnerInfoStr = await EncryptedStorage.getItem('AppOwnerInfo');
+          if (appOwnerInfoStr) {
+            const appOwnerInfo = JSON.parse(appOwnerInfoStr);
+            emailToUse = appOwnerInfo.email || appOwnerInfo.user_email || appOwnerInfo.emailId || '';
+          }
+        } catch (error) {
+          ConstituencyLoggingService.constError('Error getting email', error);
+        }
+      }
+
+      // ⚡ Corrected payload matching backend
       const requestPayload = {
-        constitency_profile: cleanedFormData
+        user_email_id: emailToUse || 'sanjay.jaiswal@gmail.com',
+        leader_regd_mobile_no: regdMobileNo,
+        constitency_profile: {  // match spelling exactly
+          regd_mobile_no: regdMobileNo,
+          ...cleanedFormData,   // flatten the section
+        },
       };
 
       ConstituencyLoggingService.constDebug('Section update payload prepared', {
         section: section.title,
-        url: `${baseUrl}/api/constituencyprofile/${regdMobileNo}`,
-        fieldsCount: Object.keys(cleanedFormData).length
+        payload: requestPayload,
       });
 
-      const result = await ApiService.put(
-        `${baseUrl}/api/constituencyprofile/${regdMobileNo}`,
+      // PUT API call
+      const result = await ApiService.authPut(
+        `${baseUrl}/api/constituencyprofile/`,
         requestPayload,
         {
-          'x-user-id': loggedInEmail || 'admin_user',
+          'x-user-id': emailToUse || 'admin_user',
           'x-user-role': userRole,
         }
       );
 
+      console.log('PUT API Response:', result);
+
       if (!result.success) {
-        throw new Error(`Failed to update ${section.title}: ${result.message}`);
+        throw new Error(result.message || `Failed to update ${section.title}`);
       }
 
       ConstituencyLoggingService.constInfo(`✅ ${section.title} updated successfully`);
 
-      if (result.data && result.data.constituency_profile) {
-        setConstituencyData(result.data.constituency_profile);
-      } else if (result.data && result.data.constitency_profile) {
+      // Update local state
+      if (result.data?.constitency_profile) {
         setConstituencyData(result.data.constitency_profile);
       } else if (result.data) {
         setConstituencyData(result.data);
@@ -741,7 +892,6 @@ const AboutConstituencyScreen = ({ navigation }) => {
       await fetchConstituencyData(regdMobileNo);
 
       Alert.alert('Success', `${section.title} updated successfully!`);
-
     } catch (error) {
       ConstituencyLoggingService.constError(`❌ Error updating ${sectionKey}`, error);
       Alert.alert('Update Failed', `Failed to update section: ${error.message}`);
@@ -749,6 +899,8 @@ const AboutConstituencyScreen = ({ navigation }) => {
       setUpdateLoading(false);
     }
   };
+
+
 
   // 1. ADD THESE NEW FUNCTIONS after handleUpdateSection function:
 
@@ -779,60 +931,96 @@ const AboutConstituencyScreen = ({ navigation }) => {
           text: 'Yes, Delete',
           style: 'destructive',
           onPress: async () => {
-            await performSectionDelete(sectionKey, section);
+            // ✅ Call the updated performSectionDelete with useDeleteAPI = true
+            await performSectionDelete(sectionKey, section, true);
           },
         },
       ]
     );
   };
 
-  const performSectionDelete = async (sectionKey, section) => {
+
+  const performSectionDelete = async (sectionKey, section, useDeleteAPI = true) => {
     setUpdateLoading(true);
     try {
-      ConstituencyLoggingService.constInfo(`🗑️ === DELETING ${section.title.toUpperCase()} SECTION ===`, {
-        mobileNo: regdMobileNo,
-        section: sectionKey
-      });
-
       const baseUrl = await ConfigService.getBaseUrl();
 
-      // Create payload with section fields set to empty/null values
-      const sectionFieldsToDelete = {};
-      section.fields.forEach(field => {
-        sectionFieldsToDelete[field.key] = null; // or empty string ""
-      });
-
-      const requestPayload = {
-        constitency_profile: sectionFieldsToDelete
-      };
-
-      ConstituencyLoggingService.constDebug('Section delete payload prepared', {
-        section: section.title,
-        url: `${baseUrl}/api/constituencyprofile/${regdMobileNo}`,
-        fieldsToDelete: Object.keys(sectionFieldsToDelete)
-      });
-
-      // Use PUT to update fields to null/empty instead of actual DELETE
-      const result = await ApiService.put(
-        `${baseUrl}/api/constituencyprofile/${regdMobileNo}`,
-        requestPayload,
-        {
-          'x-user-id': loggedInEmail || 'admin_user',
-          'x-user-role': userRole,
+      // Get email for request
+      let emailToUse = loggedInEmail || ownerEmail;
+      if (!emailToUse) {
+        try {
+          const appOwnerInfoStr = await EncryptedStorage.getItem('AppOwnerInfo');
+          if (appOwnerInfoStr) {
+            const appOwnerInfo = JSON.parse(appOwnerInfoStr);
+            emailToUse = appOwnerInfo.email || appOwnerInfo.user_email || appOwnerInfo.emailId || '';
+          }
+        } catch (error) {
+          ConstituencyLoggingService.constError('Error getting email', error);
         }
-      );
-
-      if (!result.success) {
-        throw new Error(`Failed to delete ${section.title}: ${result.message}`);
       }
 
-      ConstituencyLoggingService.constInfo(`✅ ${section.title} section deleted successfully`);
+      if (useDeleteAPI) {
+        // ✅ Call actual DELETE API with query params
+        ConstituencyLoggingService.constInfo(`🗑️ === CALLING DELETE API FOR ${section.title.toUpperCase()} ===`, {
+          mobileNo: regdMobileNo,
+          section: sectionKey,
+        });
+
+        const deleteUrl = `${baseUrl}/api/constituencyprofile?leader_regd_mobile_no=${regdMobileNo}&user_email_id=${encodeURIComponent(emailToUse || 'sanjay.jaiswal@gmail.com')}`;
+
+        const result = await ApiService.authDelete(
+          deleteUrl,
+          {}, // DELETE body can be empty
+          {
+            'x-user-id': emailToUse || 'admin_user',
+            'x-user-role': userRole,
+          }
+        );
+
+        if (!result.success) {
+          throw new Error(result.message || `Failed to delete ${section.title}`);
+        }
+
+        ConstituencyLoggingService.constInfo(`✅ ${section.title} deleted successfully via DELETE API`);
+      } else {
+        // ⚡ Optional: fallback to clearing fields via PUT (existing logic)
+        ConstituencyLoggingService.constInfo(`🗑️ === DELETING ${section.title.toUpperCase()} SECTION (PUT EMPTY) ===`, {
+          mobileNo: regdMobileNo,
+          section: sectionKey
+        });
+
+        const sectionFieldsToDelete = {};
+        section.fields.forEach(field => {
+          sectionFieldsToDelete[field.key] = '';
+        });
+
+        const requestPayload = {
+          user_email_id: emailToUse || 'sanjay.jaiswal@gmail.com',
+          constitency_profile: {
+            regd_mobile_no: regdMobileNo,
+            ...sectionFieldsToDelete
+          }
+        };
+
+        const result = await ApiService.authPut(
+          `${baseUrl}/api/constituencyprofile/${regdMobileNo}`,
+          requestPayload,
+          {
+            'x-user-id': emailToUse || 'admin_user',
+            'x-user-role': userRole,
+          }
+        );
+
+        if (!result.success) {
+          throw new Error(`Failed to delete ${section.title}: ${result.message}`);
+        }
+
+        ConstituencyLoggingService.constInfo(`✅ ${section.title} section cleared successfully`);
+      }
 
       // Update local state
       const updatedData = { ...constituencyData };
-      section.fields.forEach(field => {
-        updatedData[field.key] = '';
-      });
+      section.fields.forEach(field => updatedData[field.key] = '');
       setConstituencyData(updatedData);
 
       // Refresh data from server
@@ -847,6 +1035,8 @@ const AboutConstituencyScreen = ({ navigation }) => {
       setUpdateLoading(false);
     }
   };
+
+
   const closeDevInput = () => {
     setShowDevInput(false);
     setDevInput('');
@@ -893,30 +1083,303 @@ const AboutConstituencyScreen = ({ navigation }) => {
      setEditModalVisible(true);
    };*/
 
-  const openEditAssemblyForm = (assembly) => {
+  const openEditAssemblyForm = () => {
     if (!isAdmin) {
       Alert.alert('Access Denied', 'Admin privileges required for editing');
       return;
     }
 
-    if (!assembly) {
-      Alert.alert('No Data', 'No assembly constituency data available to edit');
+    if (!assemblyConstituencies || assemblyConstituencies.length === 0) {
+      Alert.alert('No Data', 'No assembly constituencies found to edit.');
       return;
     }
 
-    ConstituencyLoggingService.constInfo('📝 Opening assembly edit form', { assembly: assembly.ac_name });
-
-    setEditFormData({
-      ac_number: assembly.ac_number || '',
-      ac_name: assembly.ac_name || assembly.name || '',
-      district: assembly.district || '',
-      type: assembly.type || ''
+    // Start with the first assembly entry
+    setCurrentAssemblyIndex(0);
+    setEditingAssemblyData({
+      ac_number: assemblyConstituencies[0].ac_number || '',
+      ac_name: assemblyConstituencies[0].ac_name || '',
+      district: assemblyConstituencies[0].district || '',
+      type: assemblyConstituencies[0].type || ''
     });
 
-    setEditingAssemblyId(assembly._id || assembly.id);
-    setEditingConstituency(false);
-    setEditingAssembly(true);
-    setEditModalVisible(true);
+    // ✅ INITIALIZE EMPTY FORM LIST FOR "ADD MORE"
+    setEditAssemblyFormList([]);
+    setIsAddingMoreInEdit(false);
+
+    setEditAssemblyModalVisible(true);
+  };
+
+  const navigateAssembly = (direction) => {
+    if (!assemblyConstituencies || !Array.isArray(assemblyConstituencies)) return;
+
+    let newIndex;
+    if (direction === 'next') {
+      newIndex = currentAssemblyIndex < assemblyConstituencies.length - 1 ?
+        currentAssemblyIndex + 1 : 0;
+    } else {
+      newIndex = currentAssemblyIndex > 0 ?
+        currentAssemblyIndex - 1 : assemblyConstituencies.length - 1;
+    }
+
+    setCurrentAssemblyIndex(newIndex);
+    setEditingAssemblyData({
+      ac_number: assemblyConstituencies[newIndex].ac_number || '',
+      ac_name: assemblyConstituencies[newIndex].ac_name || '',
+      district: assemblyConstituencies[newIndex].district || '',
+      type: assemblyConstituencies[newIndex].type || ''
+    });
+  };
+
+  const handleAssemblyInputChange = (field, value) => {
+    setEditingAssemblyData(prev => ({
+      ...prev,
+      [field]: value
+    }));
+  };
+
+  const saveCurrentAssembly = async () => {
+    try {
+      // ✅ CHECK IF WE'RE ADDING NEW CONSTITUENCIES
+      if (isAddingMoreInEdit && editAssemblyFormList.length > 0) {
+        // Validate all forms
+        for (let i = 0; i < editAssemblyFormList.length; i++) {
+          const form = editAssemblyFormList[i];
+          if (!form.ac_number || !form.ac_name || !form.district) {
+            Alert.alert(
+              'Validation Error',
+              `Please fill in all required fields for Constituency ${i + 1}`
+            );
+            return;
+          }
+        }
+
+        setAssemblyEditLoading(true);
+
+        if (!regdMobileNo) {
+          Alert.alert('Error', 'Mobile number not available.');
+          return;
+        }
+
+        const baseUrl = await ConfigService.getBaseUrl();
+
+        // Convert form list to clean assembly objects
+        const newAssemblies = editAssemblyFormList.map(form => ({
+          ac_number: parseInt(form.ac_number),
+          ac_name: form.ac_name.trim(),
+          district: form.district.trim(),
+          ...(form.type && form.type.trim() && { type: form.type.trim() })
+        }));
+
+        // Combine existing + new
+        const allConstituencies = [
+          ...assemblyConstituencies.map(ac => ({
+            ac_number: parseInt(ac.ac_number),
+            ac_name: ac.ac_name,
+            district: ac.district,
+            ...(ac.type && { type: ac.type })
+          })),
+          ...newAssemblies
+        ];
+
+        const result = await ApiService.authPut(
+          `${baseUrl}/api/assemblyconstituencies/`,
+          {
+            leader_regd_mobile_no: regdMobileNo,
+            user_email_id: loggedInEmail || ownerEmail,
+            assembly_constituencies: {
+              narration: "Updated assembly constituencies",
+              assembly_const_count: allConstituencies.length,
+              assembly_const: allConstituencies
+            }
+          },
+          {
+            'x-user-id': loggedInEmail || 'admin_user',
+            'x-user-role': userRole,
+          }
+        );
+
+        if (result.success) {
+          Alert.alert(
+            'Success',
+            `${newAssemblies.length} new ${newAssemblies.length === 1 ? 'constituency' : 'constituencies'} added successfully!`,
+            [
+              {
+                text: 'OK',
+                onPress: () => {
+                  setIsAddingMoreInEdit(false);
+                  setEditAssemblyFormList([]);
+                  fetchConstituencyData(regdMobileNo);
+                }
+              }
+            ]
+          );
+        } else {
+          throw new Error(result.message || 'Failed to add constituencies');
+        }
+
+        setAssemblyEditLoading(false);
+        return;
+      }
+
+      // ✅ ORIGINAL LOGIC - EDITING EXISTING CONSTITUENCY
+      if (!editingAssemblyData.ac_number.toString().trim()) {
+        Alert.alert('Validation Error', 'Please enter AC number');
+        return;
+      }
+      if (!editingAssemblyData.ac_name.trim()) {
+        Alert.alert('Validation Error', 'Please enter AC name');
+        return;
+      }
+      if (!editingAssemblyData.district.trim()) {
+        Alert.alert('Validation Error', 'Please enter district');
+        return;
+      }
+
+      setAssemblyEditLoading(true);
+
+      if (!regdMobileNo) {
+        Alert.alert('Error', 'Mobile number not available.');
+        return;
+      }
+
+      const baseUrl = await ConfigService.getBaseUrl();
+
+      const updatedAssemblyConstituencies = assemblyConstituencies.map((assembly, index) => {
+        if (index === currentAssemblyIndex) {
+          return {
+            ...assembly,
+            ac_number: parseInt(editingAssemblyData.ac_number),
+            ac_name: editingAssemblyData.ac_name.trim(),
+            district: editingAssemblyData.district.trim(),
+            ...(editingAssemblyData.type && { type: editingAssemblyData.type.trim() })
+          };
+        }
+        return assembly;
+      });
+
+      const result = await ApiService.authPut(
+        `${baseUrl}/api/assemblyconstituencies/`,
+        {
+          leader_regd_mobile_no: regdMobileNo,
+          user_email_id: loggedInEmail || ownerEmail,
+          assembly_constituencies: {
+            narration: "Updated assembly constituencies",
+            assembly_const_count: updatedAssemblyConstituencies.length,
+            assembly_const: updatedAssemblyConstituencies.map(assembly => ({
+              ac_number: parseInt(assembly.ac_number) || 0,
+              ac_name: assembly.ac_name || '',
+              district: assembly.district || '',
+              ...(assembly.type && { type: assembly.type })
+            }))
+          }
+        },
+        {
+          'x-user-id': loggedInEmail || 'admin_user',
+          'x-user-role': userRole,
+        }
+      );
+
+      if (result.success) {
+        Alert.alert('Success', 'Assembly constituency updated successfully!', [
+          {
+            text: 'OK',
+            onPress: () => {
+              fetchConstituencyData(regdMobileNo);
+            }
+          }
+        ]);
+      } else {
+        throw new Error(result.message || 'Failed to update assembly constituency');
+      }
+
+    } catch (error) {
+      ConstituencyLoggingService.constError('❌ Error in saveCurrentAssembly', error);
+      Alert.alert('Save Failed', `Failed to save: ${error.message}`);
+    } finally {
+      setAssemblyEditLoading(false);
+    }
+  };
+
+  const deleteCurrentAssembly = async () => {
+    const currentAssemblyEntry = assemblyConstituencies[currentAssemblyIndex];
+
+    Alert.alert(
+      'Delete Assembly Constituency',
+      `Are you sure you want to delete this assembly constituency?\n\n${editingAssemblyData.ac_name}`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              setAssemblyEditLoading(true);
+
+              if (!regdMobileNo) {
+                Alert.alert('Error', 'Mobile number not available. Please try refreshing the screen.');
+                return;
+              }
+
+              const baseUrl = await ConfigService.getBaseUrl();
+
+              // Remove the current assembly from the array
+              const updatedAssemblyConstituencies = assemblyConstituencies.filter(
+                (_, index) => index !== currentAssemblyIndex
+              );
+
+              const result = await ApiService.authPut(
+                `${baseUrl}/api/assemblyconstituencies/`,
+                {
+                  leader_regd_mobile_no: regdMobileNo,
+                  user_email_id: loggedInEmail || ownerEmail,
+                  assembly_constituencies: {
+                    narration: "Updated assembly constituencies",
+                    assembly_const_count: updatedAssemblyConstituencies.length,
+                    assembly_const: updatedAssemblyConstituencies.map(assembly => ({
+                      ac_number: parseInt(assembly.ac_number) || 0,
+                      ac_name: assembly.ac_name || '',
+                      district: assembly.district || '',
+                      ...(assembly.type && { type: assembly.type })
+                    }))
+                  }
+                },
+                {
+                  'x-user-id': loggedInEmail || 'admin_user',
+                  'x-user-role': userRole,
+                }
+              );
+
+              if (result.success) {
+                Alert.alert('Success', 'Assembly constituency deleted successfully!', [
+                  {
+                    text: 'OK',
+                    onPress: () => {
+                      if (updatedAssemblyConstituencies.length === 0) {
+                        setEditAssemblyModalVisible(false);
+                      } else {
+                        const newIndex = currentAssemblyIndex >= updatedAssemblyConstituencies.length ?
+                          0 : currentAssemblyIndex;
+                        setCurrentAssemblyIndex(newIndex);
+                      }
+                      fetchConstituencyData(regdMobileNo);
+                    }
+                  }
+                ]);
+              } else {
+                throw new Error(result.message || 'Failed to delete assembly constituency');
+              }
+
+            } catch (error) {
+              ConstituencyLoggingService.constError('❌ Error deleting assembly constituency', error);
+              Alert.alert('Delete Failed', `Failed to delete assembly constituency: ${error.message}`);
+            } finally {
+              setAssemblyEditLoading(false);
+            }
+          }
+        }
+      ]
+    );
   };
 
   // Handle constituency update
@@ -943,11 +1406,12 @@ const AboutConstituencyScreen = ({ navigation }) => {
         constitency_profile: cleanedFormData
       };
 
-      const result = await ApiService.put(
-        `${baseUrl}/api/constituencyprofile/${regdMobileNo}`,
+      // ✅ CORRECT: No mobile number in URL path
+      const result = await ApiService.authPut(
+        `${baseUrl}/api/constituencyprofile`,  // Just the base endpoint
         requestPayload,
         {
-          'x-user-id': loggedInEmail || 'admin_user',
+          'x-user-id': emailToUse || 'admin_user',
           'x-user-role': userRole,
         }
       );
@@ -993,7 +1457,6 @@ const AboutConstituencyScreen = ({ navigation }) => {
         assemblyId: editingAssemblyId
       });
 
-      // Clean the form data
       const cleanedFormData = {};
       Object.keys(editFormData).forEach(key => {
         const value = editFormData[key];
@@ -1002,7 +1465,6 @@ const AboutConstituencyScreen = ({ navigation }) => {
         }
       });
 
-      // Create updated assembly constituencies array
       const updatedAssemblyConstituencies = assemblyConstituencies.map(assembly => {
         if ((assembly._id || assembly.id) === editingAssemblyId) {
           return {
@@ -1016,26 +1478,24 @@ const AboutConstituencyScreen = ({ navigation }) => {
         return assembly;
       });
 
-      // Get base URL from ConfigService
       const baseUrl = await ConfigService.getBaseUrl();
 
-      // Structure the payload according to backend API
-      const requestPayload = {
-        assembly_constituencies: {
-          narration: "Updated assembly constituencies",
-          assembly_const_count: updatedAssemblyConstituencies.length,
-          assembly_const: updatedAssemblyConstituencies.map(assembly => ({
-            ac_number: parseInt(assembly.ac_number) || 0,
-            ac_name: assembly.ac_name || '',
-            district: assembly.district || '',
-            ...(assembly.type && { type: assembly.type })
-          }))
-        }
-      };
-
-      const result = await ApiService.put(
-        `${baseUrl}/api/assemblyconstituencies/${regdMobileNo}`,
-        requestPayload,
+      const result = await ApiService.authPut(
+        `${baseUrl}/api/assemblyconstituencies/`,
+        {
+          leader_regd_mobile_no: regdMobileNo,
+          user_email_id: loggedInEmail || ownerEmail,
+          assembly_constituencies: {
+            narration: "Updated assembly constituencies",
+            assembly_const_count: updatedAssemblyConstituencies.length,
+            assembly_const: updatedAssemblyConstituencies.map(assembly => ({
+              ac_number: parseInt(assembly.ac_number) || 0,
+              ac_name: assembly.ac_name || '',
+              district: assembly.district || '',
+              ...(assembly.type && { type: assembly.type })
+            }))
+          }
+        },
         {
           'x-user-id': loggedInEmail || 'admin_user',
           'x-user-role': userRole,
@@ -1047,11 +1507,8 @@ const AboutConstituencyScreen = ({ navigation }) => {
       }
 
       ConstituencyLoggingService.constInfo('✅ Assembly constituency updated successfully');
-
-      // Close modal and refresh data
       setEditModalVisible(false);
       await fetchConstituencyData(regdMobileNo);
-
       Alert.alert('Success', 'Assembly constituency updated successfully!');
 
     } catch (error) {
@@ -1062,6 +1519,170 @@ const AboutConstituencyScreen = ({ navigation }) => {
     }
   };
 
+
+  const handleAddNewAssembly = async () => {
+    // Validate all forms in the list
+    for (let i = 0; i < assemblyFormList.length; i++) {
+      const form = assemblyFormList[i];
+      if (!form.ac_number || !form.ac_name || !form.district) {
+        Alert.alert(
+          'Validation Error',
+          `Please fill in all required fields for Constituency ${i + 1} (AC Number, AC Name, and District)`
+        );
+        return;
+      }
+    }
+
+    if (!regdMobileNo) {
+      Alert.alert('Error', 'Mobile number not found. Please refresh the screen.');
+      return;
+    }
+
+    setSaveLoading(true);
+    try {
+      ConstituencyLoggingService.constInfo('➕ === ADDING MULTIPLE ASSEMBLY CONSTITUENCIES ===', {
+        mobileNo: regdMobileNo,
+        count: assemblyFormList.length
+      });
+
+      // Get email
+      let emailToUse = loggedInEmail || ownerEmail;
+
+      if (!emailToUse) {
+        try {
+          const appOwnerInfoStr = await EncryptedStorage.getItem('AppOwnerInfo');
+          if (appOwnerInfoStr) {
+            const appOwnerInfo = JSON.parse(appOwnerInfoStr);
+            emailToUse = appOwnerInfo.email || appOwnerInfo.user_email || appOwnerInfo.emailId || '';
+          }
+        } catch (error) {
+          ConstituencyLoggingService.constError('Error getting email', error);
+        }
+      }
+
+      if (!emailToUse) {
+        throw new Error('Email is required for this operation');
+      }
+
+      const baseUrl = await ConfigService.getBaseUrl();
+
+      // Convert form list to clean assembly objects
+      const newAssemblies = assemblyFormList.map(form => {
+        const assembly = {
+          ac_number: parseInt(form.ac_number),
+          ac_name: form.ac_name.trim(),
+          district: form.district.trim()
+        };
+
+        if (form.type && form.type.trim()) {
+          assembly.type = form.type.trim();
+        }
+
+        return assembly;
+      });
+
+      // Combine existing + new assemblies
+      const allConstituencies = [
+        ...assemblyConstituencies.map(ac => ({
+          ac_number: parseInt(ac.ac_number),
+          ac_name: ac.ac_name,
+          district: ac.district,
+          ...(ac.type && { type: ac.type })
+        })),
+        ...newAssemblies
+      ];
+
+      // Prepare payload
+      const requestPayload = {
+        user_email_id: emailToUse,
+        assembly_constituencies: {
+          regd_mobile_no: regdMobileNo,
+          narration: "This PC comprises the following ACs:",
+          assembly_const_count: allConstituencies.length,
+          assembly_const: allConstituencies
+        }
+      };
+
+      ConstituencyLoggingService.constDebug('Add assemblies request payload', {
+        url: `${baseUrl}/api/assemblyconstituencies`,
+        email: emailToUse,
+        mobile: regdMobileNo,
+        totalACs: allConstituencies.length,
+        newACs: newAssemblies.length
+      });
+
+      // Check if data exists
+      const checkResult = await ApiService.authGet(
+        `${baseUrl}/api/assemblyconstituencies/?leader_regd_mobile_no=${regdMobileNo}&user_email_id=${encodeURIComponent(emailToUse)}`
+      );
+
+      let result;
+
+      if (checkResult.success && checkResult.data &&
+        (checkResult.data.assembly_constituencies || Array.isArray(checkResult.data))) {
+        // Data exists - use PUT
+        ConstituencyLoggingService.constInfo('Assembly data exists, using PUT to update');
+        result = await ApiService.authPut(
+          `${baseUrl}/api/assemblyconstituencies/`,
+          {
+            leader_regd_mobile_no: regdMobileNo,
+            user_email_id: emailToUse,
+            assembly_constituencies: {
+              narration: "This PC comprises the following ACs:",
+              assembly_const_count: allConstituencies.length,
+              assembly_const: allConstituencies
+            }
+          },
+          {
+            'x-user-id': emailToUse,
+            'x-user-role': userRole,
+          }
+        );
+      } else {
+        // No existing data - use POST
+        ConstituencyLoggingService.constInfo('No assembly data found, using POST to create');
+        result = await ApiService.authPost(
+          `${baseUrl}/api/assemblyconstituencies`,
+          requestPayload,
+          {
+            'x-user-id': emailToUse,
+            'x-user-role': userRole,
+          }
+        );
+      }
+
+      if (!result.success) {
+        throw new Error(result.message || `Server returned status ${result.status}`);
+      }
+
+      ConstituencyLoggingService.constInfo(
+        `✅ ${newAssemblies.length} assembly constituencies added successfully`
+      );
+
+      // Reset form list and close modal
+      setAssemblyFormList([
+        { ac_number: '', ac_name: '', district: '', type: '' }
+      ]);
+      setAddAssemblyModalVisible(false);
+
+      // Refresh data
+      await fetchConstituencyData(regdMobileNo);
+
+      Alert.alert(
+        'Success',
+        `${newAssemblies.length} assembly ${newAssemblies.length === 1 ? 'constituency' : 'constituencies'} added successfully!`
+      );
+
+    } catch (error) {
+      ConstituencyLoggingService.constError('❌ Error adding assembly constituencies', error);
+      Alert.alert(
+        'Add Failed',
+        `Failed to add assembly constituencies:\n\n${error.message}`
+      );
+    } finally {
+      setSaveLoading(false);
+    }
+  };
   const handleSubmitEdit = () => {
     if (editingConstituency) {
       handleUpdateConstituency();
@@ -1224,39 +1845,6 @@ const AboutConstituencyScreen = ({ navigation }) => {
             </Text>
           )}
         </View>
-      </View>
-
-      {/* Additional Info Cards - REMOVE ALL MINI EDIT BUTTONS */}
-      <View style={styles.infoGrid}>
-        {constituencyData?.district && (
-          <View style={styles.infoCard}>
-            <Icon name="map" size={24} color="#16a085" style={styles.infoIcon} />
-            <Text style={styles.infoLabel}>District</Text>
-            <Text style={styles.infoValue} numberOfLines={2}>
-              {constituencyData.district}
-            </Text>
-          </View>
-        )}
-
-        {constituencyData?.assembly_segment_count && (
-          <View style={styles.infoCard}>
-            <Icon name="how-to-vote" size={24} color="#2980b9" style={styles.infoIcon} />
-            <Text style={styles.infoLabel}>Assembly Constituencies</Text>
-            <Text style={styles.infoValue} numberOfLines={2}>
-              {constituencyData.assembly_segment_count}
-            </Text>
-            {constituencyData?.eci_url && (
-              <TouchableOpacity
-                onPress={() => openLink(constituencyData.eci_url)}
-                style={styles.eciUrlContainer}
-              >
-                <Text style={styles.eciUrlText} numberOfLines={1}>
-                  View ECI Data
-                </Text>
-              </TouchableOpacity>
-            )}
-          </View>
-        )}
       </View>
     </>
   );
@@ -1444,27 +2032,59 @@ const AboutConstituencyScreen = ({ navigation }) => {
 
     if (error && assemblyConstituencies.length === 0) {
       return (
-        <View style={styles.errorContainer}>
-          <Icon name="error" size={24} color="#e74c3c" />
-          <Text style={styles.errorText}>Assembly constituency data not available</Text>
-          <TouchableOpacity style={styles.retryButton} onPress={onRefresh}>
-            <Text style={styles.retryButtonText}>Retry</Text>
-          </TouchableOpacity>
+        <View style={styles.segmentsList}>
+          <View style={styles.errorContainer}>
+            <Icon name="error" size={24} color="#e74c3c" />
+            <Text style={styles.errorText}>Assembly constituency data not available</Text>
+            <TouchableOpacity style={styles.retryButton} onPress={onRefresh}>
+              <Text style={styles.retryButtonText}>Retry</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Show Add New button only when NO data exists */}
+          {isAdmin && (
+            <TouchableOpacity
+              style={styles.addAssemblyButton}
+              onPress={() => setAddAssemblyModalVisible(true)}
+              activeOpacity={0.7}
+            >
+              <Icon name="add-circle" size={20} color="#fff" />
+              <Text style={styles.addAssemblyButtonText}>Add New Assembly Constituency</Text>
+            </TouchableOpacity>
+          )}
         </View>
       );
     }
 
     if (assemblyConstituencies.length === 0) {
       return (
-        <View style={styles.errorContainer}>
-          <Icon name="info" size={24} color="#95a5a6" />
-          <Text style={styles.errorText}>No assembly constituencies found</Text>
+        <View style={styles.segmentsList}>
+          <View style={styles.errorContainer}>
+            <Icon name="info" size={24} color="#95a5a6" />
+            <Text style={styles.errorText}>No assembly constituencies found</Text>
+          </View>
+
+          {/* Show Add New button only when NO data exists */}
+          {isAdmin && (
+            <TouchableOpacity
+              style={styles.addAssemblyButton}
+              onPress={() => setAddAssemblyModalVisible(true)}
+              activeOpacity={0.7}
+            >
+              <Icon name="add-circle" size={20} color="#fff" />
+              <Text style={styles.addAssemblyButtonText}>Add New Assembly Constituency</Text>
+            </TouchableOpacity>
+          )}
         </View>
       );
     }
 
+    // When data EXISTS - show list WITHOUT "Add More" button
     return (
       <View style={styles.segmentsList}>
+        {/* NO "Add More" button here - only individual edit buttons */}
+
+        {/* Assembly List WITH individual edit buttons */}
         {assemblyConstituencies.map((segment, index) => (
           <View key={segment._id || segment.id || index} style={styles.segmentItem}>
             <View style={styles.segmentNumber}>
@@ -1480,35 +2100,35 @@ const AboutConstituencyScreen = ({ navigation }) => {
                     {segment.district}
                   </Text>
                 )}
+
                 {segment.type === 'SC' && (
                   <View style={styles.scBadge}>
                     <Text style={styles.scBadgeText}>SC</Text>
                   </View>
                 )}
+
+                {/* Individual Edit Button for each constituency */}
                 {isAdmin && (
                   <TouchableOpacity
                     style={{
-                      backgroundColor: '#3498db',
-                      borderRadius: 15,
-                      width: 30,
-                      height: 30,
-                      justifyContent: 'center',
-                      alignItems: 'center',
                       marginLeft: 8,
-                      elevation: 2,
-                      shadowColor: '#000',
-                      shadowOffset: { width: 0, height: 1 },
-                      shadowOpacity: 0.2,
-                      shadowRadius: 2,
+                      padding: 6,
+                      backgroundColor: '#3498db',
+                      borderRadius: 4
                     }}
                     onPress={() => {
-                      console.log('Assembly edit button pressed for:', segment.ac_name);
-                      openEditAssemblyForm(segment);
+                      setCurrentAssemblyIndex(index);
+                      setEditingAssemblyData({
+                        ac_number: segment.ac_number || '',
+                        ac_name: segment.ac_name || '',
+                        district: segment.district || '',
+                        type: segment.type || ''
+                      });
+                      setEditAssemblyModalVisible(true);
                     }}
                     activeOpacity={0.7}
-                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                   >
-                    <Icon name="edit" size={12} color="#fff" />
+                    <Icon name="edit" size={14} color="#fff" />
                   </TouchableOpacity>
                 )}
               </View>
@@ -1940,7 +2560,7 @@ const AboutConstituencyScreen = ({ navigation }) => {
               >
                 <Text style={styles.dropdownItemIcon}>🗑️</Text>
                 <Text style={[styles.dropdownItemText, styles.dropdownDeleteText]}>
-                  Delete 
+                  Delete
                 </Text>
               </TouchableOpacity>
             </View>
@@ -1948,6 +2568,616 @@ const AboutConstituencyScreen = ({ navigation }) => {
         </Modal>
       );
     });
+  };
+  const renderAddAssemblyModal = () => (
+    <Modal
+      visible={addAssemblyModalVisible}
+      animationType="slide"
+      transparent={true}
+      onRequestClose={() => {
+        setAddAssemblyModalVisible(false);
+        setAssemblyFormList([
+          { ac_number: '', ac_name: '', district: '', type: '' }
+        ]);
+      }}
+    >
+      <View style={styles.modalOverlay}>
+        <View style={styles.modalContent}>
+          <View style={[styles.modalHeader, { backgroundColor: '#2980b9' }]}>
+            <Icon name="add-circle" size={18} color="#fff" />
+            <Text style={styles.modalTitle}>
+              Add Assembly Constituencies ({assemblyFormList.length})
+            </Text>
+            <TouchableOpacity
+              onPress={() => {
+                setAddAssemblyModalVisible(false);
+                setAssemblyFormList([
+                  { ac_number: '', ac_name: '', district: '', type: '' }
+                ]);
+              }}
+              style={styles.closeButton}
+            >
+              <Icon name="close" size={18} color="#fff" />
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={true}>
+            {assemblyFormList.map((form, index) => (
+              <View
+                key={index}
+                style={{
+                  marginBottom: 20,
+                  padding: 15,
+                  backgroundColor: '#f8f9fa',
+                  borderRadius: 8,
+                  borderLeftWidth: 3,
+                  borderLeftColor: '#2980b9'
+                }}
+              >
+                {/* Form Header with Remove Button */}
+                <View style={{
+                  flexDirection: 'row',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  marginBottom: 15
+                }}>
+                  <Text style={[styles.tableSubHeaderText, { fontSize: 14 }]}>
+                    Constituency {index + 1}
+                  </Text>
+                  {assemblyFormList.length > 1 && (
+                    <TouchableOpacity
+                      onPress={() => handleRemoveConstituency(index)}
+                      style={{
+                        backgroundColor: '#e74c3c',
+                        padding: 6,
+                        borderRadius: 4,
+                        flexDirection: 'row',
+                        alignItems: 'center'
+                      }}
+                    >
+                      <Icon name="delete" size={14} color="#fff" />
+                      <Text style={{ color: '#fff', marginLeft: 4, fontSize: 12 }}>
+                        Remove
+                      </Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+
+                {/* AC Number */}
+                <View style={styles.formGroup}>
+                  <Text style={[styles.formLabel, styles.requiredLabel]}>
+                    AC Number *
+                  </Text>
+                  <TextInput
+                    style={styles.formInput}
+                    value={form.ac_number}
+                    onChangeText={(text) => handleAssemblyFormListChange(index, 'ac_number', text)}
+                    placeholder="Enter AC number (e.g., 13)"
+                    placeholderTextColor="#bdc3c7"
+                    keyboardType="numeric"
+                  />
+                </View>
+
+                {/* AC Name */}
+                <View style={styles.formGroup}>
+                  <Text style={[styles.formLabel, styles.requiredLabel]}>
+                    AC Name *
+                  </Text>
+                  <TextInput
+                    style={styles.formInput}
+                    value={form.ac_name}
+                    onChangeText={(text) => handleAssemblyFormListChange(index, 'ac_name', text)}
+                    placeholder="Enter AC name (e.g., Bettiah)"
+                    placeholderTextColor="#bdc3c7"
+                  />
+                </View>
+
+                {/* District */}
+                <View style={styles.formGroup}>
+                  <Text style={[styles.formLabel, styles.requiredLabel]}>
+                    District *
+                  </Text>
+                  <TextInput
+                    style={styles.formInput}
+                    value={form.district}
+                    onChangeText={(text) => handleAssemblyFormListChange(index, 'district', text)}
+                    placeholder="Enter district"
+                    placeholderTextColor="#bdc3c7"
+                  />
+                </View>
+
+                {/* Type */}
+                <View style={styles.formGroup}>
+                  <Text style={styles.formLabel}>Type (Optional)</Text>
+                  <TextInput
+                    style={styles.formInput}
+                    value={form.type}
+                    onChangeText={(text) => handleAssemblyFormListChange(index, 'type', text)}
+                    placeholder="SC/General or leave blank"
+                    placeholderTextColor="#bdc3c7"
+                  />
+                </View>
+              </View>
+            ))}
+
+            {/* Add More Button */}
+            <TouchableOpacity
+              style={{
+                backgroundColor: '#27ae60',
+                padding: 12,
+                borderRadius: 8,
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'center',
+                marginTop: 10,
+                marginBottom: 20
+              }}
+              onPress={handleAddMoreConstituency}
+              disabled={saveLoading}
+            >
+              <Icon name="add" size={20} color="#fff" />
+              <Text style={{ color: '#fff', marginLeft: 8, fontWeight: 'bold' }}>
+                Add More Constituency
+              </Text>
+            </TouchableOpacity>
+          </ScrollView>
+
+          {/* Footer with Cancel and Save */}
+          <View style={styles.modalFooter}>
+            <TouchableOpacity
+              style={[styles.modalButton, styles.cancelButton]}
+              onPress={() => {
+                setAddAssemblyModalVisible(false);
+                setAssemblyFormList([
+                  { ac_number: '', ac_name: '', district: '', type: '' }
+                ]);
+              }}
+              disabled={saveLoading}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.cancelButtonText}>Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.modalButton, styles.saveButton, { backgroundColor: '#2980b9' }]}
+              onPress={handleAddNewAssembly}
+              disabled={saveLoading}
+              activeOpacity={0.7}
+            >
+              {saveLoading ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Text style={styles.saveButtonText}>
+                  Save All ({assemblyFormList.length})
+                </Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+
+  const renderAssemblyEditModal = () => {
+    if (!assemblyConstituencies || assemblyConstituencies.length === 0) {
+      return null;
+    }
+
+    return (
+      <Modal
+        visible={editAssemblyModalVisible}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setEditAssemblyModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            {/* Modal Header */}
+            <View style={[styles.modalHeader, { backgroundColor: '#2980b9' }]}>
+              <Icon name="ballot" size={18} color="#fff" />
+              <Text style={styles.modalTitle}>Edit Assembly Constituency</Text>
+              <TouchableOpacity
+                onPress={() => setEditAssemblyModalVisible(false)}
+                style={styles.closeButton}
+              >
+                <Icon name="close" size={18} color="#fff" />
+              </TouchableOpacity>
+            </View>
+
+            {/* Assembly Navigation Header */}
+            <View style={styles.tableSubHeader}>
+              <TouchableOpacity
+                style={[
+                  styles.retryButton,
+                  { flex: 0, paddingHorizontal: 12, marginRight: 10 },
+                  assemblyConstituencies.length <= 1 && { opacity: 0.5 }
+                ]}
+                onPress={() => navigateAssembly('previous')}
+                disabled={assemblyConstituencies.length <= 1 || assemblyEditLoading}
+              >
+                <Text style={styles.retryButtonText}>Previous</Text>
+              </TouchableOpacity>
+
+              <View style={{ flex: 1, alignItems: 'center' }}>
+                <Text style={styles.tableSubHeaderText}>
+                  {currentAssemblyIndex + 1} of {assemblyConstituencies.length}
+                </Text>
+              </View>
+
+              <TouchableOpacity
+                style={[
+                  styles.retryButton,
+                  { flex: 0, paddingHorizontal: 12, marginLeft: 10 },
+                  assemblyConstituencies.length <= 1 && { opacity: 0.5 }
+                ]}
+                onPress={() => navigateAssembly('next')}
+                disabled={assemblyConstituencies.length <= 1 || assemblyEditLoading}
+              >
+                <Text style={styles.retryButtonText}>Next</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Modal Body */}
+            <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={false}>
+              {/* ✅ SHOW ADD MORE FORMS IF ACTIVE */}
+              {isAddingMoreInEdit ? (
+                <>
+                  <Text style={[styles.tableSubHeaderText, { marginBottom: 15, textAlign: 'center' }]}>
+                    Adding New Constituencies ({editAssemblyFormList.length})
+                  </Text>
+
+                  {editAssemblyFormList.map((form, index) => (
+                    <View
+                      key={index}
+                      style={{
+                        marginBottom: 20,
+                        padding: 15,
+                        backgroundColor: '#f8f9fa',
+                        borderRadius: 8,
+                        borderLeftWidth: 3,
+                        borderLeftColor: '#2980b9'
+                      }}
+                    >
+                      {/* Form Header */}
+                      <View style={{
+                        flexDirection: 'row',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        marginBottom: 15
+                      }}>
+                        <Text style={[styles.tableSubHeaderText, { fontSize: 14 }]}>
+                          New Constituency {index + 1}
+                        </Text>
+                        {editAssemblyFormList.length > 1 && (
+                          <TouchableOpacity
+                            onPress={() => handleRemoveFromEditList(index)}
+                            style={{
+                              backgroundColor: '#e74c3c',
+                              padding: 6,
+                              borderRadius: 4,
+                              flexDirection: 'row',
+                              alignItems: 'center'
+                            }}
+                          >
+                            <Icon name="delete" size={14} color="#fff" />
+                            <Text style={{ color: '#fff', marginLeft: 4, fontSize: 12 }}>
+                              Remove
+                            </Text>
+                          </TouchableOpacity>
+                        )}
+                      </View>
+
+                      {/* AC Number */}
+                      <View style={styles.formGroup}>
+                        <Text style={[styles.formLabel, styles.requiredLabel]}>
+                          AC Number *
+                        </Text>
+                        <TextInput
+                          style={styles.formInput}
+                          value={form.ac_number}
+                          onChangeText={(text) => handleEditAssemblyFormListChange(index, 'ac_number', text)}
+                          placeholder="Enter AC number"
+                          placeholderTextColor="#bdc3c7"
+                          keyboardType="numeric"
+                        />
+                      </View>
+
+                      {/* AC Name */}
+                      <View style={styles.formGroup}>
+                        <Text style={[styles.formLabel, styles.requiredLabel]}>
+                          AC Name *
+                        </Text>
+                        <TextInput
+                          style={styles.formInput}
+                          value={form.ac_name}
+                          onChangeText={(text) => handleEditAssemblyFormListChange(index, 'ac_name', text)}
+                          placeholder="Enter AC name"
+                          placeholderTextColor="#bdc3c7"
+                        />
+                      </View>
+
+                      {/* District */}
+                      <View style={styles.formGroup}>
+                        <Text style={[styles.formLabel, styles.requiredLabel]}>
+                          District *
+                        </Text>
+                        <TextInput
+                          style={styles.formInput}
+                          value={form.district}
+                          onChangeText={(text) => handleEditAssemblyFormListChange(index, 'district', text)}
+                          placeholder="Enter district"
+                          placeholderTextColor="#bdc3c7"
+                        />
+                      </View>
+
+                      {/* Type */}
+                      <View style={styles.formGroup}>
+                        <Text style={styles.formLabel}>Type (Optional)</Text>
+                        <TextInput
+                          style={styles.formInput}
+                          value={form.type}
+                          onChangeText={(text) => handleEditAssemblyFormListChange(index, 'type', text)}
+                          placeholder="SC/General or leave blank"
+                          placeholderTextColor="#bdc3c7"
+                        />
+                      </View>
+                    </View>
+                  ))}
+
+                  {/* Add More Button */}
+                  <TouchableOpacity
+                    style={{
+                      backgroundColor: '#27ae60',
+                      padding: 12,
+                      borderRadius: 8,
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      marginTop: 10,
+                      marginBottom: 10
+                    }}
+                    onPress={handleAddMoreToEditList}
+                    disabled={assemblyEditLoading}
+                  >
+                    <Icon name="add" size={20} color="#fff" />
+                    <Text style={{ color: '#fff', marginLeft: 8, fontWeight: 'bold' }}>
+                      Add More Constituency
+                    </Text>
+                  </TouchableOpacity>
+
+                  {/* Cancel Add More */}
+                  <TouchableOpacity
+                    style={[styles.fullRetryButton, { backgroundColor: '#95a5a6' }]}
+                    onPress={handleCancelAddMoreInEdit}
+                    disabled={assemblyEditLoading}
+                  >
+                    <Icon name="close" size={16} color="#fff" />
+                    <Text style={styles.fullRetryButtonText}>Cancel Adding</Text>
+                  </TouchableOpacity>
+                </>
+              ) : (
+                <>
+                  {/* ✅ ORIGINAL EDIT SINGLE CONSTITUENCY FORM */}
+                  <Text style={[styles.tableSubHeaderText, { marginBottom: 15, textAlign: 'center' }]}>
+                    Assembly Entry {currentAssemblyIndex + 1}
+                  </Text>
+
+                  <View style={styles.formGroup}>
+                    <Text style={[styles.formLabel, styles.requiredLabel]}>
+                      Assembly Constituency Number *
+                    </Text>
+                    <TextInput
+                      style={styles.formInput}
+                      value={editingAssemblyData.ac_number.toString()}
+                      onChangeText={(text) => handleAssemblyInputChange('ac_number', text)}
+                      placeholder="Enter AC number"
+                      placeholderTextColor="#bdc3c7"
+                      keyboardType="numeric"
+                    />
+                  </View>
+
+                  <View style={styles.formGroup}>
+                    <Text style={[styles.formLabel, styles.requiredLabel]}>
+                      Assembly Constituency Name *
+                    </Text>
+                    <TextInput
+                      style={styles.formInput}
+                      value={editingAssemblyData.ac_name}
+                      onChangeText={(text) => handleAssemblyInputChange('ac_name', text)}
+                      placeholder="Enter AC name"
+                      placeholderTextColor="#bdc3c7"
+                    />
+                  </View>
+
+                  <View style={styles.formGroup}>
+                    <Text style={[styles.formLabel, styles.requiredLabel]}>
+                      District *
+                    </Text>
+                    <TextInput
+                      style={styles.formInput}
+                      value={editingAssemblyData.district}
+                      onChangeText={(text) => handleAssemblyInputChange('district', text)}
+                      placeholder="Enter district"
+                      placeholderTextColor="#bdc3c7"
+                    />
+                  </View>
+
+                  <View style={styles.formGroup}>
+                    <Text style={styles.formLabel}>
+                      Type (Optional)
+                    </Text>
+                    <TextInput
+                      style={styles.formInput}
+                      value={editingAssemblyData.type}
+                      onChangeText={(text) => handleAssemblyInputChange('type', text)}
+                      placeholder="Enter type (SC/General or leave blank)"
+                      placeholderTextColor="#bdc3c7"
+                    />
+                  </View>
+
+                  {/* Add More Constituency Button */}
+                  <TouchableOpacity
+                    style={{
+                      backgroundColor: '#27ae60',
+                      padding: 12,
+                      borderRadius: 8,
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      marginTop: 10,
+                      marginBottom: 10
+                    }}
+                    onPress={handleAddMoreInEdit}
+                    disabled={assemblyEditLoading}
+                  >
+                    <Icon name="add" size={20} color="#fff" />
+                    <Text style={{ color: '#fff', marginLeft: 8, fontWeight: 'bold' }}>
+                      Add More Constituency
+                    </Text>
+                  </TouchableOpacity>
+
+                  {/* Delete Button */}
+                  <TouchableOpacity
+                    style={[styles.fullRetryButton, { backgroundColor: '#e74c3c', marginTop: 10 }]}
+                    onPress={deleteCurrentAssembly}
+                    disabled={assemblyEditLoading}
+                  >
+                    <Icon name="delete" size={16} color="#fff" />
+                    <Text style={styles.fullRetryButtonText}>Delete This Entry</Text>
+                  </TouchableOpacity>
+
+                  <View style={styles.noDataContainer}>
+                    <Text style={styles.noDataText}>
+                      Use Previous/Next to navigate between assembly constituencies.
+                      Save to update or Delete to remove permanently.
+                    </Text>
+                  </View>
+                </>
+              )}
+            </ScrollView>
+
+            {/* Modal Footer */}
+            <View style={styles.modalFooter}>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.cancelButton]}
+                onPress={() => setEditAssemblyModalVisible(false)}
+                disabled={assemblyEditLoading}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.cancelButtonText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.saveButton, { backgroundColor: '#2980b9' }]}
+                onPress={saveCurrentAssembly}
+                disabled={assemblyEditLoading}
+                activeOpacity={0.7}
+              >
+                {assemblyEditLoading ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Text style={styles.saveButtonText}>
+                    {isAddingMoreInEdit ?
+                      `Save All (${editAssemblyFormList.length})` :
+                      'Save Assembly'
+                    }
+                  </Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+    );
+  };
+  const handleDeleteAllAssemblies = () => {
+    Alert.alert(
+      'Delete All Assemblies',
+      'Are you sure you want to delete ALL assembly constituencies? This action cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete All',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              setUpdateLoading(true);
+
+              const baseUrl = await ConfigService.getBaseUrl();
+
+              const result = await ApiService.authPut(
+                `${baseUrl}/api/assemblyconstituencies/`,
+                {
+                  leader_regd_mobile_no: regdMobileNo,
+                  user_email_id: loggedInEmail || ownerEmail,
+                  assembly_constituencies: {
+                    narration: "No assembly constituencies",
+                    assembly_const_count: 0,
+                    assembly_const: []
+                  }
+                }
+              );
+
+              if (result.success) {
+                Alert.alert('Success', 'All assembly constituencies deleted!');
+                await fetchConstituencyData(regdMobileNo);
+              } else {
+                throw new Error(result.message || 'Failed to delete');
+              }
+            } catch (error) {
+              Alert.alert('Delete Failed', error.message);
+            } finally {
+              setUpdateLoading(false);
+            }
+          }
+        }
+      ]
+    );
+  };
+  const renderAssemblyDropdownModal = () => {
+    if (!dropdownVisible || !isAdmin) return null;
+
+    return (
+      <Modal
+        visible={dropdownVisible}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setDropdownVisible(false)}
+      >
+        <TouchableOpacity
+          style={styles.dropdownOverlay}
+          activeOpacity={1}
+          onPress={() => setDropdownVisible(false)}
+        >
+          <View style={[styles.dropdownMenu, {
+            top: dropdownPosition.y,
+            left: dropdownPosition.x
+          }]}>
+            <TouchableOpacity
+              style={styles.dropdownItem}
+              onPress={() => {
+                setDropdownVisible(false);
+                openEditAssemblyForm();
+              }}
+            >
+              <Text style={styles.dropdownItemIcon}>✏️</Text>
+              <Text style={styles.dropdownItemText}>Edit</Text>
+            </TouchableOpacity>
+
+            <View style={styles.dropdownSeparator} />
+
+            <TouchableOpacity
+              style={[styles.dropdownItem, styles.dropdownDeleteItem]}
+              onPress={() => {
+                setDropdownVisible(false);
+                handleDeleteAllAssemblies();
+              }}
+            >
+              <Text style={styles.dropdownItemIcon}>🗑️</Text>
+              <Text style={[styles.dropdownItemText, styles.dropdownDeleteText]}>Delete All</Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
+    );
   };
   return (
     <ScrollView
@@ -2024,7 +3254,10 @@ const AboutConstituencyScreen = ({ navigation }) => {
       {/* Modals */}
       {renderMainEditModal()}
       {renderEditModal()}
+      {renderAddAssemblyModal()}
+      {renderAssemblyEditModal()}
       {renderDeveloperInputModal()}
+      {renderAssemblyDropdownModal()}
     </ScrollView>
   );
 };

@@ -744,6 +744,26 @@ headerButtonsContainer: {
   flexDirection: 'row',
   alignItems: 'center',
 },
+addAssemblyButton: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  justifyContent: 'center',
+  backgroundColor: '#2980b9',
+  padding: 12,
+  borderRadius: 8,
+  marginBottom: 15,
+  elevation: 2,
+  shadowColor: '#000',
+  shadowOffset: { width: 0, height: 2 },
+  shadowOpacity: 0.1,
+  shadowRadius: 4,
+},
+addAssemblyButtonText: {
+  color: '#fff',
+  fontSize: 14,
+  fontWeight: '600',
+  marginLeft: 8,
+},
   // Footer
   footer: {
     height: 30,

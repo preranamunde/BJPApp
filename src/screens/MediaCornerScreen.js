@@ -198,64 +198,124 @@ const MediaItem = React.memo(({
 }) => {
   const [imageUri, setImageUri] = useState(null);
   const [imageLoading, setImageLoading] = useState(false);
+  const [imageError, setImageError] = useState(false);
   const [menuVisible, setMenuVisible] = useState(false);
   const [menuPosition, setMenuPosition] = useState({ x: 0, y: 0 });
 
-  useEffect(() => {
-    let mounted = true;
-    
-    const loadAuthenticatedImage = async () => {
-      if (!item.media_file) return;
-      
-      if (item.media_file.startsWith('http://') || item.media_file.startsWith('https://')) {
-        if (mounted) setImageUri(item.media_file);
-        return;
-      }
+useEffect(() => {
+  let mounted = true;
 
-      setImageLoading(true);
+  const loadImage = async () => {
+    console.log('🖼️ Loading image for:', item.media_header);
+    console.log('📁 media_file:', item.media_file);
+
+    if (!item.media_file || item.media_file.trim() === '') {
+      console.log('❌ No media_file in item');
+      if (mounted) {
+        setImageError(true);
+      }
+      return;
+    }
+
+    setImageLoading(true);
+    setImageError(false);
+
+    try {
+      // ✅ Normalize the media URL
+      let mediaUrl = item.media_file;
       
-      try {
+      // Remove port from ngrok URLs
+      if (mediaUrl.includes('ngrok-free.app:')) {
+        mediaUrl = mediaUrl.replace(/:(\d+)\//, '/');
+        console.log('🔧 Fixed ngrok URL (removed port):', mediaUrl);
+      }
+      
+      // Replace localhost with ngrok base URL
+      if (mediaUrl.includes('localhost:5000') || mediaUrl.includes('localhost:')) {
         const baseUrl = await ConfigService.getBaseUrl();
-        const appKey = await EncryptedStorage.getItem('AppKey');
-        const token = await EncryptedStorage.getItem('authToken');
-        
-        const apiUrl = `${baseUrl}/api/mediacorner/asset/?leader_regd_mobile_no=${regdMobileNo}&user_email_id=${encodeURIComponent(userEmail)}&media_file=${item.media_file}`;
-        
-        const response = await fetch(apiUrl, {
-          method: 'GET',
-          headers: {
-            'app-key': appKey || '',
-            'Authorization': `Bearer ${token || ''}`,
-          },
-        });
-
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}`);
-        }
-
-        const blob = await response.blob();
-        const reader = new FileReader();
-        
-        reader.onloadend = () => {
-          if (mounted) setImageUri(reader.result);
-        };
-        
-        reader.readAsDataURL(blob);
-        
-      } catch (error) {
-        console.error('Error loading image:', error);
-        if (mounted) setImageUri(null);
-      } finally {
-        if (mounted) setImageLoading(false);
+        mediaUrl = mediaUrl.replace(/http:\/\/localhost:\d+/, baseUrl);
+        console.log('🔧 Replaced localhost with ngrok:', mediaUrl);
       }
-    };
-    
-    loadAuthenticatedImage();
-    
-    return () => {
-      mounted = false;
-    };
-  }, [item.media_file, regdMobileNo, userEmail]);
+
+      // Get authentication credentials
+      const appKey = await EncryptedStorage.getItem('APP_KEY');
+      const accessToken = await EncryptedStorage.getItem('accessToken');
+
+      console.log('🔑 Fetching image from:', mediaUrl);
+      
+      // ✅ Fetch image with authentication headers including ngrok header
+      const response = await fetch(mediaUrl, {
+        method: 'GET',
+        headers: {
+          'x-app-key': appKey,
+          'Authorization': `Bearer ${accessToken}`,
+          'ngrok-skip-browser-warning': 'true', // ✅ Critical for ngrok
+          'Accept': 'image/*',
+        },
+      });
+
+      console.log('📡 Response status:', response.status);
+      console.log('📡 Content-Type:', response.headers.get('content-type'));
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('❌ Response error:', errorText.substring(0, 200));
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      // Convert response to blob
+      const blob = await response.blob();
+      console.log('📦 Image blob size:', blob.size, 'bytes');
+      console.log('📦 Image blob type:', blob.type);
+      
+      // Convert blob to base64
+      const reader = new FileReader();
+      
+      reader.onloadend = () => {
+        if (mounted) {
+          console.log('✅ Image loaded as base64');
+          setImageUri(reader.result);
+          setImageError(false);
+        }
+      };
+      
+      reader.onerror = (error) => {
+        console.error('❌ FileReader error:', error);
+        if (mounted) {
+          setImageError(true);
+        }
+      };
+      
+      reader.readAsDataURL(blob);
+
+    } catch (error) {
+      console.error('❌ Error loading image:', error);
+      console.error('❌ Details:', error.message);
+      if (mounted) {
+        setImageError(true);
+      }
+    } finally {
+      if (mounted) {
+        setImageLoading(false);
+      }
+    }
+  };
+
+  loadImage();
+  
+  return () => {
+    mounted = false;
+  };
+}, [item.media_file, regdMobileNo, userEmail]);
+  const handleImageError = (error) => {
+    console.error('🖼️ Image failed to load:', error.nativeEvent);
+    setImageError(true);
+    Alert.alert(
+      'Image Load Error',
+      `Could not load image for "${item.media_header}"`,
+      [{ text: 'OK' }]
+    );
+  };
 
   const handleMenuPress = (event) => {
     const { pageX, pageY } = event.nativeEvent;
@@ -319,23 +379,39 @@ const MediaItem = React.memo(({
         onDismiss={() => setMenuVisible(false)}
       />
 
+      {/* Loading State */}
       {imageLoading && (
         <View style={[styles.postImage, styles.imageLoadingContainer]}>
           <ActivityIndicator size="large" color="#f56c3aff" />
+          <Text style={styles.loadingText}>Loading image...</Text>
         </View>
       )}
 
-      {!imageLoading && imageUri && (
+      {/* Image Display */}
+      {!imageLoading && imageUri && !imageError && (
         <Image 
           source={{ uri: imageUri }}
           style={styles.postImage} 
           resizeMode="cover"
+          onError={handleImageError}
+          onLoad={() => console.log('✅ Image loaded successfully')}
         />
       )}
 
-      {!imageLoading && !imageUri && item.media_file && (
+      {/* Error State */}
+      {!imageLoading && (imageError || !imageUri) && item.media_file && (
         <View style={[styles.postImage, styles.imageErrorContainer]}>
-          <Text style={styles.imageErrorText}>Failed to load image</Text>
+          <Text style={styles.imageErrorIcon}>📷</Text>
+          <Text style={styles.imageErrorText}>Image not available</Text>
+          <Text style={styles.imageErrorDetail}>{item.media_file}</Text>
+        </View>
+      )}
+
+      {/* No Image */}
+      {!item.media_file && (
+        <View style={[styles.postImage, styles.imageErrorContainer]}>
+          <Text style={styles.imageErrorIcon}>🖼️</Text>
+          <Text style={styles.imageErrorText}>No image attached</Text>
         </View>
       )}
 
@@ -357,6 +433,7 @@ const MediaItem = React.memo(({
   );
 });
 
+
 // ✅ Improved Video Item with better menu positioning
 const VideoItem = React.memo(({ 
   video, 
@@ -370,48 +447,42 @@ const VideoItem = React.memo(({
   const [menuVisible, setMenuVisible] = useState(false);
   const [menuPosition, setMenuPosition] = useState({ x: 0, y: 0 });
 
-  useEffect(() => {
-    let mounted = true;
+ useEffect(() => {
+  let mounted = true;
+  
+  const loadAuthenticatedVideo = async () => {
+    if (!video.media_file) return;
     
-    const loadAuthenticatedVideo = async () => {
-      if (!video.media_file) return;
-      
-      if (video.media_file.startsWith('http://') || video.media_file.startsWith('https://')) {
-        if (mounted) setVideoUri(video.media_file);
-        return;
-      }
+    // If it's already a full URL, use it directly
+    if (video.media_file.startsWith('http://') || video.media_file.startsWith('https://')) {
+      if (mounted) setVideoUri(video.media_file);
+      return;
+    }
 
-      setVideoLoading(true);
+    setVideoLoading(true);
+    
+    try {
+      // Use the same helper method
+      const uri = await ConfigService.getMediaFileUrl(
+        video.media_file,
+        regdMobileNo,
+        userEmail
+      );
       
-      try {
-        const baseUrl = await ConfigService.getBaseUrl();
-        const appKey = await EncryptedStorage.getItem('AppKey');
-        const token = await EncryptedStorage.getItem('authToken');
-        
-        const apiUrl = `${baseUrl}/api/mediacorner/asset/?leader_regd_mobile_no=${regdMobileNo}&user_email_id=${encodeURIComponent(userEmail)}&media_file=${video.media_file}`;
-        
-        if (mounted) {
-          setVideoUri({
-            uri: apiUrl,
-            headers: {
-              'app-key': appKey || '',
-              'Authorization': `Bearer ${token || ''}`
-            }
-          });
-        }
-      } catch (error) {
-        console.error('Error loading video:', error);
-      } finally {
-        if (mounted) setVideoLoading(false);
-      }
-    };
-    
-    loadAuthenticatedVideo();
-    
-    return () => {
-      mounted = false;
-    };
-  }, [video.media_file, regdMobileNo, userEmail]);
+      if (mounted) setVideoUri(uri);
+    } catch (error) {
+      console.error('Error loading video:', error);
+    } finally {
+      if (mounted) setVideoLoading(false);
+    }
+  };
+  
+  loadAuthenticatedVideo();
+  
+  return () => {
+    mounted = false;
+  };
+}, [video.media_file, regdMobileNo, userEmail]);
 
   const handleMenuPress = (event) => {
     const { pageX, pageY } = event.nativeEvent;
@@ -544,40 +615,43 @@ const MediaCornerScreen = () => {
     }
   };
 
-  const fetchMediaData = async (mediaType) => {
-    setLoading(true);
-    setError(null);
+ const fetchMediaData = async (mediaType) => {
+  setLoading(true);
+  setError(null);
+  
+  try {
+    const baseUrl = await ConfigService.getBaseUrl();
+    const apiUrl = `${baseUrl}/api/mediacorner/?leader_regd_mobile_no=${regdMobileNo}&user_email_id=${encodeURIComponent(userEmail)}&media_type=${mediaType}`;
     
-    try {
-      const baseUrl = await ConfigService.getBaseUrl();
-      const apiUrl = `${baseUrl}/api/mediacorner/?leader_regd_mobile_no=${regdMobileNo}&user_email_id=${encodeURIComponent(userEmail)}&media_type=${mediaType}`;
+    const result = await ApiService.authGet(apiUrl);
+
+    console.log('📦 FULL API RESPONSE:', JSON.stringify(result, null, 2)); // Add this line
+
+    if (result.success && result.data) {
+      let items = [];
       
-      const result = await ApiService.authGet(apiUrl);
-
-      if (result.success && result.data) {
-        let items = [];
-        
-        if (Array.isArray(result.data)) {
-          items = result.data;
-        } else if (result.data.media_items) {
-          items = result.data.media_items;
-        } else if (result.data.items) {
-          items = result.data.items;
-        }
-
-        setMediaData(items);
-      } else {
-        setMediaData([]);
+      if (Array.isArray(result.data)) {
+        items = result.data;
+      } else if (result.data.media_items) {
+        items = result.data.media_items;
+      } else if (result.data.items) {
+        items = result.data.items;
       }
 
-    } catch (err) {
-      console.error('Error fetching media data:', err);
-      setError(err.message || 'Failed to load media content');
-      Alert.alert('Error', 'Failed to load media content. Please try again.');
-    } finally {
-      setLoading(false);
+      console.log('📊 Processed items:', items); // Add this line
+      setMediaData(items);
+    } else {
+      setMediaData([]);
     }
-  };
+
+  } catch (err) {
+    console.error('Error fetching media data:', err);
+    setError(err.message || 'Failed to load media content');
+    Alert.alert('Error', 'Failed to load media content. Please try again.');
+  } finally {
+    setLoading(false);
+  }
+};
 
   const handleEdit = (item) => {
     setSelectedItem(item);
@@ -1040,6 +1114,19 @@ const styles = StyleSheet.create({
     fontSize: 16, 
     fontWeight: '600' 
   },
+
+  imageErrorIcon: { 
+  fontSize: 48, 
+  marginBottom: 10,
+  opacity: 0.5,
+},
+imageErrorDetail: {
+  fontSize: 10,
+  color: '#999',
+  marginTop: 5,
+  textAlign: 'center',
+  paddingHorizontal: 10,
+},
   saveButton: { 
     backgroundColor: '#f56c3aff',
     elevation: 2,
@@ -1047,6 +1134,39 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.3,
     shadowRadius: 4,
+  },
+
+    imageLoadingContainer: { 
+    justifyContent: 'center', 
+    alignItems: 'center', 
+    backgroundColor: '#f0f0f0' 
+  },
+  loadingText: {
+    marginTop: 10,
+    fontSize: 14,
+    color: '#666',
+  },
+  imageErrorContainer: { 
+    justifyContent: 'center', 
+    alignItems: 'center', 
+    backgroundColor: '#ffebee' 
+  },
+  imageErrorIcon: { 
+    fontSize: 48, 
+    marginBottom: 10,
+    opacity: 0.5,
+  },
+  imageErrorText: { 
+    color: '#c62828', 
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  imageErrorDetail: {
+    fontSize: 10,
+    color: '#999',
+    marginTop: 5,
+    textAlign: 'center',
+    paddingHorizontal: 10,
   },
   saveButtonText: { 
     color: '#fff', 

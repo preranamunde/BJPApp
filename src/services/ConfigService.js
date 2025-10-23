@@ -1,8 +1,9 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import EncryptedStorage from 'react-native-encrypted-storage';
 
 class ConfigService {
   static BASE_URL_KEY = 'app_base_url';
-  static DEFAULT_BASE_URL = 'https://22d1e7f43dd9.ngrok-free.app'; // 👈 Update this when ngrok gives new URL
+  static DEFAULT_BASE_URL = 'https://fbd26759be6f.ngrok-free.app'; // 👈 Update this when ngrok gives new URL
 
 
   
@@ -204,6 +205,30 @@ static async getApiEndpoints() {
     return `${baseUrl}/uploads${path}`;
   }
 
+  // Add this method to ConfigService class (after getProfileImageUrl method)
+
+// In ConfigService.js
+// In ConfigService.js
+
+static async getMediaAssetUrl(mediaFile, regdMobileNo, userEmail) {
+  try {
+    const baseUrl = await this.getBaseUrl();
+    
+    // If media_file is already a full URL, we need to use the asset endpoint
+    // because direct media URLs require authentication
+    const encodedMediaFile = encodeURIComponent(mediaFile);
+    const encodedEmail = encodeURIComponent(userEmail);
+    
+    // Construct URL using the asset endpoint which handles authentication on backend
+    return `${baseUrl}/api/mediacorner/asset/?leader_regd_mobile_no=${regdMobileNo}&user_email_id=${encodedEmail}&media_file=${encodedMediaFile}`;
+    
+  } catch (error) {
+    console.error('Error constructing media asset URL:', error);
+    throw error;
+  }
+}
+
+
   static async getProfileImageUrl(filename) {
     if (!filename || filename === 'placeholder') {
       return null;
@@ -212,6 +237,48 @@ static async getApiEndpoints() {
     return `${baseUrl}/uploads/profile_images/${filename}`;
   }
 
+  // Add this method to ConfigService class (around line 150, after getProfileImageUrl)
+
+// Add/Update this method in ConfigService class
+// Replace the existing getMediaFileUrl method in ConfigService.js
+static async getMediaFileUrl(mediaFile, regdMobileNo, userEmail) {
+  try {
+    const baseUrl = await this.getBaseUrl();
+    
+    // ✅ If it's already a full URL, normalize it
+    if (mediaFile.startsWith('http://') || mediaFile.startsWith('https://')) {
+      // Remove port from ngrok URLs (ngrok doesn't use ports in URLs)
+      let normalizedUrl = mediaFile;
+      
+      if (normalizedUrl.includes('ngrok-free.app:')) {
+        normalizedUrl = normalizedUrl.replace(/:(\d+)\//, '/');
+        console.log('🔧 Removed port from ngrok URL:', normalizedUrl);
+      }
+      
+      // Replace localhost with ngrok
+      if (normalizedUrl.includes('localhost:5000') || normalizedUrl.includes('localhost:')) {
+        normalizedUrl = normalizedUrl.replace(/http:\/\/localhost:\d+/, baseUrl);
+        console.log('🔧 Replaced localhost with:', normalizedUrl);
+      }
+      
+      return normalizedUrl;
+    }
+    
+    // ✅ For relative paths, construct full URL
+    const cleanMediaFile = mediaFile.replace(/^[\\\/]+/, '');
+    const encodedMediaFile = encodeURIComponent(cleanMediaFile);
+    const encodedEmail = encodeURIComponent(userEmail);
+    
+    const apiUrl = `${baseUrl}/api/mediacorner/asset/?leader_regd_mobile_no=${regdMobileNo}&user_email_id=${encodedEmail}&media_file=${encodedMediaFile}`;
+    
+    console.log('🔗 Constructed Media URL:', apiUrl);
+    
+    return apiUrl;
+  } catch (error) {
+    console.error('❌ Error constructing media file URL:', error);
+    throw error;
+  }
+}
   static async getConfigSummary() {
     try {
       const baseUrl = await this.getBaseUrl();

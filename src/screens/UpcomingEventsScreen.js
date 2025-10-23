@@ -190,62 +190,104 @@ const EventItem = React.memo(({
   const [menuVisible, setMenuVisible] = useState(false);
   const [menuPosition, setMenuPosition] = useState({ x: 0, y: 0 });
 
-  useEffect(() => {
-    let mounted = true;
+ useEffect(() => {
+  let mounted = true;
+  
+  const loadAuthenticatedImage = async () => {
+    if (!item.media_file) return;
     
-    const loadAuthenticatedImage = async () => {
-      if (!item.media_file) return;
+    setImageLoading(true);
+    
+    try {
+      // ✅ Normalize the media URL
+      let mediaUrl = item.media_file;
       
-      // If it's already a full URL, use it directly
-      if (item.media_file.startsWith('http://') || item.media_file.startsWith('https://')) {
-        if (mounted) setImageUri(item.media_file);
-        return;
-      }
-
-      setImageLoading(true);
-      
-      try {
-        const baseUrl = await ConfigService.getBaseUrl();
-        const appKey = await EncryptedStorage.getItem('AppKey');
-        const token = await EncryptedStorage.getItem('authToken');
-        
-        const apiUrl = `${baseUrl}/api/mediacorner/asset/?leader_regd_mobile_no=${regdMobileNo}&user_email_id=${encodeURIComponent(userEmail)}&media_file=${item.media_file}`;
-        
-        const response = await fetch(apiUrl, {
-          method: 'GET',
-          headers: {
-            'app-key': appKey || '',
-            'Authorization': `Bearer ${token || ''}`,
-          },
-        });
-
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}`);
+      // If it's already a full URL, normalize it
+      if (mediaUrl.startsWith('http://') || mediaUrl.startsWith('https://')) {
+        // Remove port from ngrok URLs
+        if (mediaUrl.includes('ngrok-free.app:')) {
+          mediaUrl = mediaUrl.replace(/:(\d+)\//, '/');
+          console.log('🔧 Fixed ngrok URL (removed port):', mediaUrl);
         }
-
-        const blob = await response.blob();
-        const reader = new FileReader();
         
-        reader.onloadend = () => {
-          if (mounted) setImageUri(reader.result);
-        };
+        // Replace localhost with ngrok
+        if (mediaUrl.includes('localhost:5000') || mediaUrl.includes('localhost:')) {
+          const baseUrl = await ConfigService.getBaseUrl();
+          mediaUrl = mediaUrl.replace(/http:\/\/localhost:\d+/, baseUrl);
+          console.log('🔧 Replaced localhost with ngrok:', mediaUrl);
+        }
+      } else {
+        // For relative paths, construct full URL
+        const baseUrl = await ConfigService.getBaseUrl();
+        const cleanMediaFile = mediaUrl.replace(/^[\\\/]+/, '');
+        const encodedMediaFile = encodeURIComponent(cleanMediaFile);
+        const encodedEmail = encodeURIComponent(userEmail);
         
-        reader.readAsDataURL(blob);
-        
-      } catch (error) {
-        console.error('Error loading image:', error);
-        if (mounted) setImageUri(null);
-      } finally {
-        if (mounted) setImageLoading(false);
+        mediaUrl = `${baseUrl}/api/mediacorner/asset/?leader_regd_mobile_no=${regdMobileNo}&user_email_id=${encodedEmail}&media_file=${encodedMediaFile}`;
       }
-    };
-    
-    loadAuthenticatedImage();
-    
-    return () => {
-      mounted = false;
-    };
-  }, [item.media_file, regdMobileNo, userEmail]);
+      
+      console.log('🔑 Fetching image from:', mediaUrl);
+      
+      // Get authentication credentials
+      const appKey = await EncryptedStorage.getItem('APP_KEY');
+      const accessToken = await EncryptedStorage.getItem('accessToken');
+      
+      // Fetch with proper headers
+      const response = await fetch(mediaUrl, {
+        method: 'GET',
+        headers: {
+          'x-app-key': appKey || '',
+          'Authorization': `Bearer ${accessToken || ''}`,
+          'ngrok-skip-browser-warning': 'true', // ✅ Critical for ngrok
+          'Accept': 'image/*',
+        },
+      });
+
+      console.log('📡 Response status:', response.status);
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('❌ Response error:', errorText.substring(0, 200));
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      // Convert to blob
+      const blob = await response.blob();
+      console.log('📦 Image blob size:', blob.size, 'bytes');
+      console.log('📦 Image blob type:', blob.type);
+      
+      // Convert blob to base64
+      const reader = new FileReader();
+      
+      reader.onloadend = () => {
+        if (mounted) {
+          console.log('✅ Image loaded as base64');
+          setImageUri(reader.result);
+        }
+      };
+      
+      reader.onerror = (error) => {
+        console.error('❌ FileReader error:', error);
+        if (mounted) setImageUri(null);
+      };
+      
+      reader.readAsDataURL(blob);
+      
+    } catch (error) {
+      console.error('❌ Error loading image:', error);
+      console.error('❌ Details:', error.message);
+      if (mounted) setImageUri(null);
+    } finally {
+      if (mounted) setImageLoading(false);
+    }
+  };
+  
+  loadAuthenticatedImage();
+  
+  return () => {
+    mounted = false;
+  };
+}, [item.media_file, regdMobileNo, userEmail]);
 
   const handleMenuPress = (event) => {
     const { pageX, pageY } = event.nativeEvent;

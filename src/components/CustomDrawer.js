@@ -15,7 +15,85 @@ import FontAwesome from 'react-native-vector-icons/FontAwesome';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import AuthService from '../utils/AuthService';
+import EncryptedStorage from 'react-native-encrypted-storage';
+import ConfigService from '../services/ConfigService';
 
+// Image Service for Drawer
+class DrawerImageService {
+  static async testImageUrl(imageUrl) {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000);
+      
+      const response = await fetch(imageUrl, {
+        method: 'HEAD',
+        signal: controller.signal
+      });
+      
+      clearTimeout(timeoutId);
+      return response.ok;
+    } catch (error) {
+      console.log('Image URL not accessible:', error.message);
+      return false;
+    }
+  }
+  
+  static async getWorkingImageUrl(imageUrl) {
+    if (!imageUrl || imageUrl === 'placeholder') {
+      return null;
+    }
+    
+    try {
+      // If it's already a full URL, normalize it
+      if (imageUrl.startsWith('http://') || imageUrl.startsWith('https://')) {
+        let normalizedUrl = imageUrl;
+        
+        // Remove port from ngrok URLs
+        if (normalizedUrl.includes('ngrok-free.app:')) {
+          normalizedUrl = normalizedUrl.replace(/:(\d+)\//, '/');
+        }
+        
+        // Replace localhost with current base URL
+        if (normalizedUrl.includes('localhost:5000') || normalizedUrl.includes('localhost:')) {
+          const baseUrl = await ConfigService.getBaseUrl();
+          normalizedUrl = normalizedUrl.replace(/http:\/\/localhost:\d+/, baseUrl);
+        }
+        
+        // Test if the normalized URL is accessible
+        const isAccessible = await this.testImageUrl(normalizedUrl);
+        
+        if (isAccessible) {
+          return normalizedUrl;
+        }
+      }
+      
+      // If URL is relative or previous attempts failed, try fallback paths
+      const baseUrl = await ConfigService.getBaseUrl();
+      const cleanPath = imageUrl.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '');
+      const filename = cleanPath.split('/').pop();
+      
+      const fallbackPaths = [
+        `${baseUrl}/uploads/profile_images/${filename}`,
+        `${baseUrl}/profile/${filename}`,
+        `${baseUrl}/uploads/${filename}`,
+        `${baseUrl}/${cleanPath}`,
+      ];
+      
+      for (const fallbackUrl of fallbackPaths) {
+        const isAccessible = await this.testImageUrl(fallbackUrl);
+        if (isAccessible) {
+          return fallbackUrl;
+        }
+      }
+      
+      return null;
+      
+    } catch (error) {
+      console.log('Error in getWorkingImageUrl:', error.message);
+      return null;
+    }
+  }
+}
 const CustomDrawer = ({ navigation, handleLogout, handleEditProfile, handleMyProfile }) => {
   const [isLiteratureOpen, setIsLiteratureOpen] = useState(false);
   const [isUserLoggedIn, setIsUserLoggedIn] = useState(false);
@@ -63,55 +141,57 @@ const CustomDrawer = ({ navigation, handleLogout, handleEditProfile, handleMyPro
   };
 
   const loadUserData = async () => {
-    try {
-      const userData = await AsyncStorage.getItem('userData');
-      if (userData) {
-        const parsedData = JSON.parse(userData);
+  try {
+    console.log('🔄 Loading user data for drawer...');
+    
+    const userData = await AsyncStorage.getItem('userData');
+    if (userData) {
+      const parsedData = JSON.parse(userData);
+      console.log('📋 User data loaded:', {
+        name: parsedData.name,
+        mobile: parsedData.mobile || parsedData.mobileNo,
+        hasProfileImage: !!parsedData.profile_image
+      });
+      
+      // Set user name and mobile
+      setUserName(parsedData.name || parsedData.fullName || 'User');
+      setUserMobile(parsedData.mobile || parsedData.mobileNo || '');
+      
+      // Handle profile image
+      if (parsedData.profile_image && parsedData.profile_image !== 'placeholder') {
+        console.log('🖼️ Processing profile image:', parsedData.profile_image);
         
-        // Set user name - provide fallback values
-        setUserName(parsedData.name || 'User');
-        setUserMobile(parsedData.mobileNo || '');
-        
-        // Load full profile data to get the latest information
-        if (parsedData.mobileNo) {
-          const fullProfile = await AsyncStorage.getItem(`user_${parsedData.mobileNo}`);
-          if (fullProfile) {
-            const profileData = JSON.parse(fullProfile);
-            // Update with the latest profile data
-            setUserName(profileData.name || parsedData.name || 'User');
-            
-            // Try to load photo
-            try {
-              const photoUri = await PhotoStorageUtil.getPhoto(parsedData.mobileNo);
-              setUserPhoto(photoUri);
-            } catch (photoError) {
-              console.log('Error loading photo:', photoError);
-              setUserPhoto(null);
-            }
+        try {
+          const workingImageUrl = await DrawerImageService.getWorkingImageUrl(parsedData.profile_image);
+          
+          if (workingImageUrl) {
+            console.log('✅ Profile image URL resolved:', workingImageUrl);
+            setUserPhoto(workingImageUrl);
           } else {
-            // Try to load photo even if full profile doesn't exist
-            try {
-              const photoUri = await PhotoStorageUtil.getPhoto(parsedData.mobileNo);
-              setUserPhoto(photoUri);
-            } catch (photoError) {
-              console.log('Error loading photo:', photoError);
-              setUserPhoto(null);
-            }
+            console.log('⚠️ Could not resolve profile image URL');
+            setUserPhoto(null);
           }
+        } catch (imageError) {
+          console.log('❌ Error loading profile image:', imageError.message);
+          setUserPhoto(null);
         }
       } else {
-        // Fallback data
-        setUserName('User');
+        console.log('ℹ️ No profile image available');
         setUserPhoto(null);
-        setUserMobile('');
       }
-    } catch (error) {
-      console.error('Error loading user data:', error);
-      setUserName('User');
+    } else {
+      console.log('⚠️ No user data found in storage');
+      setUserName('Guest User');
       setUserPhoto(null);
       setUserMobile('');
     }
-  };
+  } catch (error) {
+    console.error('❌ Error loading user data:', error);
+    setUserName('Guest User');
+    setUserPhoto(null);
+    setUserMobile('');
+  }
+};
 
   const handleLogoutPress = async () => {
     Alert.alert(
@@ -227,46 +307,43 @@ const CustomDrawer = ({ navigation, handleLogout, handleEditProfile, handleMyPro
     }
   };
 
-  const renderProfileImage = () => {
-    if (userPhoto && userPhoto !== 'placeholder') {
-      // Check if it's a real image URI
-      if (userPhoto.startsWith('file://') || userPhoto.startsWith('content://') || userPhoto.startsWith('http')) {
-        return (
-          <View style={styles.profileImageContainer}>
-            <Image
-              source={{ uri: userPhoto }}
-              style={styles.profileImage}
-              onError={(error) => {
-                console.log('Image load error:', error);
-                setUserPhoto(null); // Fallback to placeholder on error
-              }}
-            />
-            <View style={styles.photoIndicator}>
-              <Icon name="camera-alt" size={12} color="#fff" />
-            </View>
-          </View>
-        );
-      } else {
-        // Fallback for stored photo IDs
-        return (
-          <View style={styles.profileImageContainer}>
-            <View style={styles.profileImage}>
-              <Icon name="person" size={50} color="#e16e2b" />
-            </View>
-            <View style={styles.photoIndicator}>
-              <Icon name="camera-alt" size={12} color="#fff" />
-            </View>
-          </View>
-        );
-      }
-    } else {
+ const renderProfileImage = () => {
+  if (userPhoto && userPhoto !== 'placeholder') {
+    // Check if it's a valid image URI
+    if (userPhoto.startsWith('file://') || 
+        userPhoto.startsWith('content://') || 
+        userPhoto.startsWith('http://') || 
+        userPhoto.startsWith('https://')) {
       return (
-        <View style={styles.profileImagePlaceholder}>
-          <Icon name="person" size={50} color="#e16e2b" />
+        <View style={styles.profileImageContainer}>
+          <Image
+            source={{ uri: userPhoto }}
+            style={styles.profileImage}
+            onError={(error) => {
+              console.log('🖼️ Image load error in drawer:', error.nativeEvent?.error);
+              setUserPhoto(null); // Fallback to placeholder on error
+            }}
+            onLoad={() => {
+              console.log('✅ Profile image loaded successfully in drawer');
+            }}
+          />
+          {isUserLoggedIn && (
+            <View style={styles.photoIndicator}>
+              <Icon name="camera-alt" size={12} color="#fff" />
+            </View>
+          )}
         </View>
       );
     }
-  };
+  }
+  
+  // Fallback placeholder
+  return (
+    <View style={styles.profileImagePlaceholder}>
+      <Icon name="person" size={50} color="#e16e2b" />
+    </View>
+  );
+};
 
   return (
     <ScrollView style={styles.drawerContainer}>

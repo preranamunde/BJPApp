@@ -24,6 +24,57 @@ import ApiService from '../services/ApiService';
 import styles from '../styles/KnowYourLeaderstyle';
 import { getCurrentUserRole, checkIfCurrentUserIsAdmin} from '../../App'; // Import helper functions
 
+// Add this ImageService class after your imports and before KnowYourLeaderScreen component
+class ImageService {
+  static async normalizeImageUrl(imageUrl) {
+    if (!imageUrl || imageUrl === 'placeholder') {
+      console.log('⚠️ No valid image URL provided');
+      return null;
+    }
+    
+    try {
+      // If it's already a full URL, normalize it
+      if (imageUrl.startsWith('http://') || imageUrl.startsWith('https://')) {
+        let normalizedUrl = imageUrl;
+        
+        // Remove port from ngrok URLs (ngrok doesn't use ports in URLs)
+        if (normalizedUrl.includes('ngrok-free.app:')) {
+          normalizedUrl = normalizedUrl.replace(/:(\d+)\//, '/');
+          console.log('🔧 Removed port from ngrok URL:', normalizedUrl);
+        }
+        
+        // Replace localhost with current base URL
+        if (normalizedUrl.includes('localhost:5000') || normalizedUrl.includes('localhost:')) {
+          const baseUrl = await ConfigService.getBaseUrl();
+          normalizedUrl = normalizedUrl.replace(/http:\/\/localhost:\d+/, baseUrl);
+          console.log('🔧 Replaced localhost with base URL:', normalizedUrl);
+        }
+        
+        return normalizedUrl;
+      }
+      
+      // For relative paths, construct full URL
+      const baseUrl = await ConfigService.getBaseUrl();
+      const cleanPath = imageUrl.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '');
+      const filename = cleanPath.split('/').pop();
+      
+      // Try different possible paths
+      const possibleUrls = [
+        `${baseUrl}/leader/${filename}`,
+        `${baseUrl}/uploads/leader/${filename}`,
+        `${baseUrl}/${cleanPath}`,
+      ];
+      
+      console.log('🔍 Trying leader image URLs:', possibleUrls);
+      return possibleUrls[0]; // Return first possible URL
+      
+    } catch (error) {
+      console.error('❌ Error normalizing image URL:', error);
+      return null;
+    }
+  }
+}
+
 const { width } = Dimensions.get('window');
 
 const KnowYourLeaderScreen = () => {
@@ -1525,33 +1576,51 @@ const deletePresentAddress = async (memberIdentifier) => {
     await loadTimelineData(memberIdentifier);
   };
 
-  const loadProfileData = async (memberIdentifier) => {
-    try {
-      console.log('📡 Loading profile data for member:', memberIdentifier);
+ const loadProfileData = async (memberIdentifier) => {
+  try {
+    console.log('📡 Loading profile data for member:', memberIdentifier);
 
-      // Fetch all profile data concurrently
-      const [
-        memberCoordinates,
-        socialMedia,
-        personalDetails,
-        educationalDetails,
-        permanentAddress,
-        presentAddress
-      ] = await Promise.all([
-        fetchMemberCoordinates(memberIdentifier),
-        fetchSocialMedia(memberIdentifier),
-        fetchPersonalDetails(memberIdentifier),
-        fetchEducationalDetails(memberIdentifier),
-        fetchPermanentAddress(memberIdentifier),
-        fetchPresentAddress(memberIdentifier)
-      ]);
+    // Fetch all profile data concurrently
+    const [
+      memberCoordinates,
+      socialMedia,
+      personalDetails,
+      educationalDetails,
+      permanentAddress,
+      presentAddress
+    ] = await Promise.all([
+      fetchMemberCoordinates(memberIdentifier),
+      fetchSocialMedia(memberIdentifier),
+      fetchPersonalDetails(memberIdentifier),
+      fetchEducationalDetails(memberIdentifier),
+      fetchPermanentAddress(memberIdentifier),
+      fetchPresentAddress(memberIdentifier)
+    ]);
 
-      // Set member data
-      if (memberCoordinates.success && memberCoordinates.data.leader_coordinates) {
-        setMemberData(memberCoordinates.data.leader_coordinates);
-      } else {
-        console.error('Failed to load member coordinates:', memberCoordinates.error);
+    // Set member data with normalized leader photo
+    if (memberCoordinates.success && memberCoordinates.data.leader_coordinates) {
+      const leaderData = memberCoordinates.data.leader_coordinates;
+      
+      // Normalize leader photo URL if present
+      if (leaderData.leader_photo || leaderData.profile_image) {
+        const originalPhotoUrl = leaderData.leader_photo || leaderData.profile_image;
+        console.log('🖼️ Original leader photo URL:', originalPhotoUrl);
+        
+        const normalizedPhotoUrl = await ImageService.normalizeImageUrl(originalPhotoUrl);
+        console.log('✅ Normalized leader photo URL:', normalizedPhotoUrl);
+        
+        // Update the leader data with normalized URL
+        leaderData.profile_image = normalizedPhotoUrl;
+        leaderData.leader_photo = normalizedPhotoUrl;
       }
+      
+      setMemberData(leaderData);
+      console.log('✅ Member data set with normalized photo');
+    } else {
+      console.error('Failed to load member coordinates:', memberCoordinates.error);
+    }
+
+    // ... rest of your existing code for other data ...
 
       // Set social media data
       if (socialMedia.success && socialMedia.data.social_media) {

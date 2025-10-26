@@ -764,6 +764,61 @@ addAssemblyButtonText: {
   fontWeight: '600',
   marginLeft: 8,
 },
+
+// Add these to your existing styles
+memberInfoContainer: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  marginTop: 15,
+  padding: 12,
+  backgroundColor: 'rgba(255, 255, 255, 0.1)',
+  borderRadius: 12,
+  borderWidth: 1,
+  borderColor: 'rgba(255, 255, 255, 0.2)',
+},
+memberImage: {
+  width: 60,
+  height: 60,
+  borderRadius: 30,
+  borderWidth: 3,
+  borderColor: '#fff',
+  backgroundColor: '#f5f5f5',
+},
+memberImagePlaceholder: {
+  width: 60,
+  height: 60,
+  borderRadius: 30,
+  backgroundColor: '#fff',
+  justifyContent: 'center',
+  alignItems: 'center',
+  borderWidth: 3,
+  borderColor: '#fff',
+},
+memberDetails: {
+  flex: 1,
+  marginLeft: 12,
+},
+memberName: {
+  fontSize: 16,
+  fontWeight: 'bold',
+  color: '#fff',
+  marginBottom: 4,
+},
+memberParty: {
+  fontSize: 14,
+  color: '#fff',
+  opacity: 0.9,
+  fontWeight: '600',
+},
+infoCardMemberImage: {
+  width: 50,
+  height: 50,
+  borderRadius: 25,
+  marginBottom: 8,
+  borderWidth: 2,
+  borderColor: '#9b59b6',
+  backgroundColor: '#f5f5f5',
+},
   // Footer
   footer: {
     height: 30,

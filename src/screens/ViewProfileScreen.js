@@ -94,59 +94,85 @@ class ImageService {
     }
   }
   
-  static async getWorkingImageUrl(relativePath) {
-    if (!relativePath || relativePath === 'placeholder') {
-      LoggingService.profileWarn('No valid image path provided', { relativePath });
-      return null;
+ static async getWorkingImageUrl(imageUrl) {
+  if (!imageUrl || imageUrl === 'placeholder') {
+    LoggingService.profileWarn('No valid image path provided', { imageUrl });
+    return null;
+  }
+  
+  try {
+    // If it's already a full URL, normalize it
+    if (imageUrl.startsWith('http://') || imageUrl.startsWith('https://')) {
+      let normalizedUrl = imageUrl;
+      
+      // Remove port from ngrok URLs (ngrok doesn't use ports in URLs)
+      if (normalizedUrl.includes('ngrok-free.app:')) {
+        normalizedUrl = normalizedUrl.replace(/:(\d+)\//, '/');
+        LoggingService.profileInfo('Removed port from ngrok URL', { 
+          original: imageUrl, 
+          normalized: normalizedUrl 
+        });
+      }
+      
+      // Replace localhost with current base URL
+      if (normalizedUrl.includes('localhost:5000') || normalizedUrl.includes('localhost:')) {
+        const baseUrl = await ConfigService.getBaseUrl();
+        normalizedUrl = normalizedUrl.replace(/http:\/\/localhost:\d+/, baseUrl);
+        LoggingService.profileInfo('Replaced localhost with base URL', { 
+          original: imageUrl, 
+          normalized: normalizedUrl 
+        });
+      }
+      
+      // Test if the normalized URL is accessible
+      const isAccessible = await this.testImageUrl(normalizedUrl);
+      
+      if (isAccessible) {
+        LoggingService.profileInfo('Image URL is working', { url: normalizedUrl });
+        return normalizedUrl;
+      } else {
+        LoggingService.profileWarn('Normalized URL not accessible, trying fallbacks', { 
+          url: normalizedUrl 
+        });
+      }
     }
     
-    try {
-      const imageUrl = await ConfigService.getProfileImageUrl(relativePath);
-      
-      LoggingService.profileDebug('Testing ConfigService image URL', {
-        relativePath,
-        constructedUrl: imageUrl
-      });
-      
-      if (imageUrl) {
-        const isAccessible = await this.testImageUrl(imageUrl);
-        
-        if (isAccessible) {
-          LoggingService.profileInfo('ConfigService image URL is working', { url: imageUrl });
-          return imageUrl;
-        } else {
-          LoggingService.profileWarn('ConfigService image URL not accessible', { url: imageUrl });
-        }
+    // If URL is relative or previous attempts failed, try fallback paths
+    const baseUrl = await ConfigService.getBaseUrl();
+    const cleanPath = imageUrl.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '');
+    
+    // Extract just the filename if it's a full path
+    const filename = cleanPath.split('/').pop();
+    
+    const fallbackPaths = [
+      `${baseUrl}/uploads/profile_images/${filename}`,
+      `${baseUrl}/profile/${filename}`,
+      `${baseUrl}/uploads/${filename}`,
+      `${baseUrl}/${cleanPath}`,
+    ];
+    
+    for (const fallbackUrl of fallbackPaths) {
+      const isAccessible = await this.testImageUrl(fallbackUrl);
+      if (isAccessible) {
+        LoggingService.profileInfo('Found working fallback image URL', { url: fallbackUrl });
+        return fallbackUrl;
       }
-      
-      const baseUrl = await ConfigService.getBaseUrl();
-      const cleanPath = relativePath.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '');
-      
-      const fallbackPaths = [
-        `${baseUrl}/uploads/profile_images/${cleanPath}`,
-        `${baseUrl}/uploads/${cleanPath}`,
-        `${baseUrl}/${cleanPath}`,
-      ];
-      
-      for (const fallbackUrl of fallbackPaths) {
-        const isAccessible = await this.testImageUrl(fallbackUrl);
-        if (isAccessible) {
-          LoggingService.profileInfo('Found working fallback image URL', { url: fallbackUrl });
-          return fallbackUrl;
-        }
-      }
-      
-      LoggingService.profileWarn('No accessible image URL found', { relativePath, testedUrls: fallbackPaths });
-      return null;
-      
-    } catch (error) {
-      LoggingService.profileError('Error in getWorkingImageUrl', {
-        error: error.message,
-        relativePath
-      });
-      return null;
     }
+    
+    LoggingService.profileWarn('No accessible image URL found', { 
+      originalUrl: imageUrl, 
+      testedUrls: fallbackPaths 
+    });
+    return null;
+    
+  } catch (error) {
+    LoggingService.profileError('Error in getWorkingImageUrl', {
+      error: error.message,
+      imageUrl
+    });
+    return null;
   }
+}
 }
 
 // Enhanced Admin Service

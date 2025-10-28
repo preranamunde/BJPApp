@@ -122,6 +122,135 @@ class ConstituencyLoggingService {
 // Screen dimensions for responsive design
 const { width } = Dimensions.get('window');
 
+const ACMediaImage = React.memo(({ item, index, memberId }) => {
+  const [imageUri, setImageUri] = useState(null);
+  const [imageLoading, setImageLoading] = useState(true);
+  const [imageError, setImageError] = useState(false);
+
+  useEffect(() => {
+    let mounted = true;
+    
+    const loadACImage = async () => {
+      if (!item.media_file) {
+        console.log('⚠️ No media_file for item:', item._id);
+        setImageLoading(false);
+        return;
+      }
+      
+      setImageLoading(true);
+      setImageError(false);
+      
+      try {
+        // Get current user info for authentication
+        const currentUserInfo = await getCurrentUserRole();
+        const userEmailId = currentUserInfo.loggedin_email || '';
+        
+        // Normalize the media URL
+        let mediaUrl = item.media_file;
+        
+        if (mediaUrl.startsWith('http://') || mediaUrl.startsWith('https://')) {
+          if (mediaUrl.includes('ngrok-free.app:')) {
+            mediaUrl = mediaUrl.replace(/:(\d+)\//, '/');
+            console.log('🔧 Fixed ngrok URL:', mediaUrl);
+          }
+          
+          if (mediaUrl.includes('localhost:5000') || mediaUrl.includes('localhost:')) {
+            const baseUrl = await ConfigService.getBaseUrl();
+            mediaUrl = mediaUrl.replace(/http:\/\/localhost:\d+/, baseUrl);
+            console.log('🔧 Replaced localhost:', mediaUrl);
+          }
+        } else {
+          const baseUrl = await ConfigService.getBaseUrl();
+          const cleanMediaFile = mediaUrl.replace(/^[\\\/]+/, '');
+          const encodedMediaFile = encodeURIComponent(cleanMediaFile);
+          const encodedEmail = encodeURIComponent(userEmailId);
+          
+          mediaUrl = `${baseUrl}/api/mediacorner/asset/?leader_regd_mobile_no=${memberId}&user_email_id=${encodedEmail}&media_file=${encodedMediaFile}`;
+        }
+        
+        console.log('🖼️ Loading AC image from:', mediaUrl);
+        
+        const EncryptedStorage = require('react-native-encrypted-storage').default;
+        const appKey = await EncryptedStorage.getItem('APP_KEY');
+        const accessToken = await EncryptedStorage.getItem('accessToken');
+        
+        const response = await fetch(mediaUrl, {
+          method: 'GET',
+          headers: {
+            'x-app-key': appKey || '',
+            'Authorization': `Bearer ${accessToken || ''}`,
+            'ngrok-skip-browser-warning': 'true',
+            'Accept': 'image/*',
+          },
+        });
+
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+
+        const blob = await response.blob();
+        const reader = new FileReader();
+        
+        reader.onloadend = () => {
+          if (mounted) {
+            setImageUri(reader.result);
+            setImageLoading(false);
+            console.log('✅ AC image loaded successfully');
+          }
+        };
+        
+        reader.onerror = (error) => {
+          console.error('❌ FileReader error:', error);
+          if (mounted) {
+            setImageError(true);
+            setImageLoading(false);
+          }
+        };
+        
+        reader.readAsDataURL(blob);
+        
+      } catch (error) {
+        console.error('❌ Error loading AC image:', error);
+        if (mounted) {
+          setImageError(true);
+          setImageLoading(false);
+        }
+      }
+    };
+    
+    loadACImage();
+    
+    return () => {
+      mounted = false;
+    };
+  }, [item.media_file, memberId]);
+
+  return (
+    <View style={styles.acMediaItem}>
+      {imageLoading && (
+        <View style={styles.acMediaLoadingContainer}>
+          <ActivityIndicator size="large" color="#e16e2b" />
+        </View>
+      )}
+
+      {!imageLoading && imageError && (
+        <View style={styles.acMediaErrorContainer}>
+          <Text style={styles.acMediaErrorIcon}>📷</Text>
+          <Text style={styles.acMediaErrorText}>Image unavailable</Text>
+        </View>
+      )}
+
+      {!imageLoading && !imageError && imageUri && (
+        <Image 
+          source={{ uri: imageUri }}
+          style={styles.acMediaImage} 
+          resizeMode="cover"
+        />
+      )}
+    </View>
+  );
+});
+
 const AboutConstituencyScreen = ({ navigation }) => {
   // State management
   const [constituencyData, setConstituencyData] = useState(null);
@@ -155,6 +284,9 @@ const AboutConstituencyScreen = ({ navigation }) => {
   const [sectionDropdownPositions, setSectionDropdownPositions] = useState({});
   const [dropdownVisible, setDropdownVisible] = useState(false);
   const [dropdownPosition, setDropdownPosition] = useState({ x: 0, y: 0 });
+
+  const [acMediaData, setAcMediaData] = useState([]);
+const [acMediaLoading, setAcMediaLoading] = useState(false);
 
 
   const showSectionDropdown = (sectionKey, event) => {
@@ -489,12 +621,13 @@ const AboutConstituencyScreen = ({ navigation }) => {
 const fetchConstituencyData = async (mobileNo) => {
   try {
     setError(null);
+    setAcMediaLoading(true);
     ConstituencyLoggingService.constInfo('📡 === FETCHING CONSTITUENCY DATA ===', { mobileNo });
 
     const baseUrl = await ConfigService.getBaseUrl();
     ConstituencyLoggingService.constInfo('🌐 Using base URL:', baseUrl);
 
-    // Get email for API call - DECLARE OUTSIDE TO AVOID SCOPE ISSUES
+    // Get email for API call
     let emailToUse = loggedInEmail || ownerEmail;
 
     if (!emailToUse) {
@@ -514,14 +647,20 @@ const fetchConstituencyData = async (mobileNo) => {
       emailToUse = 'sanjay.jaiswal@gmail.com';
     }
 
-    // ========== FETCH CONSTITUENCY PROFILE (NEW) ==========
+    // ========== BUILD API URLS ==========
     const constituencyUrl = `${baseUrl}/api/constituencyprofile/?leader_regd_mobile_no=${mobileNo}&user_email_id=${encodeURIComponent(emailToUse)}`;
+    const assemblyUrl = `${baseUrl}/api/assemblyconstituencies/?leader_regd_mobile_no=${mobileNo}&user_email_id=${encodeURIComponent(emailToUse)}`;
 
-    ConstituencyLoggingService.constInfo('Fetching constituency profile from:', constituencyUrl);
+    ConstituencyLoggingService.constInfo('Fetching constituency data, assemblies, and AC media concurrently...');
 
-    // Use authGet since this requires authentication
-    const constituencyResult = await ApiService.authGet(constituencyUrl);
+    // ========== FETCH ALL DATA CONCURRENTLY ==========
+    const [constituencyResult, assemblyResult, acMedia] = await Promise.all([
+      ApiService.authGet(constituencyUrl),
+      ApiService.authGet(assemblyUrl),
+      fetchACMedia(mobileNo)
+    ]);
 
+    // ========== PROCESS CONSTITUENCY PROFILE ==========
     if (constituencyResult.success && constituencyResult.data) {
       const constituencyProfileData = constituencyResult.data.constitency_profile || 
                                       constituencyResult.data.constituency_profile || 
@@ -548,10 +687,32 @@ const fetchConstituencyData = async (mobileNo) => {
       }
 
       ConstituencyLoggingService.constInfo('✅ Constituency profile fetched successfully');
-      setConstituencyData(constituencyProfileData);
+      
+      // ✅ ENSURE ALL VALUES ARE STRINGS OR NULL (NOT UNDEFINED)
+      const cleanedData = {
+        const_name: constituencyProfileData.const_name || '',
+        const_no: constituencyProfileData.const_no || '',
+        state: constituencyProfileData.state || '',
+        district: constituencyProfileData.district || '',
+        constituency_type: constituencyProfileData.constituency_type || 'Lok Sabha',
+        reservation_status: constituencyProfileData.reservation_status || '',
+        established: constituencyProfileData.established || '',
+        sitting_member: constituencyProfileData.sitting_member || '',
+        member_party: constituencyProfileData.member_party || '',
+        assembly_segment_count: constituencyProfileData.assembly_segment_count || '',
+        overview: constituencyProfileData.overview || '',
+        geography: constituencyProfileData.geography || '',
+        eci_url: constituencyProfileData.eci_url || '',
+        member_image: constituencyProfileData.member_image || null,
+        // Include all other fields
+        ...constituencyProfileData
+      };
+      
+      setConstituencyData(cleanedData);
     } else {
       ConstituencyLoggingService.constWarn('⚠️ No constituency profile found, using mock data');
-      // Set empty/mock data if no profile exists
+      
+      // ✅ ENSURE ALL MOCK VALUES ARE STRINGS OR NULL
       setConstituencyData({
         const_name: 'Constituency Information',
         const_no: '',
@@ -570,13 +731,7 @@ const fetchConstituencyData = async (mobileNo) => {
       });
     }
 
-    // ========== FETCH ASSEMBLY CONSTITUENCIES ==========
-    const assemblyUrl = `${baseUrl}/api/assemblyconstituencies/?leader_regd_mobile_no=${mobileNo}&user_email_id=${encodeURIComponent(emailToUse)}`;
-
-    ConstituencyLoggingService.constInfo('Fetching assembly constituencies from:', assemblyUrl);
-
-    const assemblyResult = await ApiService.authGet(assemblyUrl);
-
+    // ========== PROCESS ASSEMBLY CONSTITUENCIES ==========
     if (assemblyResult.success) {
       const assemblyData = assemblyResult.data;
       let constituencies = [];
@@ -588,6 +743,7 @@ const fetchConstituencyData = async (mobileNo) => {
       } else if (Array.isArray(assemblyData)) {
         constituencies = assemblyData;
       }
+      
 
       ConstituencyLoggingService.constInfo('✅ Assembly constituencies fetched', { count: constituencies.length });
       setAssemblyConstituencies(constituencies);
@@ -596,9 +752,77 @@ const fetchConstituencyData = async (mobileNo) => {
       setAssemblyConstituencies([]);
     }
 
+    // ========== PROCESS AC MEDIA ==========
+    if (acMedia.success && acMedia.data) {
+      setAcMediaData(acMedia.data);
+      ConstituencyLoggingService.constInfo('✅ AC media data loaded:', acMedia.data.length, 'items');
+    } else {
+      ConstituencyLoggingService.constError('Failed to load AC media:', acMedia.error);
+      setAcMediaData([]);
+    }
+
+    setAcMediaLoading(false);
+
   } catch (err) {
     ConstituencyLoggingService.constError('❌ Error fetching constituency data', err);
     setError(err.message);
+    setAcMediaData([]);
+    setAcMediaLoading(false);
+  }
+};
+
+const fetchACMedia = async (memberIdentifier) => {
+  try {
+    console.log('📸 Fetching AC media for member:', memberIdentifier);
+    const baseUrl = await ConfigService.getBaseUrl();
+    
+    // Get current user info for email parameter
+    const currentUserInfo = await getCurrentUserRole();
+    const userEmailId = currentUserInfo.loggedin_email || '';
+    
+    // Build the endpoint with AC media_type
+    const endpoint = `${baseUrl}/api/mediacorner/?leader_regd_mobile_no=${encodeURIComponent(memberIdentifier)}&user_email_id=${encodeURIComponent(userEmailId)}&media_type=AC`;
+    
+    console.log('🔍 Fetching AC media from:', endpoint);
+
+    // Use authGet which includes Authorization + x-app-key headers
+    const result = await ApiService.authGet(endpoint);
+
+    console.log('📸 AC Media API Response:', result);
+
+    if (result.success && result.data) {
+      // Handle different response structures
+      let items = [];
+      
+      if (Array.isArray(result.data)) {
+        items = result.data;
+      } else if (result.data.media_items) {
+        items = result.data.media_items;
+      } else if (result.data.items) {
+        items = result.data.items;
+      }
+
+      console.log('✅ AC Media items found:', items.length);
+      return {
+        success: true,
+        data: items,
+        error: null
+      };
+    } else {
+      console.log('⚠️ No AC media data found');
+      return {
+        success: true,
+        data: [],
+        error: null
+      };
+    }
+  } catch (error) {
+    console.error('❌ API Error (AC media):', error);
+    return { 
+      success: false, 
+      data: [],
+      error: error.message 
+    };
   }
 };
 
@@ -1815,50 +2039,94 @@ const fetchConstituencyData = async (mobileNo) => {
 
   // Render functions
   const renderHeader = () => (
-    <View style={styles.header}>
-      <View style={styles.headerTop}>
+  <View style={styles.header}>
+    <View style={styles.headerTop}>
+      <TouchableOpacity
+        style={styles.titleContainer}
+        onPress={handleTitlePress}
+        activeOpacity={0.8}
+      >
+        <Text style={styles.title}>
+          {`${constituencyData?.const_no || ''}${constituencyData?.const_no ? ', ' : ''}${constituencyData?.const_name || 'Constituency Name'}`}
+        </Text>
+      </TouchableOpacity>
+
+      {isAdmin && (
         <TouchableOpacity
-          style={styles.titleContainer}
-          onPress={handleTitlePress}
-          activeOpacity={0.8}
+          style={styles.headerEditButton}
+          onPress={() => openEditSection('generalInfo')}
+          activeOpacity={0.7}
         >
-          <Text style={styles.title}>
-            {`${constituencyData?.const_no || ''}${constituencyData?.const_no ? ', ' : ''}${constituencyData?.const_name || 'Constituency Name'}`}
-          </Text>
+          <Icon name="edit" size={18} color="#fff" />
         </TouchableOpacity>
-
-        {isAdmin && (
-          <TouchableOpacity
-            style={styles.headerEditButton}
-            onPress={() => openEditSection('generalInfo')}
-            activeOpacity={0.7}
-          >
-            <Icon name="edit" size={18} color="#fff" />
-          </TouchableOpacity>
-        )}
-      </View>
-
-      <Text style={styles.subtitle}>
-        {`${constituencyData?.constituency_type || 'Lok Sabha'} Constituency`}
-      </Text>
-
-      {constituencyData?.reservation_status && (
-        <View style={[styles.badge, { backgroundColor: '#27ae60', marginTop: 10 }]}>
-          <Text style={styles.badgeText}>
-            {constituencyData.reservation_status}
-          </Text>
-        </View>
       )}
+    </View>
 
-      <View style={[styles.badge, { marginTop: 8 }]}>
+    <Text style={styles.subtitle}>
+      {`${constituencyData?.constituency_type || 'Lok Sabha'} Constituency`}
+    </Text>
+
+    {constituencyData?.reservation_status && (
+      <View style={[styles.badge, { backgroundColor: '#27ae60', marginTop: 10 }]}>
         <Text style={styles.badgeText}>
-          {constituencyData?.state || 'State'}
+          {constituencyData.reservation_status}
         </Text>
       </View>
+    )}
 
+    <View style={[styles.badge, { marginTop: 8 }]}>
+      <Text style={styles.badgeText}>
+        {constituencyData?.state || 'State'}
+      </Text>
+    </View>
+  </View>
+);
 
+const renderACMediaGallery = () => {
+  // Early return if loading
+  if (acMediaLoading) {
+    return (
+      <View style={styles.acMediaContainer}>
+        <View style={styles.acMediaLoadingState}>
+          <ActivityIndicator size="large" color="#e16e2b" />
+          <Text style={styles.loadingText}>Loading gallery...</Text>
+        </View>
+      </View>
+    );
+  }
+
+  // Early return if no data
+  if (!acMediaData || !Array.isArray(acMediaData) || acMediaData.length === 0) {
+    return null;
+  }
+
+  // Render gallery
+  return (
+    <View style={styles.acMediaContainer}>
+      <ScrollView 
+        horizontal 
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.acMediaScrollContent}
+      >
+        {acMediaData.map((item, index) => {
+          // Safety check for each item
+          if (!item || !item.media_file) {
+            return null;
+          }
+          
+          return (
+            <ACMediaImage
+              key={item._id || item.id || `ac-media-${index}`}
+              item={item}
+              index={index}
+              memberId={regdMobileNo}
+            />
+          );
+        })}
+      </ScrollView>
     </View>
   );
+};
 
  const renderInfoCards = () => {
   const memberImageUrl = constituencyData?.member_image;
@@ -3249,22 +3517,23 @@ const fetchConstituencyData = async (mobileNo) => {
       </Modal>
     );
   };
-  return (
-    <ScrollView
-      style={styles.container}
-      showsVerticalScrollIndicator={false}
-      refreshControl={
-        <RefreshControl
-          refreshing={refreshing}
-          onRefresh={onRefresh}
-          colors={['#e16e2b']}
-          tintColor="#e16e2b"
-          title="Pull to refresh"
-        />
-      }
-    >
-      {renderHeader()}
-      {renderInfoCards()}
+ return (
+  <ScrollView
+    style={styles.container}
+    showsVerticalScrollIndicator={false}
+    refreshControl={
+      <RefreshControl
+        refreshing={refreshing}
+        onRefresh={onRefresh}
+        colors={['#e16e2b']}
+        tintColor="#e16e2b"
+        title="Pull to refresh"
+      />
+    }
+  >
+    {renderHeader()}
+    {renderACMediaGallery()}
+    {renderInfoCards()}
       {renderGeographyCard()}
       {renderSectionDropdownMenus()}
       {/* ECI Summary Data */}

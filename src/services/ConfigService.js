@@ -3,7 +3,7 @@ import EncryptedStorage from 'react-native-encrypted-storage';
 
 class ConfigService {
   static BASE_URL_KEY = 'app_base_url';
-  static DEFAULT_BASE_URL = 'https://ecafc3e53b7a.ngrok-free.app'; // 👈 Update this when ngrok gives new URL
+  static DEFAULT_BASE_URL = 'https://9f21e832f21b.ngrok-free.app'; // 👈 Update this when ngrok gives new URL
 
 
   
@@ -15,12 +15,14 @@ class ConfigService {
       console.log('✅ Configuration initialized with ngrok base URL:', this.DEFAULT_BASE_URL);
     } catch (error) {
       console.error('❌ Error initializing configuration:', error);
+
     }
   }
 
 
   // Set base URL
   static async setBaseUrl(baseUrl) {
+    
     try {
       // Clean the URL (remove trailing slash)
       const cleanUrl = baseUrl.replace(/\/$/, '');

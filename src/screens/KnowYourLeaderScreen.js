@@ -159,6 +159,9 @@ const [editingTimelineData, setEditingTimelineData] = useState({
 });
 const [timelineEditLoading, setTimelineEditLoading] = useState(false);
 const [educationEditLoading, setEducationEditLoading] = useState(false);
+
+const [kylMediaData, setKylMediaData] = useState([]);
+const [kylMediaLoading, setKylMediaLoading] = useState(false);
   useEffect(() => {
     initializeApp();
   }, []);
@@ -566,6 +569,61 @@ const fetchTimeline = async (memberIdentifier) => {
   } catch (error) {
     console.error('❌ API Error (leadertimeline):', error);
     return { success: false, error: error.message };
+  }
+};
+
+const fetchKYLMedia = async (memberIdentifier) => {
+  try {
+    console.log('📸 Fetching KYL media for member:', memberIdentifier);
+    const baseUrl = await ConfigService.getBaseUrl();
+    
+    // Get current user info for email parameter
+    const currentUserInfo = await getCurrentUserRole();
+    const userEmailId = currentUserInfo.loggedin_email || '';
+    
+    // Build the endpoint with KYL media_type
+    const endpoint = `${baseUrl}/api/mediacorner/?leader_regd_mobile_no=${encodeURIComponent(memberIdentifier)}&user_email_id=${encodeURIComponent(userEmailId)}&media_type=KYL`;
+    
+    console.log('🔍 Fetching KYL media from:', endpoint);
+
+    // Use authGet which includes Authorization + x-app-key headers
+    const result = await ApiService.authGet(endpoint);
+
+    console.log('📸 KYL Media API Response:', result);
+
+    if (result.success && result.data) {
+      // Handle different response structures
+      let items = [];
+      
+      if (Array.isArray(result.data)) {
+        items = result.data;
+      } else if (result.data.media_items) {
+        items = result.data.media_items;
+      } else if (result.data.items) {
+        items = result.data.items;
+      }
+
+      console.log('✅ KYL Media items found:', items.length);
+      return {
+        success: true,
+        data: items,
+        error: null
+      };
+    } else {
+      console.log('⚠️ No KYL media data found');
+      return {
+        success: true,
+        data: [],
+        error: null
+      };
+    }
+  } catch (error) {
+    console.error('❌ API Error (KYL media):', error);
+    return { 
+      success: false, 
+      data: [],
+      error: error.message 
+    };
   }
 };
 
@@ -1580,6 +1638,8 @@ const deletePresentAddress = async (memberIdentifier) => {
   try {
     console.log('📡 Loading profile data for member:', memberIdentifier);
 
+    setKylMediaLoading(true);
+
     // Fetch all profile data concurrently
     const [
       memberCoordinates,
@@ -1587,14 +1647,16 @@ const deletePresentAddress = async (memberIdentifier) => {
       personalDetails,
       educationalDetails,
       permanentAddress,
-      presentAddress
+      presentAddress,
+       kylMedia 
     ] = await Promise.all([
       fetchMemberCoordinates(memberIdentifier),
       fetchSocialMedia(memberIdentifier),
       fetchPersonalDetails(memberIdentifier),
       fetchEducationalDetails(memberIdentifier),
       fetchPermanentAddress(memberIdentifier),
-      fetchPresentAddress(memberIdentifier)
+      fetchPresentAddress(memberIdentifier),
+      fetchKYLMedia(memberIdentifier)
     ]);
 
     // Set member data with normalized leader photo
@@ -1643,6 +1705,16 @@ const deletePresentAddress = async (memberIdentifier) => {
         console.error('Failed to load educational details:', educationalDetails.error);
       }
 
+      if (kylMedia.success && kylMedia.data) {
+      setKylMediaData(kylMedia.data);
+      console.log('✅ KYL media data loaded:', kylMedia.data.length, 'items');
+    } else {
+      console.error('Failed to load KYL media:', kylMedia.error);
+      setKylMediaData([]);
+    }
+
+    setKylMediaLoading(false);
+
       // Combine address data
       const addresses = {
         permanent: permanentAddress.success ? permanentAddress.data.perm_address : null,
@@ -1667,6 +1739,7 @@ const deletePresentAddress = async (memberIdentifier) => {
       Alert.alert('Network Error', 'Please check your internet connection and try again.');
     }
   };
+
 
   const loadTimelineData = async (memberIdentifier) => {
     try {
@@ -3059,6 +3132,195 @@ const renderEducationInfo = () => {
   );
 };
 
+const renderKYLMediaGallery = () => {
+  if (kylMediaLoading) {
+    return (
+      <View style={styles.kylMediaContainer}>
+        {/* Remove this header section */}
+        <View style={styles.kylMediaLoadingState}>
+          <ActivityIndicator size="large" color="#e16e2b" />
+          <Text style={styles.loadingText}>Loading gallery...</Text>
+        </View>
+      </View>
+    );
+  }
+
+  if (!kylMediaData || kylMediaData.length === 0) {
+    return null;
+  }
+
+  return (
+    <View style={styles.kylMediaContainer}>
+      {/* REMOVE THIS ENTIRE HEADER SECTION */}
+      {/* <View style={styles.kylMediaHeader}>
+        <Text style={styles.kylMediaTitle}>📸 Photo Gallery</Text>
+        <Text style={styles.kylMediaCount}>{kylMediaData.length} photos</Text>
+      </View> */}
+      
+      <ScrollView 
+        horizontal 
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.kylMediaScrollContent}
+      >
+        {kylMediaData.map((item, index) => (
+          <KYLMediaImage
+            key={item._id || item.id || index}
+            item={item}
+            index={index}
+          />
+        ))}
+      </ScrollView>
+    </View>
+  );
+};
+
+const KYLMediaImage = React.memo(({ item, index }) => {
+  const [imageUri, setImageUri] = useState(null);
+  const [imageLoading, setImageLoading] = useState(true);
+  const [imageError, setImageError] = useState(false);
+
+  useEffect(() => {
+    let mounted = true;
+    
+    const loadKYLImage = async () => {
+      if (!item.media_file) {
+        console.log('⚠️ No media_file for item:', item._id);
+        setImageLoading(false);
+        return;
+      }
+      
+      setImageLoading(true);
+      setImageError(false);
+      
+      try {
+        // Get current user info for authentication
+        const currentUserInfo = await getCurrentUserRole();
+        const userEmailId = currentUserInfo.loggedin_email || '';
+        
+        // Normalize the media URL
+        let mediaUrl = item.media_file;
+        
+        // If it's already a full URL, normalize it
+        if (mediaUrl.startsWith('http://') || mediaUrl.startsWith('https://')) {
+          // Remove port from ngrok URLs
+          if (mediaUrl.includes('ngrok-free.app:')) {
+            mediaUrl = mediaUrl.replace(/:(\d+)\//, '/');
+            console.log('🔧 Fixed ngrok URL:', mediaUrl);
+          }
+          
+          // Replace localhost with ngrok
+          if (mediaUrl.includes('localhost:5000') || mediaUrl.includes('localhost:')) {
+            const baseUrl = await ConfigService.getBaseUrl();
+            mediaUrl = mediaUrl.replace(/http:\/\/localhost:\d+/, baseUrl);
+            console.log('🔧 Replaced localhost:', mediaUrl);
+          }
+        } else {
+          // For relative paths, construct full URL using asset endpoint
+          const baseUrl = await ConfigService.getBaseUrl();
+          const cleanMediaFile = mediaUrl.replace(/^[\\\/]+/, '');
+          const encodedMediaFile = encodeURIComponent(cleanMediaFile);
+          const encodedEmail = encodeURIComponent(userEmailId);
+          
+          mediaUrl = `${baseUrl}/api/mediacorner/asset/?leader_regd_mobile_no=${memberId}&user_email_id=${encodedEmail}&media_file=${encodedMediaFile}`;
+        }
+        
+        console.log('🖼️ Loading KYL image from:', mediaUrl);
+        
+        // Get authentication credentials
+        const appKey = await EncryptedStorage.getItem('APP_KEY');
+        const accessToken = await EncryptedStorage.getItem('accessToken');
+        
+        // Fetch with proper headers
+        const response = await fetch(mediaUrl, {
+          method: 'GET',
+          headers: {
+            'x-app-key': appKey || '',
+            'Authorization': `Bearer ${accessToken || ''}`,
+            'ngrok-skip-browser-warning': 'true',
+            'Accept': 'image/*',
+          },
+        });
+
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+
+        // Convert to blob
+        const blob = await response.blob();
+        
+        // Convert blob to base64
+        const reader = new FileReader();
+        
+        reader.onloadend = () => {
+          if (mounted) {
+            setImageUri(reader.result);
+            setImageLoading(false);
+            console.log('✅ KYL image loaded successfully');
+          }
+        };
+        
+        reader.onerror = (error) => {
+          console.error('❌ FileReader error:', error);
+          if (mounted) {
+            setImageError(true);
+            setImageLoading(false);
+          }
+        };
+        
+        reader.readAsDataURL(blob);
+        
+      } catch (error) {
+        console.error('❌ Error loading KYL image:', error);
+        if (mounted) {
+          setImageError(true);
+          setImageLoading(false);
+        }
+      }
+    };
+    
+    loadKYLImage();
+    
+    return () => {
+      mounted = false;
+    };
+  }, [item.media_file, memberId]);
+
+  return (
+    <View style={styles.kylMediaItem}>
+      {imageLoading && (
+        <View style={styles.kylMediaLoadingContainer}>
+          <ActivityIndicator size="large" color="#e16e2b" />
+        </View>
+      )}
+
+      {!imageLoading && imageError && (
+        <View style={styles.kylMediaErrorContainer}>
+          <Text style={styles.kylMediaErrorIcon}>📷</Text>
+          <Text style={styles.kylMediaErrorText}>Image unavailable</Text>
+        </View>
+      )}
+
+     {!imageLoading && !imageError && imageUri && (
+  <>
+    <Image 
+      source={{ uri: imageUri }}
+      style={styles.kylMediaImage} 
+      resizeMode="cover"
+    />
+    {/* REMOVE THIS ENTIRE CAPTION SECTION */}
+    {/* {item.media_header && (
+      <View style={styles.kylMediaCaptionContainer}>
+        <Text style={styles.kylMediaCaption} numberOfLines={2}>
+          {item.media_header}
+        </Text>
+      </View>
+    )} */}
+  </>
+)}
+    </View>
+  );
+});
+
 const submitTimelineEntry = async () => {
   try {
     // Validate form data
@@ -3358,10 +3620,15 @@ return (
         refreshing={refreshing} 
         onRefresh={onRefresh}
         title="Refreshing..."
+        tintColor="transparent"           // ADD THIS - hides the spinner
+        colors={['transparent']}          // ADD THIS - for Android
+        progressBackgroundColor="transparent"  // ADD THIS - for Android
+        progressViewOffset={-100}         // ADD THIS - moves it off screen
       />
     }
   >
     {renderModernHeader()}
+    {renderKYLMediaGallery()}
     {renderSegmentedControl()}
     
     <View style={styles.contentArea}>

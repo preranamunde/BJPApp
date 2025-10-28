@@ -819,6 +819,64 @@ infoCardMemberImage: {
   borderColor: '#9b59b6',
   backgroundColor: '#f5f5f5',
 },
+// AC Media Gallery Styles
+acMediaContainer: {
+  paddingVertical: 10,
+  paddingLeft: 15,
+  backgroundColor: '#fff',
+  borderBottomWidth: 0,
+  borderBottomColor: 'transparent',
+  marginTop: -15,
+},
+acMediaScrollContent: {
+  paddingRight: 15,
+  paddingBottom: 5,
+},
+acMediaItem: {
+  width: 280,
+  height: 200,
+  marginRight: 15,
+  borderRadius: 12,
+  backgroundColor: '#ffffff',
+  overflow: 'hidden',
+  elevation: 3,
+  shadowColor: '#000',
+  shadowOffset: { width: 0, height: 2 },
+  shadowOpacity: 0.1,
+  shadowRadius: 4,
+},
+acMediaImage: {
+  width: '100%',
+  height: '100%',
+},
+acMediaLoadingContainer: {
+  width: '100%',
+  height: '100%',
+  justifyContent: 'center',
+  alignItems: 'center',
+  backgroundColor: '#f0f0f0',
+},
+acMediaErrorContainer: {
+  width: '100%',
+  height: '100%',
+  justifyContent: 'center',
+  alignItems: 'center',
+  backgroundColor: '#ffebee',
+},
+acMediaErrorIcon: {
+  fontSize: 40,
+  marginBottom: 8,
+},
+acMediaErrorText: {
+  color: '#c62828',
+  fontSize: 14,
+  textAlign: 'center',
+},
+acMediaLoadingState: {
+  height: 200,
+  justifyContent: 'center',
+  alignItems: 'center',
+},
   // Footer
   footer: {
     height: 30,

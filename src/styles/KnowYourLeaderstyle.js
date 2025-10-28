@@ -1,4 +1,6 @@
-import { StyleSheet } from "react-native";
+import { StyleSheet ,Dimensions} from "react-native";
+
+const { width } = Dimensions.get('window');
 
 const styles = StyleSheet.create({
   container: {
@@ -315,9 +317,10 @@ const styles = StyleSheet.create({
 
   // Content Area
   contentArea: {
-    paddingHorizontal: 20,
-    paddingBottom: 10,
-  },
+  paddingHorizontal: 20,
+  paddingTop: -0,      // ADD THIS - removes top padding
+  paddingBottom: 10,
+},
 
   // Info Cards
   infoCard: {
@@ -1078,6 +1081,102 @@ navIndicatorText: {
     borderColor: '#e9ecef',
   },
 
+ 
+
+kylMediaContainer: {
+  paddingVertical: 10,  // Changed from 20 to 0
+  paddingLeft: 15,
+  backgroundColor: '#fff',  // Changed from '#f8f9fa' to match header color
+  borderBottomWidth: 0,  // Changed from 1 to 0 (removes white line)
+  borderBottomColor: 'transparent',  // Make it transparent
+  marginTop: -15,  // Add negative margin to move it closer to header
+},
+kylMediaHeader: {
+  flexDirection: 'row',
+  justifyContent: 'space-between',
+  alignItems: 'center',
+  marginBottom: 15,
+  paddingRight: 15,
+},
+kylMediaTitle: {
+  fontSize: 18,
+  fontWeight: 'bold',
+  color: '#2c3e50',
+},
+kylMediaCount: {
+  fontSize: 14,
+  color: '#7f8c8d',
+  fontWeight: '500',
+},
+kylMediaScrollContent: {
+  paddingRight: 15,
+  paddingBottom: 5,
+},
+kylMediaItem: {
+  width: 280,
+  height: 200,
+  marginRight: 15,
+  borderRadius: 12,
+  backgroundColor: '#ffffff',
+  overflow: 'hidden',
+  elevation: 3,
+  shadowColor: '#000',
+  shadowOffset: { width: 0, height: 2 },
+  shadowOpacity: 0.1,
+  shadowRadius: 4,
+},
+kylMediaImage: {
+  width: '100%',
+  height: '100%',
+},
+kylMediaLoadingContainer: {
+  width: '100%',
+  height: '100%',
+  justifyContent: 'center',
+  alignItems: 'center',
+  backgroundColor: '#f0f0f0',
+},
+kylMediaErrorContainer: {
+  width: '100%',
+  height: '100%',
+  justifyContent: 'center',
+  alignItems: 'center',
+  backgroundColor: '#ffebee',
+},
+kylMediaErrorIcon: {
+  fontSize: 40,
+  marginBottom: 8,
+},
+kylMediaErrorText: {
+  color: '#c62828',
+  fontSize: 14,
+  textAlign: 'center',
+},
+kylMediaCaptionContainer: {
+  position: 'absolute',
+  bottom: 0,
+  left: 0,
+  right: 0,
+  backgroundColor: 'rgba(0, 0, 0, 0.7)',
+  paddingVertical: 10,
+  paddingHorizontal: 12,
+},
+kylMediaCaption: {
+  color: '#ffffff',
+  fontSize: 13,
+  fontWeight: '500',
+  lineHeight: 18,
+},
+kylMediaLoadingState: {
+  height: 200,
+  justifyContent: 'center',
+  alignItems: 'center',
+},
+loadingText: {
+  marginTop: 10,
+  fontSize: 14,
+  color: '#666',
+},
   navIndicatorText: {
     fontSize: 14,
     fontWeight: '600',

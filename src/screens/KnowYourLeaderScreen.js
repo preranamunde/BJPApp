@@ -17,13 +17,60 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
+import { launchImageLibrary } from 'react-native-image-picker';
 import EncryptedStorage from 'react-native-encrypted-storage';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import ConfigService from '../services/ConfigService';
 import ApiService from '../services/ApiService';
 import styles from '../styles/KnowYourLeaderstyle';
 import { getCurrentUserRole, checkIfCurrentUserIsAdmin} from '../../App'; // Import helper functions
+import Icon from 'react-native-vector-icons/MaterialIcons';
 
+
+// ✅ Three Dot Menu Component (add this before KnowYourLeaderScreen component)
+const ThreeDotMenu = ({ visible, position, onEdit, onDelete, onDismiss }) => {
+  if (!visible) return null;
+
+  return (
+    <Modal
+      transparent
+      visible={visible}
+      animationType="none"
+      onRequestClose={onDismiss}
+    >
+      <TouchableOpacity 
+        style={styles.dropdownOverlay} 
+        activeOpacity={1} 
+        onPress={onDismiss}
+      >
+        <View style={[styles.dropdownMenu, {
+          top: position.y,
+          left: position.x - 120,
+        }]}>
+          <TouchableOpacity 
+            style={styles.dropdownItem}
+            onPress={onEdit}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.dropdownItemIcon}>✏️</Text>
+            <Text style={styles.dropdownItemText}>Edit</Text>
+          </TouchableOpacity>
+          
+          <View style={styles.dropdownSeparator} />
+          
+          <TouchableOpacity 
+            style={[styles.dropdownItem, styles.dropdownDeleteItem]}
+            onPress={onDelete}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.dropdownItemIcon}>🗑️</Text>
+            <Text style={[styles.dropdownItemText, styles.dropdownDeleteText]}>Delete</Text>
+          </TouchableOpacity>
+        </View>
+      </TouchableOpacity>
+    </Modal>
+  );
+};
 // Add this ImageService class after your imports and before KnowYourLeaderScreen component
 class ImageService {
   static async normalizeImageUrl(imageUrl) {
@@ -162,6 +209,9 @@ const [educationEditLoading, setEducationEditLoading] = useState(false);
 
 const [kylMediaData, setKylMediaData] = useState([]);
 const [kylMediaLoading, setKylMediaLoading] = useState(false);
+// Add these states after your existing state declarations
+const [editKYLModalVisible, setEditKYLModalVisible] = useState(false);
+const [selectedKYLItem, setSelectedKYLItem] = useState(null);
   useEffect(() => {
     initializeApp();
   }, []);
@@ -237,6 +287,85 @@ const [kylMediaLoading, setKylMediaLoading] = useState(false);
     });
   };
 
+  // Handle KYL Media Edit
+const handleKYLEdit = (item) => {
+  setSelectedKYLItem(item);
+  setEditKYLModalVisible(true);
+};
+
+// Handle KYL Media Save
+const handleKYLSave = async (updatedData) => {
+  try {
+    const baseUrl = await ConfigService.getBaseUrl();
+    const apiUrl = `${baseUrl}/api/mediacorner`;
+    
+    const currentUserInfo = await getCurrentUserRole();
+    const userEmailId = currentUserInfo.loggedin_email || '';
+
+    const formData = new FormData();
+    formData.append('regd_mobile_no', memberId);
+    formData.append('user_email_id', userEmailId);
+    formData.append('media_header', updatedData.media_header);
+    formData.append('media_narration', updatedData.media_narration);
+    formData.append('media_url', updatedData.media_url);
+    formData.append('media_type', 'KYL');
+    formData.append('id', updatedData.id);
+
+    // If new image selected, append it
+    if (updatedData.media_file && updatedData.media_file.uri) {
+      const fileUri = updatedData.media_file.uri;
+      const fileName = updatedData.media_file.fileName || fileUri.split('/').pop();
+      const fileType = updatedData.media_file.type || 'image/jpeg';
+
+      formData.append('media_file', {
+        uri: fileUri,
+        name: fileName,
+        type: fileType,
+      });
+    } else {
+      formData.append('media_file', null);
+    }
+
+    console.log('📤 Sending PUT request to:', apiUrl);
+
+    const result = await ApiService.authPut(apiUrl, formData, {}, true);
+
+    if (result.success) {
+      Alert.alert('✅ Success', 'KYL media updated successfully');
+      setEditKYLModalVisible(false);
+      setSelectedKYLItem(null);
+      loadInitialData(memberId); // Refresh the data
+    } else {
+      throw new Error(result.message || 'Update failed');
+    }
+  } catch (error) {
+    console.error('❌ Error updating KYL media:', error);
+    Alert.alert('Error', error.message || 'Failed to update KYL media');
+  }
+};
+
+// Handle KYL Media Delete
+const handleKYLDelete = async (item) => {
+  try {
+    const baseUrl = await ConfigService.getBaseUrl();
+    const currentUserInfo = await getCurrentUserRole();
+    const userEmailId = currentUserInfo.loggedin_email || '';
+    
+    const apiUrl = `${baseUrl}/api/mediacorner/?leader_regd_mobile_no=${memberId}&user_email_id=${encodeURIComponent(userEmailId)}&id=${item._id || item.id}`;
+    
+    const result = await ApiService.authDelete(apiUrl);
+
+    if (result.success) {
+      Alert.alert('Success', 'KYL media deleted successfully');
+      loadInitialData(memberId); // Refresh the data
+    } else {
+      throw new Error(result.message || 'Delete failed');
+    }
+  } catch (error) {
+    console.error('Error deleting KYL media:', error);
+    Alert.alert('Error', 'Failed to delete KYL media');
+  }
+};
   // Show current user status
   const showCurrentStatus = async () => {
     try {
@@ -3136,7 +3265,6 @@ const renderKYLMediaGallery = () => {
   if (kylMediaLoading) {
     return (
       <View style={styles.kylMediaContainer}>
-        {/* Remove this header section */}
         <View style={styles.kylMediaLoadingState}>
           <ActivityIndicator size="large" color="#e16e2b" />
           <Text style={styles.loadingText}>Loading gallery...</Text>
@@ -3150,34 +3278,46 @@ const renderKYLMediaGallery = () => {
   }
 
   return (
-    <View style={styles.kylMediaContainer}>
-      {/* REMOVE THIS ENTIRE HEADER SECTION */}
-      {/* <View style={styles.kylMediaHeader}>
-        <Text style={styles.kylMediaTitle}>📸 Photo Gallery</Text>
-        <Text style={styles.kylMediaCount}>{kylMediaData.length} photos</Text>
-      </View> */}
-      
-      <ScrollView 
-        horizontal 
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.kylMediaScrollContent}
-      >
-        {kylMediaData.map((item, index) => (
-          <KYLMediaImage
-            key={item._id || item.id || index}
-            item={item}
-            index={index}
-          />
-        ))}
-      </ScrollView>
-    </View>
+    <>
+      <View style={styles.kylMediaContainer}>
+        <ScrollView 
+          horizontal 
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.kylMediaScrollContent}
+        >
+          {kylMediaData.map((item, index) => (
+            <KYLMediaImage
+              key={item._id || item.id || index}
+              item={item}
+              index={index}
+              isAdmin={isAdmin}  // ✅ ADD THIS LINE
+            />
+          ))}
+        </ScrollView>
+      </View>
+
+      {/* ✅ Only show edit modal for admin */}
+      {isAdmin && (
+        <EditKYLMediaModal
+          visible={editKYLModalVisible}
+          item={selectedKYLItem}
+          onClose={() => {
+            setEditKYLModalVisible(false);
+            setSelectedKYLItem(null);
+          }}
+          onSave={handleKYLSave}
+        />
+      )}
+    </>
   );
 };
 
-const KYLMediaImage = React.memo(({ item, index }) => {
+const KYLMediaImage = React.memo(({ item, index , isAdmin}) => {
   const [imageUri, setImageUri] = useState(null);
   const [imageLoading, setImageLoading] = useState(true);
   const [imageError, setImageError] = useState(false);
+  const [menuVisible, setMenuVisible] = useState(false);
+  const [menuPosition, setMenuPosition] = useState({ x: 0, y: 0 });
 
   useEffect(() => {
     let mounted = true;
@@ -3193,29 +3333,21 @@ const KYLMediaImage = React.memo(({ item, index }) => {
       setImageError(false);
       
       try {
-        // Get current user info for authentication
         const currentUserInfo = await getCurrentUserRole();
         const userEmailId = currentUserInfo.loggedin_email || '';
         
-        // Normalize the media URL
         let mediaUrl = item.media_file;
         
-        // If it's already a full URL, normalize it
         if (mediaUrl.startsWith('http://') || mediaUrl.startsWith('https://')) {
-          // Remove port from ngrok URLs
           if (mediaUrl.includes('ngrok-free.app:')) {
             mediaUrl = mediaUrl.replace(/:(\d+)\//, '/');
-            console.log('🔧 Fixed ngrok URL:', mediaUrl);
           }
           
-          // Replace localhost with ngrok
           if (mediaUrl.includes('localhost:5000') || mediaUrl.includes('localhost:')) {
             const baseUrl = await ConfigService.getBaseUrl();
             mediaUrl = mediaUrl.replace(/http:\/\/localhost:\d+/, baseUrl);
-            console.log('🔧 Replaced localhost:', mediaUrl);
           }
         } else {
-          // For relative paths, construct full URL using asset endpoint
           const baseUrl = await ConfigService.getBaseUrl();
           const cleanMediaFile = mediaUrl.replace(/^[\\\/]+/, '');
           const encodedMediaFile = encodeURIComponent(cleanMediaFile);
@@ -3224,13 +3356,9 @@ const KYLMediaImage = React.memo(({ item, index }) => {
           mediaUrl = `${baseUrl}/api/mediacorner/asset/?leader_regd_mobile_no=${memberId}&user_email_id=${encodedEmail}&media_file=${encodedMediaFile}`;
         }
         
-        console.log('🖼️ Loading KYL image from:', mediaUrl);
-        
-        // Get authentication credentials
         const appKey = await EncryptedStorage.getItem('APP_KEY');
         const accessToken = await EncryptedStorage.getItem('accessToken');
         
-        // Fetch with proper headers
         const response = await fetch(mediaUrl, {
           method: 'GET',
           headers: {
@@ -3245,17 +3373,13 @@ const KYLMediaImage = React.memo(({ item, index }) => {
           throw new Error(`HTTP ${response.status}: ${response.statusText}`);
         }
 
-        // Convert to blob
         const blob = await response.blob();
-        
-        // Convert blob to base64
         const reader = new FileReader();
         
         reader.onloadend = () => {
           if (mounted) {
             setImageUri(reader.result);
             setImageLoading(false);
-            console.log('✅ KYL image loaded successfully');
           }
         };
         
@@ -3285,8 +3409,57 @@ const KYLMediaImage = React.memo(({ item, index }) => {
     };
   }, [item.media_file, memberId]);
 
+  const handleMenuPress = (event) => {
+    const { pageX, pageY } = event.nativeEvent;
+    setMenuPosition({ x: pageX, y: pageY + 10 });
+    setMenuVisible(true);
+  };
+
+  const handleEdit = () => {
+    setMenuVisible(false);
+    handleKYLEdit(item);
+  };
+
+  const handleDelete = () => {
+    setMenuVisible(false);
+    Alert.alert(
+      'Delete KYL Media',
+      'Are you sure you want to delete this image?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { 
+          text: 'Yes', 
+          onPress: () => handleKYLDelete(item),
+          style: 'destructive'
+        }
+      ]
+    );
+  };
+
   return (
     <View style={styles.kylMediaItem}>
+      {/* ✅ Three Dot Menu Button - Only show for admin */}
+      {isAdmin && (
+        <TouchableOpacity 
+          style={styles.kylMediaMenuButton}
+          onPress={handleMenuPress}
+          activeOpacity={0.7}
+        >
+          <Text style={styles.kylMediaMenuIcon}>⋮</Text>
+        </TouchableOpacity>
+      )}
+
+      {/* ✅ Only show menu dropdown for admin */}
+      {isAdmin && (
+        <ThreeDotMenu
+          visible={menuVisible}
+          position={menuPosition}
+          onEdit={handleEdit}
+          onDelete={handleDelete}
+          onDismiss={() => setMenuVisible(false)}
+        />
+      )}
+
       {imageLoading && (
         <View style={styles.kylMediaLoadingContainer}>
           <ActivityIndicator size="large" color="#e16e2b" />
@@ -3300,23 +3473,13 @@ const KYLMediaImage = React.memo(({ item, index }) => {
         </View>
       )}
 
-     {!imageLoading && !imageError && imageUri && (
-  <>
-    <Image 
-      source={{ uri: imageUri }}
-      style={styles.kylMediaImage} 
-      resizeMode="cover"
-    />
-    {/* REMOVE THIS ENTIRE CAPTION SECTION */}
-    {/* {item.media_header && (
-      <View style={styles.kylMediaCaptionContainer}>
-        <Text style={styles.kylMediaCaption} numberOfLines={2}>
-          {item.media_header}
-        </Text>
-      </View>
-    )} */}
-  </>
-)}
+      {!imageLoading && !imageError && imageUri && (
+        <Image 
+          source={{ uri: imageUri }}
+          style={styles.kylMediaImage} 
+          resizeMode="cover"
+        />
+      )}
     </View>
   );
 });
@@ -3607,6 +3770,131 @@ const renderTimeline = () => {
           </ScrollView>
         </KeyboardAvoidingView>
       </SafeAreaView>
+    </Modal>
+  );
+};
+
+// Edit Modal for KYL Media (Image Only)
+// Edit Modal for KYL Media (Image Only)
+const EditKYLMediaModal = ({ visible, item, onClose, onSave }) => {
+  const [selectedImage, setSelectedImage] = useState(null);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (item) {
+      setSelectedImage(null);
+    }
+  }, [item]);
+
+  const handlePickImage = () => {
+    const options = {
+      mediaType: 'photo',
+      quality: 0.8,
+      maxWidth: 1920,
+      maxHeight: 1080,
+    };
+
+    launchImageLibrary(options, (response) => {
+      if (response.didCancel) {
+        console.log('User cancelled image picker');
+      } else if (response.errorCode) {
+        Alert.alert('Error', response.errorMessage);
+      } else if (response.assets && response.assets[0]) {
+        setSelectedImage(response.assets[0]);
+        console.log('Image selected:', response.assets[0].uri);
+      }
+    });
+  };
+
+  const handleSave = async () => {
+    if (!selectedImage) {
+      Alert.alert('Validation Error', 'Please select a new image');
+      return;
+    }
+
+    setSaving(true);
+    try {
+      await onSave({
+        id: item._id || item.id,
+        media_header: item.media_header || '',
+        media_narration: item.media_narration || '',
+        media_url: item.media_url || '',
+        media_type: 'KYL',
+        media_file: selectedImage,
+      });
+      onClose();
+    } catch (error) {
+      Alert.alert('Error', 'Failed to update KYL media');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Modal
+      visible={visible}
+      transparent
+      animationType="slide"
+      onRequestClose={onClose}
+    >
+      <View style={styles.modalOverlay}>
+        <View style={[styles.modalContainer, { maxHeight: '80%' }]}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Update KYL Image</Text>
+            <TouchableOpacity onPress={onClose}>
+              <Text style={styles.closeButton}>✕</Text>
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView style={styles.modalContent}>
+            <Text style={styles.label}>Select New Image *</Text>
+            <TouchableOpacity 
+              style={styles.imagePickerButton}
+              onPress={handlePickImage}
+            >
+              <Icon name="image" size={24} color="#e16e2b" />
+              <Text style={styles.imagePickerText}>
+                {selectedImage ? 'Change Image' : 'Choose Image'}
+              </Text>
+            </TouchableOpacity>
+
+            {selectedImage && (
+              <View style={styles.selectedImagePreview}>
+                <Image 
+                  source={{ uri: selectedImage.uri }} 
+                  style={styles.previewImage}
+                  resizeMode="cover"
+                />
+                <Text style={styles.imageInfoText}>
+                  {selectedImage.fileName || 'New image selected'}
+                </Text>
+              </View>
+            )}
+          </ScrollView>
+
+          {/* ✅ ADD THIS FOOTER SECTION */}
+          <View style={styles.modalFooter}>
+            <TouchableOpacity 
+              style={[styles.modalButton, styles.cancelButton]}
+              onPress={onClose}
+            >
+              <Text style={styles.cancelButtonText}>Cancel</Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity 
+              style={[styles.modalButton, styles.saveButton]}
+              onPress={handleSave}
+              disabled={saving}
+            >
+              {saving ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={styles.saveButtonText}>Save</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
     </Modal>
   );
 };

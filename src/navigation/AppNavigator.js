@@ -21,6 +21,8 @@ import DeviceService from '../services/DeviceService';
 
 import HomeScreen from '../screens/HomeScreen';
 import DetailedFormScreen from '../screens/DetailedFormScreen';
+import ChangePasswordScreen from '../screens/ChangePasswordScreen';
+import ForgotPasswordScreen from '../screens/ForgotPasswordScreen';
 
 const Stack = createStackNavigator();
 
@@ -73,6 +75,8 @@ const AppNavigator = () => {
       <Stack.Screen name="Dashboard" component={DashboardScreen} />
       <Stack.Screen name="LokSahayak" component={ChatBot} />
       <Stack.Screen name="DetailedFormScreen" component={DetailedFormScreen}/>
+      <Stack.Screen name="ChangePassword" component={ChangePasswordScreen}/>
+      <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen}/>
       
       
       <Stack.Screen

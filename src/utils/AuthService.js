@@ -404,55 +404,60 @@ class AuthService {
     }
   }
 
-  // ENHANCED: Logout with proper request body structure
-  static async logout() {
-    try {
-      console.log('🔄 Starting logout process...');
-      
-      const refreshToken = await this.getRefreshToken();
-      
-      if (refreshToken) {
-        try {
-          console.log('📞 Calling logout API with refresh token...');
-          
-          const endpoints = await ConfigService.getApiEndpoints();
-          const result = await ApiService.post(
-            endpoints.auth.logout,
-            { token: refreshToken } // Based on your Postman collection structure
-          );
+static async logout() {
+  try {
+    console.log('🔄 Starting logout process...');
+    
+    const refreshToken = await this.getRefreshToken();
+    const userData = await AsyncStorage.getItem('userData');
+    
+    if (refreshToken && userData) {
+      try {
+        const parsedUserData = JSON.parse(userData);
+        const userEmail = parsedUserData.email || parsedUserData.user_email_id;
+        
+        console.log('📧 User email for logout:', userEmail);
+        console.log('📞 Calling logout API...');
+        
+        const endpoints = await ConfigService.getApiEndpoints();
+        
+        // ✅ EXACT format from Postman
+        const requestBody = {
+          user_email_id: userEmail,
+          refresh_token: refreshToken  // Note: underscore in field name
+        };
+        
+        console.log('📤 Logout request:', JSON.stringify(requestBody, null, 2));
+        
+        // ✅ Use authPost to include both Authorization header + x-app-key
+        const result = await ApiService.authPost(
+          endpoints.auth.logout,
+          requestBody
+        );
 
-          if (result.success) {
-            console.log('✅ Successfully logged out from server');
-          } else {
-            console.log('⚠️ Server logout failed, but continuing with local logout');
-          }
-        } catch (apiError) {
-          console.log('❌ Logout API error (proceeding with local logout):', apiError.message);
+        console.log('📥 Logout response:', JSON.stringify(result, null, 2));
+
+        if (result.success) {
+          console.log('✅ Logout successful - refresh token removed from database');
+        } else {
+          console.log('⚠️ Server logout failed:', result.message);
         }
-      } else {
-        console.log('⚠️ No refresh token found, skipping API logout');
+      } catch (apiError) {
+        console.error('❌ Logout API error:', apiError);
       }
-
-      // Always clear local tokens regardless of API success/failure
-      await this.clearTokens();
-      console.log('✅ Local tokens cleared successfully');
-
-      return {
-        success: true,
-        message: 'Logout successful'
-      };
-    } catch (error) {
-      console.error('❌ Logout error:', error);
-      // Ensure tokens are cleared even if logout fails
-      await this.clearTokens();
-      
-      return {
-        success: false,
-        message: 'Logout completed with errors',
-        error: error.message
-      };
     }
+
+    // Always clear local tokens
+    await this.clearTokens();
+    console.log('✅ Local tokens cleared');
+
+    return { success: true, message: 'Logout successful' };
+  } catch (error) {
+    console.error('❌ Logout error:', error);
+    await this.clearTokens();
+    return { success: false, message: 'Logout completed with errors' };
   }
+}
 
   // UPDATED: checkAndHandleSession now uses automatic session expiry
   static async checkAndHandleSession(navigation) {

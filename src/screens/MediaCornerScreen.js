@@ -18,8 +18,11 @@ import WebView from 'react-native-webview';
 import EncryptedStorage from 'react-native-encrypted-storage';
 import ConfigService from '../services/ConfigService';
 import ApiService from '../services/ApiService';
-
+import { launchImageLibrary } from 'react-native-image-picker';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { getCurrentUserRole, checkIfCurrentUserIsAdmin } from '../../App';
 const { width } = Dimensions.get('window');
+
 
 const tabs = ['Press Meets', 'Past Events', 'Facebook', 'X', 'Instagram', 'Video'];
 
@@ -75,11 +78,241 @@ const ThreeDotMenu = ({ visible, position, onEdit, onDelete, onDismiss }) => {
   );
 };
 
+// Add Media Modal Component
+const AddMediaModal = ({ visible, onClose, onSave, mediaType, regdMobileNo, userEmail }) => {
+  const [header, setHeader] = useState('');
+  const [narration, setNarration] = useState('');
+  const [url, setUrl] = useState('');
+  const [selectedImage, setSelectedImage] = useState(null);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (visible) {
+      // Reset form when modal opens
+      setHeader('');
+      setNarration('');
+      setUrl('');
+      setSelectedImage(null);
+    }
+  }, [visible]);
+
+  const handlePickImage = () => {
+    const options = {
+      mediaType: mediaType === 'video' ? 'video' : 'photo',
+      quality: 0.8,
+      maxWidth: 1920,
+      maxHeight: 1080,
+    };
+
+    launchImageLibrary(options, (response) => {
+      if (response.didCancel) {
+        console.log('User cancelled picker');
+      } else if (response.errorCode) {
+        Alert.alert('Error', response.errorMessage);
+      } else if (response.assets && response.assets[0]) {
+        setSelectedImage(response.assets[0]);
+        console.log('File selected:', response.assets[0].uri);
+      }
+    });
+  };
+
+  const handleSave = async () => {
+    if (!header.trim()) {
+      Alert.alert('Validation Error', 'Please enter a media header');
+      return;
+    }
+
+    if (!selectedImage) {
+      Alert.alert('Validation Error', 'Please select an image/video file');
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const baseUrl = await ConfigService.getBaseUrl();
+      const apiUrl = `${baseUrl}/api/mediacorner`;
+
+      const formData = new FormData();
+      formData.append('regd_mobile_no', regdMobileNo);
+      formData.append('user_email_id', userEmail);
+      formData.append('media_header', header);
+      formData.append('media_narration', narration);
+      formData.append('media_url', url);
+      formData.append('media_type', mediaType);
+
+      // Add the file
+      const fileUri = selectedImage.uri;
+      const fileName = fileUri.split('/').pop();
+      const fileType = selectedImage.type || (
+        fileName.endsWith('.mp4') ? 'video/mp4' :
+        fileName.endsWith('.jpg') || fileName.endsWith('.jpeg') ? 'image/jpeg' :
+        'image/png'
+      );
+
+      formData.append('media_file', {
+        uri: fileUri,
+        name: fileName,
+        type: fileType,
+      });
+
+      console.log('📤 Creating new media item...');
+      const result = await ApiService.authPost(apiUrl, formData, {}, true);
+
+      console.log('📥 POST Response:', result);
+
+      if (result.success) {
+        Alert.alert('✅ Success', 'Media created successfully');
+        onSave();
+        onClose();
+      } else {
+        throw new Error(result.message || 'Creation failed');
+      }
+    } catch (error) {
+      console.error('❌ Error creating media:', error);
+      Alert.alert('Error', error.message || 'Failed to create media item');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Modal
+      visible={visible}
+      transparent
+      animationType="slide"
+      onRequestClose={onClose}
+    >
+      <View style={styles.modalOverlay}>
+        <View style={styles.modalContainer}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Add New Media</Text>
+            <TouchableOpacity onPress={onClose}>
+              <Text style={styles.closeButton}>✕</Text>
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView style={styles.modalContent} showsVerticalScrollIndicator={false}>
+            {/* Header Input */}
+            <Text style={styles.label}>Header *</Text>
+            <TextInput
+              style={styles.input}
+              value={header}
+              onChangeText={setHeader}
+              placeholder="Enter media header"
+              placeholderTextColor="#999"
+            />
+
+            {/* Description Input */}
+            <Text style={styles.label}>Description</Text>
+            <TextInput
+              style={[styles.input, styles.textArea]}
+              value={narration}
+              onChangeText={setNarration}
+              placeholder="Enter description"
+              placeholderTextColor="#999"
+              multiline
+              numberOfLines={4}
+            />
+
+            {/* URL Input */}
+            <Text style={styles.label}>URL</Text>
+            <TextInput
+              style={styles.input}
+              value={url}
+              onChangeText={setUrl}
+              placeholder="Enter URL (optional)"
+              placeholderTextColor="#999"
+              autoCapitalize="none"
+            />
+
+            {/* File Upload Section */}
+            <Text style={styles.label}>
+              {mediaType === 'video' ? 'Video File *' : 'Image File *'}
+            </Text>
+            <TouchableOpacity 
+              style={styles.imagePickerButton}
+              onPress={handlePickImage}
+            >
+              <Text style={styles.imagePickerIcon}>
+                {mediaType === 'video' ? '🎥' : '📷'}
+              </Text>
+              <Text style={styles.imagePickerText}>
+                {selectedImage ? 'Change File' : `Choose ${mediaType === 'video' ? 'Video' : 'Image'}`}
+              </Text>
+            </TouchableOpacity>
+
+            {/* Show selected file preview */}
+            {selectedImage && (
+              <View style={styles.selectedImagePreview}>
+                {mediaType !== 'video' && (
+                  <Image 
+                    source={{ uri: selectedImage.uri }} 
+                    style={styles.previewImage}
+                    resizeMode="cover"
+                  />
+                )}
+                <Text style={styles.imageInfoText}>
+                  {selectedImage.fileName || 'File selected'}
+                </Text>
+                <TouchableOpacity 
+                  style={styles.removeImageButton}
+                  onPress={() => setSelectedImage(null)}
+                >
+                  <Text style={styles.removeImageText}>✕ Remove</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+          </ScrollView>
+
+          <View style={styles.modalFooter}>
+            <TouchableOpacity 
+              style={[styles.modalButton, styles.cancelButton]}
+              onPress={onClose}
+            >
+              <Text style={styles.cancelButtonText}>Cancel</Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity 
+              style={[styles.modalButton, styles.saveButton]}
+              onPress={handleSave}
+              disabled={saving}
+            >
+              {saving ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={styles.saveButtonText}>Create</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+};
+
+
+// Add FAB Component
+const AddMediaFAB = ({ onPress, visible }) => {
+  if (!visible) return null;
+  
+  return (
+    <TouchableOpacity 
+      style={styles.fab}
+      onPress={onPress}
+      activeOpacity={0.8}
+    >
+      <Text style={styles.fabIcon}>+</Text>
+    </TouchableOpacity>
+  );
+};
 // Edit Modal Component
+// Edit Modal Component with Image Upload
+// Edit Modal Component with Image Upload
 const EditMediaModal = ({ visible, item, onClose, onSave, mediaType }) => {
   const [header, setHeader] = useState('');
   const [narration, setNarration] = useState('');
   const [url, setUrl] = useState('');
+  const [selectedImage, setSelectedImage] = useState(null);  // ✅ NEW
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -87,8 +320,30 @@ const EditMediaModal = ({ visible, item, onClose, onSave, mediaType }) => {
       setHeader(item.media_header || '');
       setNarration(item.media_narration || '');
       setUrl(item.media_url || '');
+      setSelectedImage(null);  // ✅ Reset image on new item
     }
   }, [item]);
+
+  // ✅ NEW: Image picker handler
+  const handlePickImage = () => {
+    const options = {
+      mediaType: 'photo',
+      quality: 0.8,
+      maxWidth: 1920,
+      maxHeight: 1080,
+    };
+
+    launchImageLibrary(options, (response) => {
+      if (response.didCancel) {
+        console.log('User cancelled image picker');
+      } else if (response.errorCode) {
+        Alert.alert('Error', response.errorMessage);
+      } else if (response.assets && response.assets[0]) {
+        setSelectedImage(response.assets[0]);
+        console.log('Image selected:', response.assets[0].uri);
+      }
+    });
+  };
 
   const handleSave = async () => {
     if (!header.trim()) {
@@ -103,7 +358,8 @@ const EditMediaModal = ({ visible, item, onClose, onSave, mediaType }) => {
         media_header: header,
         media_narration: narration,
         media_url: url,
-        media_type: mediaType
+        media_type: mediaType,
+        media_file: selectedImage  // ✅ Include selected image
       });
       onClose();
     } catch (error) {
@@ -129,7 +385,8 @@ const EditMediaModal = ({ visible, item, onClose, onSave, mediaType }) => {
             </TouchableOpacity>
           </View>
 
-          <ScrollView style={styles.modalContent}>
+          <ScrollView style={styles.modalContent} showsVerticalScrollIndicator={false}>
+            {/* Header Input */}
             <Text style={styles.label}>Header *</Text>
             <TextInput
               style={styles.input}
@@ -139,6 +396,7 @@ const EditMediaModal = ({ visible, item, onClose, onSave, mediaType }) => {
               placeholderTextColor="#999"
             />
 
+            {/* Description Input */}
             <Text style={styles.label}>Description</Text>
             <TextInput
               style={[styles.input, styles.textArea]}
@@ -150,6 +408,7 @@ const EditMediaModal = ({ visible, item, onClose, onSave, mediaType }) => {
               numberOfLines={4}
             />
 
+            {/* URL Input */}
             <Text style={styles.label}>URL</Text>
             <TextInput
               style={styles.input}
@@ -159,6 +418,47 @@ const EditMediaModal = ({ visible, item, onClose, onSave, mediaType }) => {
               placeholderTextColor="#999"
               autoCapitalize="none"
             />
+
+            {/* ✅ NEW: Image Upload Section */}
+            <Text style={styles.label}>Update Image (Optional)</Text>
+            <TouchableOpacity 
+              style={styles.imagePickerButton}
+              onPress={handlePickImage}
+            >
+              <Text style={styles.imagePickerIcon}>📷</Text>
+              <Text style={styles.imagePickerText}>
+                {selectedImage ? 'Change Image' : 'Choose New Image'}
+              </Text>
+            </TouchableOpacity>
+
+            {/* ✅ NEW: Show selected image preview */}
+            {selectedImage && (
+              <View style={styles.selectedImagePreview}>
+                <Image 
+                  source={{ uri: selectedImage.uri }} 
+                  style={styles.previewImage}
+                  resizeMode="cover"
+                />
+                <Text style={styles.imageInfoText}>
+                  {selectedImage.fileName || 'New image selected'}
+                </Text>
+                <TouchableOpacity 
+                  style={styles.removeImageButton}
+                  onPress={() => setSelectedImage(null)}
+                >
+                  <Text style={styles.removeImageText}>✕ Remove</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
+            {/* ✅ Show current image info if no new image selected */}
+            {!selectedImage && item?.media_file && (
+              <View style={styles.currentImageInfo}>
+                <Text style={styles.currentImageText}>
+                  Current image will be kept if no new image is selected
+                </Text>
+              </View>
+            )}
           </ScrollView>
 
           <View style={styles.modalFooter}>
@@ -177,7 +477,7 @@ const EditMediaModal = ({ visible, item, onClose, onSave, mediaType }) => {
               {saving ? (
                 <ActivityIndicator color="#fff" />
               ) : (
-                <Text style={styles.saveButtonText}>Save</Text>
+                <Text style={styles.saveButtonText}>Save Changes</Text>
               )}
             </TouchableOpacity>
           </View>
@@ -187,12 +487,15 @@ const EditMediaModal = ({ visible, item, onClose, onSave, mediaType }) => {
   );
 };
 
+
+
 // ✅ Improved Media Item with better menu positioning
 const MediaItem = React.memo(({ 
   item, 
   index, 
   regdMobileNo, 
   userEmail,
+  isAdmin,
   onEdit,
   onDelete 
 }) => {
@@ -361,23 +664,30 @@ useEffect(() => {
             </Text>
           )}
         </View>
+
         
-        <TouchableOpacity 
-          style={styles.actionButton}
-          onPress={handleMenuPress}
-          activeOpacity={0.7}
-        >
-          <Text style={styles.actionButtonText}>⋮</Text>
-        </TouchableOpacity>
+        
+       {isAdmin && (
+          <TouchableOpacity 
+            style={styles.actionButton}
+            onPress={handleMenuPress}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.actionButtonText}>⋮</Text>
+          </TouchableOpacity>
+        )}
       </View>
       
-      <ThreeDotMenu
-        visible={menuVisible}
-        position={menuPosition}
-        onEdit={handleEdit}
-        onDelete={handleDelete}
-        onDismiss={() => setMenuVisible(false)}
-      />
+      {/* ✅ Only show menu dropdown for admin */}
+      {isAdmin && (
+        <ThreeDotMenu
+          visible={menuVisible}
+          position={menuPosition}
+          onEdit={handleEdit}
+          onDelete={handleDelete}
+          onDismiss={() => setMenuVisible(false)}
+        />
+      )}
 
       {/* Loading State */}
       {imageLoading && (
@@ -439,6 +749,7 @@ const VideoItem = React.memo(({
   video, 
   regdMobileNo, 
   userEmail,
+  isAdmin, 
   onEdit,
   onDelete 
 }) => {
@@ -529,23 +840,28 @@ const VideoItem = React.memo(({
           )}
         </View>
         
-        <TouchableOpacity 
-          style={styles.actionButton}
-          onPress={handleMenuPress}
-          activeOpacity={0.7}
-        >
-          <Text style={styles.actionButtonText}>⋮</Text>
-        </TouchableOpacity>
+        {/* ✅ Only show for admin */}
+        {isAdmin && (
+          <TouchableOpacity 
+            style={styles.actionButton}
+            onPress={handleMenuPress}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.actionButtonText}>⋮</Text>
+          </TouchableOpacity>
+        )}
       </View>
       
-      <ThreeDotMenu
-        visible={menuVisible}
-        position={menuPosition}
-        onEdit={handleEdit}
-        onDelete={handleDelete}
-        onDismiss={() => setMenuVisible(false)}
-      />
-      
+      {/* ✅ Only show menu for admin */}
+      {isAdmin && (
+        <ThreeDotMenu
+          visible={menuVisible}
+          position={menuPosition}
+          onEdit={handleEdit}
+          onDelete={handleDelete}
+          onDismiss={() => setMenuVisible(false)}
+        />
+      )}
       {videoLoading && (
         <View style={[styles.videoPlayer, styles.videoLoadingContainer]}>
           <ActivityIndicator size="large" color="#f56c3aff" />
@@ -580,10 +896,68 @@ const MediaCornerScreen = () => {
   const [userEmail, setUserEmail] = useState(null);
   const [editModalVisible, setEditModalVisible] = useState(false);
   const [selectedItem, setSelectedItem] = useState(null);
+  const [userRole, setUserRole] = useState('user');
+const [isAdmin, setIsAdmin] = useState(false);
+const [isLoggedIn, setIsLoggedIn] = useState(false);
+const [loggedInEmail, setLoggedInEmail] = useState('');
+const [ownerEmail, setOwnerEmail] = useState('');
+const [addModalVisible, setAddModalVisible] = useState(false);
 
-  useEffect(() => {
-    initializeUserData();
-  }, []);
+const checkUserRoleAndPermissions = async () => {
+  try {
+    console.log('🔍 === CHECKING USER ROLE AND PERMISSIONS ===');
+
+    // Use getCurrentUserRole from App.js
+    const currentUserInfo = await getCurrentUserRole();
+
+    console.log('User role information:', {
+      userRole: currentUserInfo.userRole,
+      isAdmin: currentUserInfo.isAdmin,
+      isLoggedIn: currentUserInfo.isLoggedIn,
+    });
+
+    // Update state with user information
+    setUserRole(currentUserInfo.userRole);
+    setIsAdmin(currentUserInfo.isAdmin);
+    setIsLoggedIn(currentUserInfo.isLoggedIn);
+    setLoggedInEmail(currentUserInfo.loggedin_email);
+    setOwnerEmail(currentUserInfo.owner_emailid);
+
+    // Additional check using checkIfCurrentUserIsAdmin
+    const adminCheck = await checkIfCurrentUserIsAdmin();
+
+    console.log('Admin status verification:', {
+      isAdminFromRole: currentUserInfo.isAdmin,
+      isAdminFromCheck: adminCheck.isAdmin,
+      reason: adminCheck.reason
+    });
+
+    // Use the most restrictive check
+    const finalAdminStatus = currentUserInfo.isAdmin && adminCheck.isAdmin;
+    setIsAdmin(finalAdminStatus);
+
+    if (finalAdminStatus) {
+      console.log('👑 ADMIN ACCESS GRANTED - Edit features enabled');
+    } else {
+      console.log('👤 USER ACCESS - Read-only mode');
+    }
+
+  } catch (error) {
+    console.error('❌ Error checking user permissions', error);
+    // Default to user role on error
+    setUserRole('user');
+    setIsAdmin(false);
+    setIsLoggedIn(false);
+  }
+};
+
+ useEffect(() => {
+  const initialize = async () => {
+    await checkUserRoleAndPermissions(); // Check role first
+    await initializeUserData();
+  };
+  initialize();
+}, []);
 
   useEffect(() => {
     if (regdMobileNo && userEmail) {
@@ -595,25 +969,92 @@ const MediaCornerScreen = () => {
   }, [activeTab, regdMobileNo, userEmail]);
 
   const initializeUserData = async () => {
-    try {
-      const appOwnerInfoStr = await EncryptedStorage.getItem('AppOwnerInfo');
-      if (appOwnerInfoStr) {
-        const appOwnerInfo = JSON.parse(appOwnerInfoStr);
-        
-        const mobile = appOwnerInfo.mobile_no || appOwnerInfo.regdMobileNo || 
-                      appOwnerInfo.mobile || '7702000725';
-        setRegdMobileNo(mobile);
-
-        const email = appOwnerInfo.email || appOwnerInfo.user_email || 
-                     appOwnerInfo.emailId || 'sanjay.jaiswal@gmail.com';
-        setUserEmail(email);
+  try {
+    console.log('🔍 === INITIALIZING USER DATA FOR MEDIA CORNER ===');
+    
+    // ✅ Force clear any cached data
+    setRegdMobileNo(null);
+    setUserEmail(null);
+    
+    // ✅ Get fresh AppOwnerInfo (which was updated during login)
+    const appOwnerInfoStr = await EncryptedStorage.getItem('AppOwnerInfo');
+    console.log('📦 AppOwnerInfo found:', appOwnerInfoStr ? 'Yes' : 'No');
+    
+    if (appOwnerInfoStr) {
+      const appOwnerInfo = JSON.parse(appOwnerInfoStr);
+      console.log('👤 AppOwnerInfo keys:', Object.keys(appOwnerInfo));
+      console.log('📋 Full AppOwnerInfo:', appOwnerInfo);
+      
+      // ✅ Extract mobile with expanded field search
+      const possibleMobileFields = [
+        'mobile_no', 'mobile', 'phone', 'mobileNo', 'regdMobileNo',
+        'client_mobile', 'contact_number', 'phoneNumber'
+      ];
+      
+      let mobile = '';
+      for (const field of possibleMobileFields) {
+        if (appOwnerInfo[field]) {
+          mobile = String(appOwnerInfo[field]).trim();
+          console.log(`✅ Found mobile in field '${field}': ${mobile}`);
+          break;
+        }
       }
-    } catch (error) {
-      console.error('Error initializing user data:', error);
-      setRegdMobileNo('7702000725');
-      setUserEmail('sanjay.jaiswal@gmail.com');
+      
+      // ✅ Extract email with expanded field search
+      const possibleEmailFields = [
+        'email', 'emailid', 'email_id', 'user_email', 'user_email_id',
+        'owner_email', 'emailAddress'
+      ];
+      
+      let email = '';
+      for (const field of possibleEmailFields) {
+        if (appOwnerInfo[field] && String(appOwnerInfo[field]).includes('@')) {
+          email = String(appOwnerInfo[field]).trim().toLowerCase();
+          console.log(`✅ Found email in field '${field}': ${email}`);
+          break;
+        }
+      }
+      
+      // ✅ Fallback to AsyncStorage if not found
+      if (!email) {
+        email = await AsyncStorage.getItem('userEmail') || 
+                await AsyncStorage.getItem('user_email_id') ||
+                'sanjay.jaiswal@gmail.com';
+        console.log('⚠️ Using email from AsyncStorage fallback:', email);
+      }
+      
+      if (!mobile) {
+        mobile = '7702000725';
+        console.log('⚠️ Using default mobile fallback:', mobile);
+      }
+      
+      console.log('✅ Final extracted values:');
+      console.log('   📱 Mobile:', mobile);
+      console.log('   📧 Email:', email);
+      
+      setRegdMobileNo(mobile);
+      setUserEmail(email);
+    } else {
+      console.warn('⚠️ No AppOwnerInfo found');
+      
+      // ✅ Fallback to AsyncStorage
+      const fallbackEmail = await AsyncStorage.getItem('userEmail') || 
+                           await AsyncStorage.getItem('user_email_id') ||
+                           'sanjay.jaiswal@gmail.com';
+      const fallbackMobile = '7702000725';
+      
+      console.log('Using fallback values:', { fallbackEmail, fallbackMobile });
+      setRegdMobileNo(fallbackMobile);
+      setUserEmail(fallbackEmail);
     }
-  };
+  } catch (error) {
+    console.error('❌ Error initializing user data:', error);
+    setRegdMobileNo('7702000725');
+    setUserEmail('sanjay.jaiswal@gmail.com');
+  }
+};
+
+
 
  const fetchMediaData = async (mediaType) => {
   setLoading(true);
@@ -737,6 +1178,19 @@ const MediaCornerScreen = () => {
     }
   };
 
+  const handleAddNew = () => {
+  setAddModalVisible(true);
+};
+
+const handleAddSuccess = () => {
+  setAddModalVisible(false);
+  const mediaType = MEDIA_TYPE_MAP[activeTab];
+  if (mediaType) {
+    fetchMediaData(mediaType);
+  }
+};
+
+
   const renderTabContent = () => {
     if (activeTab === 'Facebook') {
       return (
@@ -777,11 +1231,44 @@ const MediaCornerScreen = () => {
     if (activeTab === 'Video') {
       if (loading) {
         return (
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color="#f56c3aff" />
-            <Text style={styles.loadingText}>Loading videos...</Text>
+    <>
+      <ScrollView contentContainerStyle={styles.videoListContainer}>
+        {mediaData.length === 0 ? (
+          <View style={styles.emptyContainer}>
+            <Text style={styles.emptyText}>No videos available</Text>
           </View>
-        );
+        ) : (
+          mediaData.map((video, index) => (
+            <VideoItem
+              key={video._id || index}
+              video={video}
+              regdMobileNo={regdMobileNo}
+              userEmail={userEmail}
+              isAdmin={isAdmin}  
+              onEdit={handleEdit}
+              onDelete={handleDelete}
+            />
+          ))
+        )}
+      </ScrollView>
+
+      {/* Add FAB for admin */}
+      <AddMediaFAB 
+        visible={isAdmin}
+        onPress={handleAddNew}
+      />
+
+      {/* Add Modal for Video */}
+      <AddMediaModal
+        visible={addModalVisible}
+        mediaType="video"
+        regdMobileNo={regdMobileNo}
+        userEmail={userEmail}
+        onClose={() => setAddModalVisible(false)}
+        onSave={handleAddSuccess}
+      />
+    </>
+  );
       }
 
       if (error) {
@@ -811,6 +1298,7 @@ const MediaCornerScreen = () => {
                 video={video}
                 regdMobileNo={regdMobileNo}
                 userEmail={userEmail}
+                isAdmin={isAdmin}  
                 onEdit={handleEdit}
                 onDelete={handleDelete}
               />
@@ -820,67 +1308,78 @@ const MediaCornerScreen = () => {
       );
     }
 
-    if (activeTab === 'Press Meets' || activeTab === 'Past Events') {
-      if (loading) {
-        return (
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color="#f56c3aff" />
-            <Text style={styles.loadingText}>Loading {activeTab.toLowerCase()}...</Text>
-          </View>
-        );
-      }
+   if (activeTab === 'Press Meets' || activeTab === 'Past Events') {
+  return (
+    <>
+      {loading ? (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#f56c3aff" />
+          <Text style={styles.loadingText}>Loading...</Text>
+        </View>
+      ) : error ? (
+        <View style={styles.errorContainer}>
+          <Text style={styles.errorText}>{error}</Text>
+          <TouchableOpacity 
+            style={styles.retryButton}
+            onPress={() => fetchMediaData(MEDIA_TYPE_MAP[activeTab])}
+          >
+            <Text style={styles.retryText}>Retry</Text>
+          </TouchableOpacity>
+        </View>
+      ) : (
+        <ScrollView contentContainerStyle={styles.postsContainer}>
+          {mediaData.length === 0 ? (
+            <View style={styles.emptyContainer}>
+              <Text style={styles.emptyText}>
+                No {activeTab.toLowerCase()} available
+              </Text>
+            </View>
+          ) : (
+            mediaData.map((item, index) => (
+              <MediaItem 
+                key={item._id || item.id || index}
+                item={item}
+                index={index}
+                regdMobileNo={regdMobileNo}
+                userEmail={userEmail}
+                isAdmin={isAdmin}  
+                onEdit={handleEdit}
+                onDelete={handleDelete}
+              />
+            ))
+          )}
+        </ScrollView>
+      )}
 
-      if (error) {
-        return (
-          <View style={styles.errorContainer}>
-            <Text style={styles.errorText}>{error}</Text>
-            <TouchableOpacity 
-              style={styles.retryButton}
-              onPress={() => fetchMediaData(MEDIA_TYPE_MAP[activeTab])}
-            >
-              <Text style={styles.retryText}>Retry</Text>
-            </TouchableOpacity>
-          </View>
-        );
-      }
+      {/* FAB - Always rendered regardless of loading/error/success state */}
+      <AddMediaFAB 
+        visible={isAdmin}
+        onPress={handleAddNew}
+      />
 
-      return (
-        <>
-          <ScrollView contentContainerStyle={styles.postsContainer}>
-            {mediaData.length === 0 ? (
-              <View style={styles.emptyContainer}>
-                <Text style={styles.emptyText}>
-                  No {activeTab.toLowerCase()} available
-                </Text>
-              </View>
-            ) : (
-              mediaData.map((item, index) => (
-                <MediaItem 
-                  key={item._id || item.id || index}
-                  item={item}
-                  index={index}
-                  regdMobileNo={regdMobileNo}
-                  userEmail={userEmail}
-                  onEdit={handleEdit}
-                  onDelete={handleDelete}
-                />
-              ))
-            )}
-          </ScrollView>
+      {/* Modals - Always rendered */}
+      <EditMediaModal
+        visible={editModalVisible}
+        item={selectedItem}
+        mediaType={MEDIA_TYPE_MAP[activeTab]}
+        onClose={() => {
+          setEditModalVisible(false);
+          setSelectedItem(null);
+        }}
+        onSave={handleSave}
+      />
 
-          <EditMediaModal
-            visible={editModalVisible}
-            item={selectedItem}
-            mediaType={MEDIA_TYPE_MAP[activeTab]}
-            onClose={() => {
-              setEditModalVisible(false);
-              setSelectedItem(null);
-            }}
-            onSave={handleSave}
-          />
-        </>
-      );
-    }
+      <AddMediaModal
+        visible={addModalVisible}
+        mediaType={MEDIA_TYPE_MAP[activeTab]}
+        regdMobileNo={regdMobileNo}
+        userEmail={userEmail}
+        onClose={() => setAddModalVisible(false)}
+        onSave={handleAddSuccess}
+      />
+    </>
+  );
+}
 
     return (
       <View style={styles.emptyContainer}>
@@ -1173,6 +1672,98 @@ imageErrorDetail: {
     fontSize: 16, 
     fontWeight: 'bold' 
   },
+  // Add these to your existing styles
+imagePickerButton: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  justifyContent: 'center',
+  backgroundColor: '#f0f4f8',
+  padding: 15,
+  borderRadius: 8,
+  borderWidth: 2,
+  borderColor: '#f56c3aff',
+  borderStyle: 'dashed',
+  marginBottom: 15,
+},
+imagePickerIcon: {
+  fontSize: 24,
+  marginRight: 10,
+},
+imagePickerText: {
+  color: '#f56c3aff',
+  fontSize: 16,
+  fontWeight: '600',
+},
+selectedImagePreview: {
+  alignItems: 'center',
+  marginTop: 10,
+  marginBottom: 15,
+  backgroundColor: '#f8f9fa',
+  padding: 15,
+  borderRadius: 8,
+},
+previewImage: {
+  width: 150,
+  height: 150,
+  borderRadius: 8,
+  marginBottom: 10,
+  borderWidth: 2,
+  borderColor: '#f56c3aff',
+},
+imageInfoText: {
+  fontSize: 12,
+  color: '#7f8c8d',
+  marginBottom: 10,
+  textAlign: 'center',
+},
+removeImageButton: {
+  backgroundColor: '#e74c3c',
+  paddingHorizontal: 15,
+  paddingVertical: 8,
+  borderRadius: 6,
+  marginTop: 5,
+},
+removeImageText: {
+  color: '#fff',
+  fontSize: 14,
+  fontWeight: '600',
+},
+currentImageInfo: {
+  backgroundColor: '#e8f5e9',
+  padding: 12,
+  borderRadius: 8,
+  marginTop: 10,
+  borderLeftWidth: 3,
+  borderLeftColor: '#4caf50',
+},
+currentImageText: {
+  fontSize: 12,
+  color: '#2e7d32',
+  fontStyle: 'italic',
+},
+// Add to existing styles
+fab: {
+  position: 'absolute',
+  right: 20,
+  bottom: 20,
+  width: 60,
+  height: 60,
+  borderRadius: 30,
+  backgroundColor: '#f56c3aff',
+  justifyContent: 'center',
+  alignItems: 'center',
+  elevation: 8,
+  shadowColor: '#000',
+  shadowOffset: { width: 0, height: 4 },
+  shadowOpacity: 0.3,
+  shadowRadius: 8,
+},
+fabIcon: {
+  fontSize: 32,
+  color: '#fff',
+  fontWeight: 'bold',
+  lineHeight: 32,
+},
 });
 
 export default MediaCornerScreen;

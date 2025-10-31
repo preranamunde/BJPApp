@@ -670,12 +670,8 @@ const LoginScreen = ({ navigation, route }) => {
   };
 
   const handleForgotPassword = () => {
-    Alert.alert(
-      'Forgot Password',
-      'Forgot password functionality will be implemented soon.',
-      [{ text: 'OK' }]
-    );
-  };
+  navigation.navigate('ForgotPassword'); // Navigate to forgot password screen
+};
 
   const handleRegister = () => {
     navigation.navigate('Registration');

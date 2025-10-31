@@ -16,6 +16,9 @@ import {
 import EncryptedStorage from 'react-native-encrypted-storage';
 import ConfigService from '../services/ConfigService';
 import ApiService from '../services/ApiService';
+import { launchImageLibrary } from 'react-native-image-picker';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { getCurrentUserRole, checkIfCurrentUserIsAdmin } from '../../App';
 
 const { width } = Dimensions.get('window');
 
@@ -63,12 +66,216 @@ const ThreeDotMenu = ({ visible, position, onEdit, onDelete, onDismiss }) => {
     </Modal>
   );
 };
+// Add Media Modal Component
+const AddEventModal = ({ visible, onClose, onSave, regdMobileNo, userEmail }) => {
+  const [header, setHeader] = useState('');
+  const [narration, setNarration] = useState('');
+  const [url, setUrl] = useState('');
+  const [selectedImage, setSelectedImage] = useState(null);
+  const [saving, setSaving] = useState(false);
 
+  useEffect(() => {
+    if (visible) {
+      // Reset form when modal opens
+      setHeader('');
+      setNarration('');
+      setUrl('');
+      setSelectedImage(null);
+    }
+  }, [visible]);
+
+  const handlePickImage = () => {
+    const options = {
+      mediaType: 'photo',
+      quality: 0.8,
+      maxWidth: 1920,
+      maxHeight: 1080,
+    };
+
+    launchImageLibrary(options, (response) => {
+      if (response.didCancel) {
+        console.log('User cancelled picker');
+      } else if (response.errorCode) {
+        Alert.alert('Error', response.errorMessage);
+      } else if (response.assets && response.assets[0]) {
+        setSelectedImage(response.assets[0]);
+        console.log('File selected:', response.assets[0].uri);
+      }
+    });
+  };
+
+  const handleSave = async () => {
+    if (!header.trim()) {
+      Alert.alert('Validation Error', 'Please enter an event title');
+      return;
+    }
+
+    if (!selectedImage) {
+      Alert.alert('Validation Error', 'Please select an image file');
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const baseUrl = await ConfigService.getBaseUrl();
+      const apiUrl = `${baseUrl}/api/mediacorner`;
+
+      const formData = new FormData();
+      formData.append('regd_mobile_no', regdMobileNo);
+      formData.append('user_email_id', userEmail);
+      formData.append('media_header', header);
+      formData.append('media_narration', narration);
+      formData.append('media_url', url);
+      formData.append('media_type', 'UE');
+
+      // Add the file
+      const fileUri = selectedImage.uri;
+      const fileName = fileUri.split('/').pop();
+      const fileType = selectedImage.type || (
+        fileName.endsWith('.jpg') || fileName.endsWith('.jpeg') ? 'image/jpeg' : 'image/png'
+      );
+
+      formData.append('media_file', {
+        uri: fileUri,
+        name: fileName,
+        type: fileType,
+      });
+
+      console.log('📤 Creating new event...');
+      const result = await ApiService.authPost(apiUrl, formData, {}, true);
+
+      console.log('📥 POST Response:', result);
+
+      if (result.success) {
+        Alert.alert('✅ Success', 'Event created successfully');
+        onSave();
+        onClose();
+      } else {
+        throw new Error(result.message || 'Creation failed');
+      }
+    } catch (error) {
+      console.error('❌ Error creating event:', error);
+      Alert.alert('Error', error.message || 'Failed to create event');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Modal
+      visible={visible}
+      transparent
+      animationType="slide"
+      onRequestClose={onClose}
+    >
+      <View style={styles.modalOverlay}>
+        <View style={styles.modalContainer}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Add New Event</Text>
+            <TouchableOpacity onPress={onClose}>
+              <Text style={styles.closeButton}>✕</Text>
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView style={styles.modalContent} showsVerticalScrollIndicator={false}>
+            {/* Header Input */}
+            <Text style={styles.label}>Event Title *</Text>
+            <TextInput
+              style={styles.input}
+              value={header}
+              onChangeText={setHeader}
+              placeholder="Enter event title"
+              placeholderTextColor="#999"
+            />
+
+            {/* Description Input */}
+            <Text style={styles.label}>Description</Text>
+            <TextInput
+              style={[styles.input, styles.textArea]}
+              value={narration}
+              onChangeText={setNarration}
+              placeholder="Enter event description"
+              placeholderTextColor="#999"
+              multiline
+              numberOfLines={4}
+            />
+
+            {/* URL Input */}
+            <Text style={styles.label}>URL</Text>
+            <TextInput
+              style={styles.input}
+              value={url}
+              onChangeText={setUrl}
+              placeholder="Enter URL (optional)"
+              placeholderTextColor="#999"
+              autoCapitalize="none"
+            />
+
+            {/* File Upload Section */}
+            <Text style={styles.label}>Event Image *</Text>
+            <TouchableOpacity 
+              style={styles.imagePickerButton}
+              onPress={handlePickImage}
+            >
+              <Text style={styles.imagePickerIcon}>📷</Text>
+              <Text style={styles.imagePickerText}>
+                {selectedImage ? 'Change Image' : 'Choose Image'}
+              </Text>
+            </TouchableOpacity>
+
+            {/* Show selected file preview */}
+            {selectedImage && (
+              <View style={styles.selectedImagePreview}>
+                <Image 
+                  source={{ uri: selectedImage.uri }} 
+                  style={styles.previewImage}
+                  resizeMode="cover"
+                />
+                <Text style={styles.imageInfoText}>
+                  {selectedImage.fileName || 'File selected'}
+                </Text>
+                <TouchableOpacity 
+                  style={styles.removeImageButton}
+                  onPress={() => setSelectedImage(null)}
+                >
+                  <Text style={styles.removeImageText}>✕ Remove</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+          </ScrollView>
+
+          <View style={styles.modalFooter}>
+            <TouchableOpacity 
+              style={[styles.modalButton, styles.cancelButton]}
+              onPress={onClose}
+            >
+              <Text style={styles.cancelButtonText}>Cancel</Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity 
+              style={[styles.modalButton, styles.saveButton]}
+              onPress={handleSave}
+              disabled={saving}
+            >
+              {saving ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={styles.saveButtonText}>Create</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+};
 // ✅ Edit Modal Component
+// ✅ Edit Modal Component with Image Upload
 const EditEventModal = ({ visible, item, onClose, onSave }) => {
   const [header, setHeader] = useState('');
   const [narration, setNarration] = useState('');
   const [url, setUrl] = useState('');
+  const [selectedImage, setSelectedImage] = useState(null);  // ✅ NEW
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -76,8 +283,30 @@ const EditEventModal = ({ visible, item, onClose, onSave }) => {
       setHeader(item.media_header || '');
       setNarration(item.media_narration || '');
       setUrl(item.media_url || '');
+      setSelectedImage(null);  // ✅ Reset image on new item
     }
   }, [item]);
+
+  // ✅ NEW: Image picker handler
+  const handlePickImage = () => {
+    const options = {
+      mediaType: 'photo',
+      quality: 0.8,
+      maxWidth: 1920,
+      maxHeight: 1080,
+    };
+
+    launchImageLibrary(options, (response) => {
+      if (response.didCancel) {
+        console.log('User cancelled image picker');
+      } else if (response.errorCode) {
+        Alert.alert('Error', response.errorMessage);
+      } else if (response.assets && response.assets[0]) {
+        setSelectedImage(response.assets[0]);
+        console.log('Image selected:', response.assets[0].uri);
+      }
+    });
+  };
 
   const handleSave = async () => {
     if (!header.trim()) {
@@ -92,7 +321,8 @@ const EditEventModal = ({ visible, item, onClose, onSave }) => {
         media_header: header,
         media_narration: narration,
         media_url: url,
-        media_type: 'UE'
+        media_type: 'UE',
+        media_file: selectedImage  // ✅ Include selected image
       });
       onClose();
     } catch (error) {
@@ -118,7 +348,8 @@ const EditEventModal = ({ visible, item, onClose, onSave }) => {
             </TouchableOpacity>
           </View>
 
-          <ScrollView style={styles.modalContent}>
+          <ScrollView style={styles.modalContent} showsVerticalScrollIndicator={false}>
+            {/* Event Title Input */}
             <Text style={styles.label}>Event Title *</Text>
             <TextInput
               style={styles.input}
@@ -128,6 +359,7 @@ const EditEventModal = ({ visible, item, onClose, onSave }) => {
               placeholderTextColor="#999"
             />
 
+            {/* Description Input */}
             <Text style={styles.label}>Description</Text>
             <TextInput
               style={[styles.input, styles.textArea]}
@@ -139,6 +371,7 @@ const EditEventModal = ({ visible, item, onClose, onSave }) => {
               numberOfLines={4}
             />
 
+            {/* URL Input */}
             <Text style={styles.label}>URL</Text>
             <TextInput
               style={styles.input}
@@ -148,6 +381,47 @@ const EditEventModal = ({ visible, item, onClose, onSave }) => {
               placeholderTextColor="#999"
               autoCapitalize="none"
             />
+
+            {/* ✅ NEW: Image Upload Section */}
+            <Text style={styles.label}>Update Image (Optional)</Text>
+            <TouchableOpacity 
+              style={styles.imagePickerButton}
+              onPress={handlePickImage}
+            >
+              <Text style={styles.imagePickerIcon}>📷</Text>
+              <Text style={styles.imagePickerText}>
+                {selectedImage ? 'Change Image' : 'Choose New Image'}
+              </Text>
+            </TouchableOpacity>
+
+            {/* ✅ NEW: Show selected image preview */}
+            {selectedImage && (
+              <View style={styles.selectedImagePreview}>
+                <Image 
+                  source={{ uri: selectedImage.uri }} 
+                  style={styles.previewImage}
+                  resizeMode="cover"
+                />
+                <Text style={styles.imageInfoText}>
+                  {selectedImage.fileName || 'New image selected'}
+                </Text>
+                <TouchableOpacity 
+                  style={styles.removeImageButton}
+                  onPress={() => setSelectedImage(null)}
+                >
+                  <Text style={styles.removeImageText}>✕ Remove</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
+            {/* ✅ Show current image info if no new image selected */}
+            {!selectedImage && item?.media_file && (
+              <View style={styles.currentImageInfo}>
+                <Text style={styles.currentImageText}>
+                  Current image will be kept if no new image is selected
+                </Text>
+              </View>
+            )}
           </ScrollView>
 
           <View style={styles.modalFooter}>
@@ -166,7 +440,7 @@ const EditEventModal = ({ visible, item, onClose, onSave }) => {
               {saving ? (
                 <ActivityIndicator color="#fff" />
               ) : (
-                <Text style={styles.saveButtonText}>Save</Text>
+                <Text style={styles.saveButtonText}>Save Changes</Text>
               )}
             </TouchableOpacity>
           </View>
@@ -182,6 +456,7 @@ const EventItem = React.memo(({
   index, 
   regdMobileNo, 
   userEmail,
+  isAdmin,
   onEdit,
   onDelete 
 }) => {
@@ -334,22 +609,27 @@ const EventItem = React.memo(({
           )}
         </View>
         
-        <TouchableOpacity 
-          style={styles.actionButton}
-          onPress={handleMenuPress}
-          activeOpacity={0.7}
-        >
-          <Text style={styles.actionButtonText}>⋮</Text>
-        </TouchableOpacity>
+        {isAdmin && (
+          <TouchableOpacity 
+            style={styles.actionButton}
+            onPress={handleMenuPress}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.actionButtonText}>⋮</Text>
+          </TouchableOpacity>
+        )}
       </View>
       
-      <ThreeDotMenu
-        visible={menuVisible}
-        position={menuPosition}
-        onEdit={handleEdit}
-        onDelete={handleDelete}
-        onDismiss={() => setMenuVisible(false)}
-      />
+      {/* ✅ Only show menu for admin */}
+      {isAdmin && (
+        <ThreeDotMenu
+          visible={menuVisible}
+          position={menuPosition}
+          onEdit={handleEdit}
+          onDelete={handleDelete}
+          onDismiss={() => setMenuVisible(false)}
+        />
+      )}
 
       {imageLoading && (
         <View style={[styles.eventImage, styles.imageLoadingContainer]}>
@@ -389,6 +669,20 @@ const EventItem = React.memo(({
   );
 });
 
+// Add FAB Component
+const AddEventFAB = ({ onPress, visible }) => {
+  if (!visible) return null;
+  
+  return (
+    <TouchableOpacity 
+      style={styles.fab}
+      onPress={onPress}
+      activeOpacity={0.8}
+    >
+      <Text style={styles.fabIcon}>+</Text>
+    </TouchableOpacity>
+  );
+};
 // ✅ MAIN COMPONENT
 const UpcomingEventsScreen = () => {
   const [eventsData, setEventsData] = useState([]);
@@ -399,9 +693,68 @@ const UpcomingEventsScreen = () => {
   const [editModalVisible, setEditModalVisible] = useState(false);
   const [selectedItem, setSelectedItem] = useState(null);
 
-  useEffect(() => {
-    initializeUserData();
-  }, []);
+  const [userRole, setUserRole] = useState('user');
+const [isAdmin, setIsAdmin] = useState(false);
+const [isLoggedIn, setIsLoggedIn] = useState(false);
+const [loggedInEmail, setLoggedInEmail] = useState('');
+const [ownerEmail, setOwnerEmail] = useState('');
+const [addModalVisible, setAddModalVisible] = useState(false);
+
+const checkUserRoleAndPermissions = async () => {
+  try {
+    console.log('🔍 === CHECKING USER ROLE AND PERMISSIONS ===');
+
+    // Use getCurrentUserRole from App.js
+    const currentUserInfo = await getCurrentUserRole();
+
+    console.log('User role information:', {
+      userRole: currentUserInfo.userRole,
+      isAdmin: currentUserInfo.isAdmin,
+      isLoggedIn: currentUserInfo.isLoggedIn,
+    });
+
+    // Update state with user information
+    setUserRole(currentUserInfo.userRole);
+    setIsAdmin(currentUserInfo.isAdmin);
+    setIsLoggedIn(currentUserInfo.isLoggedIn);
+    setLoggedInEmail(currentUserInfo.loggedin_email);
+    setOwnerEmail(currentUserInfo.owner_emailid);
+
+    // Additional check using checkIfCurrentUserIsAdmin
+    const adminCheck = await checkIfCurrentUserIsAdmin();
+
+    console.log('Admin status verification:', {
+      isAdminFromRole: currentUserInfo.isAdmin,
+      isAdminFromCheck: adminCheck.isAdmin,
+      reason: adminCheck.reason
+    });
+
+    // Use the most restrictive check
+    const finalAdminStatus = currentUserInfo.isAdmin && adminCheck.isAdmin;
+    setIsAdmin(finalAdminStatus);
+
+    if (finalAdminStatus) {
+      console.log('👑 ADMIN ACCESS GRANTED - Edit features enabled');
+    } else {
+      console.log('👤 USER ACCESS - Read-only mode');
+    }
+
+  } catch (error) {
+    console.error('❌ Error checking user permissions', error);
+    // Default to user role on error
+    setUserRole('user');
+    setIsAdmin(false);
+    setIsLoggedIn(false);
+  }
+};
+
+ useEffect(() => {
+  const initialize = async () => {
+    await checkUserRoleAndPermissions(); // Check role first
+    await initializeUserData();
+  };
+  initialize();
+}, []);
 
   useEffect(() => {
     if (regdMobileNo && userEmail) {
@@ -409,26 +762,91 @@ const UpcomingEventsScreen = () => {
     }
   }, [regdMobileNo, userEmail]);
 
-  const initializeUserData = async () => {
-    try {
-      const appOwnerInfoStr = await EncryptedStorage.getItem('AppOwnerInfo');
-      if (appOwnerInfoStr) {
-        const appOwnerInfo = JSON.parse(appOwnerInfoStr);
-        
-        const mobile = appOwnerInfo.mobile_no || appOwnerInfo.regdMobileNo || 
-                      appOwnerInfo.mobile || '7702000725';
-        setRegdMobileNo(mobile);
-
-        const email = appOwnerInfo.email || appOwnerInfo.user_email || 
-                     appOwnerInfo.emailId || 'sanjay.jaiswal@gmail.com';
-        setUserEmail(email);
+ const initializeUserData = async () => {
+  try {
+    console.log('🔍 === INITIALIZING USER DATA FOR MEDIA CORNER ===');
+    
+    // ✅ Force clear any cached data
+    setRegdMobileNo(null);
+    setUserEmail(null);
+    
+    // ✅ Get fresh AppOwnerInfo (which was updated during login)
+    const appOwnerInfoStr = await EncryptedStorage.getItem('AppOwnerInfo');
+    console.log('📦 AppOwnerInfo found:', appOwnerInfoStr ? 'Yes' : 'No');
+    
+    if (appOwnerInfoStr) {
+      const appOwnerInfo = JSON.parse(appOwnerInfoStr);
+      console.log('👤 AppOwnerInfo keys:', Object.keys(appOwnerInfo));
+      console.log('📋 Full AppOwnerInfo:', appOwnerInfo);
+      
+      // ✅ Extract mobile with expanded field search
+      const possibleMobileFields = [
+        'mobile_no', 'mobile', 'phone', 'mobileNo', 'regdMobileNo',
+        'client_mobile', 'contact_number', 'phoneNumber'
+      ];
+      
+      let mobile = '';
+      for (const field of possibleMobileFields) {
+        if (appOwnerInfo[field]) {
+          mobile = String(appOwnerInfo[field]).trim();
+          console.log(`✅ Found mobile in field '${field}': ${mobile}`);
+          break;
+        }
       }
-    } catch (error) {
-      console.error('Error initializing user data:', error);
-      setRegdMobileNo('7702000725');
-      setUserEmail('sanjay.jaiswal@gmail.com');
+      
+      // ✅ Extract email with expanded field search
+      const possibleEmailFields = [
+        'email', 'emailid', 'email_id', 'user_email', 'user_email_id',
+        'owner_email', 'emailAddress'
+      ];
+      
+      let email = '';
+      for (const field of possibleEmailFields) {
+        if (appOwnerInfo[field] && String(appOwnerInfo[field]).includes('@')) {
+          email = String(appOwnerInfo[field]).trim().toLowerCase();
+          console.log(`✅ Found email in field '${field}': ${email}`);
+          break;
+        }
+      }
+      
+      // ✅ Fallback to AsyncStorage if not found
+      if (!email) {
+        email = await AsyncStorage.getItem('userEmail') || 
+                await AsyncStorage.getItem('user_email_id') ||
+                'sanjay.jaiswal@gmail.com';
+        console.log('⚠️ Using email from AsyncStorage fallback:', email);
+      }
+      
+      if (!mobile) {
+        mobile = '7702000725';
+        console.log('⚠️ Using default mobile fallback:', mobile);
+      }
+      
+      console.log('✅ Final extracted values:');
+      console.log('   📱 Mobile:', mobile);
+      console.log('   📧 Email:', email);
+      
+      setRegdMobileNo(mobile);
+      setUserEmail(email);
+    } else {
+      console.warn('⚠️ No AppOwnerInfo found');
+      
+      // ✅ Fallback to AsyncStorage
+      const fallbackEmail = await AsyncStorage.getItem('userEmail') || 
+                           await AsyncStorage.getItem('user_email_id') ||
+                           'sanjay.jaiswal@gmail.com';
+      const fallbackMobile = '7702000725';
+      
+      console.log('Using fallback values:', { fallbackEmail, fallbackMobile });
+      setRegdMobileNo(fallbackMobile);
+      setUserEmail(fallbackEmail);
     }
-  };
+  } catch (error) {
+    console.error('❌ Error initializing user data:', error);
+    setRegdMobileNo('7702000725');
+    setUserEmail('sanjay.jaiswal@gmail.com');
+  }
+};
 
   const fetchEventsData = async () => {
     setLoading(true);
@@ -535,6 +953,15 @@ const UpcomingEventsScreen = () => {
     }
   };
 
+  const handleAddNew = () => {
+  setAddModalVisible(true);
+};
+
+const handleAddSuccess = () => {
+  setAddModalVisible(false);
+  fetchEventsData();
+};
+
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
@@ -573,6 +1000,7 @@ const UpcomingEventsScreen = () => {
               index={index}
               regdMobileNo={regdMobileNo}
               userEmail={userEmail}
+              isAdmin={isAdmin}
               onEdit={handleEdit}
               onDelete={handleDelete}
             />
@@ -580,6 +1008,13 @@ const UpcomingEventsScreen = () => {
         )}
       </ScrollView>
 
+      {/* Add FAB for admin */}
+      <AddEventFAB 
+        visible={isAdmin}
+        onPress={handleAddNew}
+      />
+
+      {/* Edit Modal */}
       <EditEventModal
         visible={editModalVisible}
         item={selectedItem}
@@ -588,6 +1023,15 @@ const UpcomingEventsScreen = () => {
           setSelectedItem(null);
         }}
         onSave={handleSave}
+      />
+
+      {/* Add Modal */}
+      <AddEventModal
+        visible={addModalVisible}
+        regdMobileNo={regdMobileNo}
+        userEmail={userEmail}
+        onClose={() => setAddModalVisible(false)}
+        onSave={handleAddSuccess}
       />
     </>
   );
@@ -887,6 +1331,99 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: 'bold',
   },
+  // Add these styles inside your StyleSheet.create({ ... })
+
+imagePickerButton: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  justifyContent: 'center',
+  backgroundColor: '#f0f4f8',
+  padding: 15,
+  borderRadius: 8,
+  borderWidth: 2,
+  borderColor: '#f56c3aff',
+  borderStyle: 'dashed',
+  marginBottom: 15,
+},
+imagePickerIcon: {
+  fontSize: 24,
+  marginRight: 10,
+},
+imagePickerText: {
+  color: '#f56c3aff',
+  fontSize: 16,
+  fontWeight: '600',
+},
+selectedImagePreview: {
+  alignItems: 'center',
+  marginTop: 10,
+  marginBottom: 15,
+  backgroundColor: '#f8f9fa',
+  padding: 15,
+  borderRadius: 8,
+},
+previewImage: {
+  width: 150,
+  height: 150,
+  borderRadius: 8,
+  marginBottom: 10,
+  borderWidth: 2,
+  borderColor: '#f56c3aff',
+},
+imageInfoText: {
+  fontSize: 12,
+  color: '#7f8c8d',
+  marginBottom: 10,
+  textAlign: 'center',
+},
+removeImageButton: {
+  backgroundColor: '#e74c3c',
+  paddingHorizontal: 15,
+  paddingVertical: 8,
+  borderRadius: 6,
+  marginTop: 5,
+},
+removeImageText: {
+  color: '#fff',
+  fontSize: 14,
+  fontWeight: '600',
+},
+currentImageInfo: {
+  backgroundColor: '#e8f5e9',
+  padding: 12,
+  borderRadius: 8,
+  marginTop: 10,
+  borderLeftWidth: 3,
+  borderLeftColor: '#4caf50',
+},
+currentImageText: {
+  fontSize: 12,
+  color: '#2e7d32',
+  fontStyle: 'italic',
+},
+// Add to existing styles
+fab: {
+  position: 'absolute',
+  right: 20,
+  bottom: 20,
+  width: 60,
+  height: 60,
+  borderRadius: 30,
+  backgroundColor: '#f56c3aff',
+  justifyContent: 'center',
+  alignItems: 'center',
+  elevation: 8,
+  shadowColor: '#000',
+  shadowOffset: { width: 0, height: 4 },
+  shadowOpacity: 0.3,
+  shadowRadius: 8,
+},
+fabIcon: {
+  fontSize: 32,
+  color: '#fff',
+  fontWeight: 'bold',
+  lineHeight: 32,
+},
 });
 
 export default UpcomingEventsScreen;

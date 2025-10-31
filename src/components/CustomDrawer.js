@@ -193,60 +193,84 @@ const CustomDrawer = ({ navigation, handleLogout, handleEditProfile, handleMyPro
   }
 };
 
-  const handleLogoutPress = async () => {
-    Alert.alert(
-      'Logout',
-      'Are you sure you want to logout?',
-      [
-        {
-          text: 'Cancel',
-          style: 'cancel',
-        },
-        {
-          text: 'Logout',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              console.log("🔄 Starting logout process...");
-              
-              // Call the logout API with refresh token
-              const logoutResult = await AuthService.logout();
-              
-              if (logoutResult.success) {
-                console.log("✅ Logout successful:", logoutResult.message);
-              } else {
-                console.log("⚠️ Logout completed with issues:", logoutResult.message);
-              }
+ // Replace the handleLogoutPress function in CustomDrawer.js (starting around line 237)
 
-              // Reset navigation to Login screen
-              navigation.reset({
-                index: 0,
-                routes: [{ name: 'Login' }],
-              });
-
-              console.log("✅ Logout complete — redirected to Login.");
-            } catch (error) {
-              console.error("❌ Logout error:", error);
-              
-              // Fallback: Clear tokens locally and redirect anyway
+const handleLogoutPress = async () => {
+  Alert.alert(
+    'Logout',
+    'Are you sure you want to logout?',
+    [
+      {
+        text: 'Cancel',
+        style: 'cancel',
+      },
+      {
+        text: 'Logout',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            console.log("🔄 Starting logout process from drawer...");
+            
+            // Get the refresh token before calling logout
+            const refreshToken = await AsyncStorage.getItem('refresh_token');
+            console.log('🔑 Refresh token available:', !!refreshToken);
+            
+            if (!refreshToken) {
+              console.warn('⚠️ No refresh token found, clearing local data...');
               await AuthService.clearTokens();
-              
               navigation.reset({
                 index: 0,
                 routes: [{ name: 'Login' }],
               });
+              return;
+            }
+
+            // Call the logout API with the refresh token
+            const logoutResult = await AuthService.logout();
+            
+            if (logoutResult.success) {
+              console.log("✅ Logout successful:", logoutResult.message);
               
+              // Show success message
               Alert.alert(
-                'Logout',
-                'Logout completed, but there may have been network issues.',
+                'Logout Successful',
+                'You have been logged out successfully.',
                 [{ text: 'OK' }]
               );
+            } else {
+              console.log("⚠️ Logout completed with issues:", logoutResult.message);
             }
-          },
+
+            // Always reset navigation to Login screen after logout
+            navigation.reset({
+              index: 0,
+              routes: [{ name: 'Login' }],
+            });
+
+            console.log("✅ Logout complete — redirected to Login.");
+            
+          } catch (error) {
+            console.error("❌ Logout error:", error);
+            
+            // Fallback: Clear tokens locally and redirect anyway
+            await AuthService.clearTokens();
+            
+            navigation.reset({
+              index: 0,
+              routes: [{ name: 'Login' }],
+            });
+            
+            Alert.alert(
+              'Logout',
+              'Logout completed, but there may have been network issues.',
+              [{ text: 'OK' }]
+            );
+          }
         },
-      ]
-    );
-  };
+      },
+    ]
+  );
+};
 
   const handleOpenURL = (url) => {
     Linking.openURL(url).catch(err => console.error('Error opening URL:', err));
@@ -469,6 +493,14 @@ const CustomDrawer = ({ navigation, handleLogout, handleEditProfile, handleMyPro
               <Icon name="edit" size={24} color="#e16e2b" />
               <Text style={styles.drawerItemText}>Edit Profile</Text>
             </TouchableOpacity>
+
+            <TouchableOpacity
+      style={styles.drawerItem}
+      onPress={() => navigation.navigate('ChangePassword')}
+    >
+      <Icon name="lock" size={24} color="#e16e2b" />
+      <Text style={styles.drawerItemText}>Change Password</Text>
+    </TouchableOpacity>
 
             <TouchableOpacity
               style={styles.drawerItem}

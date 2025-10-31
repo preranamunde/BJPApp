@@ -19,8 +19,54 @@ import EncryptedStorage from 'react-native-encrypted-storage';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import ConfigService from '../services/ConfigService';
 import ApiService from '../services/ApiService';
+import { launchImageLibrary } from 'react-native-image-picker';
 import { getCurrentUserRole, checkIfCurrentUserIsAdmin } from '../../App';
 import styles from '../styles/AboutConstituencystyle';
+
+// ✅ Three Dot Menu Component
+const ThreeDotMenu = ({ visible, position, onEdit, onDelete, onDismiss }) => {
+  if (!visible) return null;
+
+  return (
+    <Modal
+      transparent
+      visible={visible}
+      animationType="none"
+      onRequestClose={onDismiss}
+    >
+      <TouchableOpacity 
+        style={styles.dropdownOverlay} 
+        activeOpacity={1} 
+        onPress={onDismiss}
+      >
+        <View style={[styles.dropdownMenu, {
+          top: position.y,
+          left: position.x - 120,
+        }]}>
+          <TouchableOpacity 
+            style={styles.dropdownItem}
+            onPress={onEdit}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.dropdownItemIcon}>✏️</Text>
+            <Text style={styles.dropdownItemText}>Edit</Text>
+          </TouchableOpacity>
+          
+          <View style={styles.dropdownSeparator} />
+          
+          <TouchableOpacity 
+            style={[styles.dropdownItem, styles.dropdownDeleteItem]}
+            onPress={onDelete}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.dropdownItemIcon}>🗑️</Text>
+            <Text style={[styles.dropdownItemText, styles.dropdownDeleteText]}>Delete</Text>
+          </TouchableOpacity>
+        </View>
+      </TouchableOpacity>
+    </Modal>
+  );
+};
 
 // Add this after your imports and before ConstituencyLoggingService
 class ImageService {
@@ -122,10 +168,12 @@ class ConstituencyLoggingService {
 // Screen dimensions for responsive design
 const { width } = Dimensions.get('window');
 
-const ACMediaImage = React.memo(({ item, index, memberId }) => {
+const ACMediaImage = React.memo(({ item, index, memberId, isAdmin, onEdit, onDelete }) => {
   const [imageUri, setImageUri] = useState(null);
   const [imageLoading, setImageLoading] = useState(true);
   const [imageError, setImageError] = useState(false);
+  const [menuVisible, setMenuVisible] = useState(false);
+  const [menuPosition, setMenuPosition] = useState({ x: 0, y: 0 });
 
   useEffect(() => {
     let mounted = true;
@@ -141,23 +189,19 @@ const ACMediaImage = React.memo(({ item, index, memberId }) => {
       setImageError(false);
       
       try {
-        // Get current user info for authentication
         const currentUserInfo = await getCurrentUserRole();
         const userEmailId = currentUserInfo.loggedin_email || '';
         
-        // Normalize the media URL
         let mediaUrl = item.media_file;
         
         if (mediaUrl.startsWith('http://') || mediaUrl.startsWith('https://')) {
           if (mediaUrl.includes('ngrok-free.app:')) {
             mediaUrl = mediaUrl.replace(/:(\d+)\//, '/');
-            console.log('🔧 Fixed ngrok URL:', mediaUrl);
           }
           
           if (mediaUrl.includes('localhost:5000') || mediaUrl.includes('localhost:')) {
             const baseUrl = await ConfigService.getBaseUrl();
             mediaUrl = mediaUrl.replace(/http:\/\/localhost:\d+/, baseUrl);
-            console.log('🔧 Replaced localhost:', mediaUrl);
           }
         } else {
           const baseUrl = await ConfigService.getBaseUrl();
@@ -167,8 +211,6 @@ const ACMediaImage = React.memo(({ item, index, memberId }) => {
           
           mediaUrl = `${baseUrl}/api/mediacorner/asset/?leader_regd_mobile_no=${memberId}&user_email_id=${encodedEmail}&media_file=${encodedMediaFile}`;
         }
-        
-        console.log('🖼️ Loading AC image from:', mediaUrl);
         
         const EncryptedStorage = require('react-native-encrypted-storage').default;
         const appKey = await EncryptedStorage.getItem('APP_KEY');
@@ -195,7 +237,6 @@ const ACMediaImage = React.memo(({ item, index, memberId }) => {
           if (mounted) {
             setImageUri(reader.result);
             setImageLoading(false);
-            console.log('✅ AC image loaded successfully');
           }
         };
         
@@ -225,8 +266,57 @@ const ACMediaImage = React.memo(({ item, index, memberId }) => {
     };
   }, [item.media_file, memberId]);
 
+  const handleMenuPress = (event) => {
+    const { pageX, pageY } = event.nativeEvent;
+    setMenuPosition({ x: pageX, y: pageY + 10 });
+    setMenuVisible(true);
+  };
+
+  const handleEdit = () => {
+    setMenuVisible(false);
+    onEdit(item);  // ✅ Use the prop instead of calling handleACEdit directly
+  };
+
+  const handleDelete = () => {
+    setMenuVisible(false);
+    Alert.alert(
+      'Delete AC Media',
+      'Are you sure you want to delete this image?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { 
+          text: 'Yes', 
+          onPress: () => onDelete(item),  // ✅ Use the prop instead
+          style: 'destructive'
+        }
+      ]
+    );
+  };
+
   return (
     <View style={styles.acMediaItem}>
+      {/* ✅ Three Dot Menu Button - Only show for admin */}
+      {isAdmin && (
+        <TouchableOpacity 
+          style={styles.acMediaMenuButton}
+          onPress={handleMenuPress}
+          activeOpacity={0.7}
+        >
+          <Text style={styles.acMediaMenuIcon}>⋮</Text>
+        </TouchableOpacity>
+      )}
+
+      {/* ✅ Only show menu dropdown for admin */}
+      {isAdmin && (
+        <ThreeDotMenu
+          visible={menuVisible}
+          position={menuPosition}
+          onEdit={handleEdit}
+          onDelete={handleDelete}
+          onDismiss={() => setMenuVisible(false)}
+        />
+      )}
+
       {imageLoading && (
         <View style={styles.acMediaLoadingContainer}>
           <ActivityIndicator size="large" color="#e16e2b" />
@@ -250,6 +340,9 @@ const ACMediaImage = React.memo(({ item, index, memberId }) => {
     </View>
   );
 });
+
+
+// Handle AC Media Edit
 
 const AboutConstituencyScreen = ({ navigation }) => {
   // State management
@@ -287,6 +380,87 @@ const AboutConstituencyScreen = ({ navigation }) => {
 
   const [acMediaData, setAcMediaData] = useState([]);
 const [acMediaLoading, setAcMediaLoading] = useState(false);
+// Add these new states for AC media edit/delete
+const [editACModalVisible, setEditACModalVisible] = useState(false);
+const [selectedACItem, setSelectedACItem] = useState(null);
+const handleACEdit = (item) => {
+  setSelectedACItem(item);
+  setEditACModalVisible(true);
+};
+
+// Handle AC Media Save
+const handleACSave = async (updatedData) => {
+  try {
+    const baseUrl = await ConfigService.getBaseUrl();
+    const apiUrl = `${baseUrl}/api/mediacorner`;
+    
+    const currentUserInfo = await getCurrentUserRole();
+    const userEmailId = currentUserInfo.loggedin_email || '';
+
+    const formData = new FormData();
+    formData.append('regd_mobile_no', regdMobileNo);
+    formData.append('user_email_id', userEmailId);
+    formData.append('media_header', updatedData.media_header);
+    formData.append('media_narration', updatedData.media_narration);
+    formData.append('media_url', updatedData.media_url);
+    formData.append('media_type', 'AC');
+    formData.append('id', updatedData.id);
+
+    // If new image selected, append it
+    if (updatedData.media_file && updatedData.media_file.uri) {
+      const fileUri = updatedData.media_file.uri;
+      const fileName = updatedData.media_file.fileName || fileUri.split('/').pop();
+      const fileType = updatedData.media_file.type || 'image/jpeg';
+
+      formData.append('media_file', {
+        uri: fileUri,
+        name: fileName,
+        type: fileType,
+      });
+    } else {
+      formData.append('media_file', null);
+    }
+
+    console.log('📤 Sending PUT request to:', apiUrl);
+
+    const result = await ApiService.authPut(apiUrl, formData, {}, true);
+
+    if (result.success) {
+      Alert.alert('✅ Success', 'AC media updated successfully');
+      setEditACModalVisible(false);
+      setSelectedACItem(null);
+      fetchConstituencyData(regdMobileNo); // Refresh the data
+    } else {
+      throw new Error(result.message || 'Update failed');
+    }
+  } catch (error) {
+    console.error('❌ Error updating AC media:', error);
+    Alert.alert('Error', error.message || 'Failed to update AC media');
+  }
+};
+
+// Handle AC Media Delete
+const handleACDelete = async (item) => {
+  try {
+    const baseUrl = await ConfigService.getBaseUrl();
+    const currentUserInfo = await getCurrentUserRole();
+    const userEmailId = currentUserInfo.loggedin_email || '';
+    
+    const apiUrl = `${baseUrl}/api/mediacorner/?leader_regd_mobile_no=${regdMobileNo}&user_email_id=${encodeURIComponent(userEmailId)}&id=${item._id || item.id}`;
+    
+    const result = await ApiService.authDelete(apiUrl);
+
+    if (result.success) {
+      Alert.alert('Success', 'AC media deleted successfully');
+      fetchConstituencyData(regdMobileNo); // Refresh the data
+    } else {
+      throw new Error(result.message || 'Delete failed');
+    }
+  } catch (error) {
+    console.error('Error deleting AC media:', error);
+    Alert.alert('Error', 'Failed to delete AC media');
+  }
+};
 
 
   const showSectionDropdown = (sectionKey, event) => {
@@ -357,6 +531,11 @@ const [acMediaLoading, setAcMediaLoading] = useState(false);
   const [assemblyEditLoading, setAssemblyEditLoading] = useState(false);
   const [editAssemblyFormList, setEditAssemblyFormList] = useState([]);
   const [isAddingMoreInEdit, setIsAddingMoreInEdit] = useState(false);
+
+  // Handle AC Media Edit
+
+
+  
   // Add new constituency form to the list
   const handleAddMoreConstituency = () => {
     setAssemblyFormList([
@@ -404,6 +583,132 @@ const [acMediaLoading, setAcMediaLoading] = useState(false);
     setEditAssemblyFormList([]);
   };
 
+  // Edit Modal for AC Media (Image Only)
+// Find your EditACMediaModal component and update it:
+const EditACMediaModal = ({ visible, item, onClose, onSave }) => {
+  const [selectedImage, setSelectedImage] = useState(null);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (item) {
+      setSelectedImage(null);
+    }
+  }, [item]);
+
+  const handlePickImage = () => {
+    const options = {
+      mediaType: 'photo',
+      quality: 0.8,
+      maxWidth: 1920,
+      maxHeight: 1080,
+    };
+
+    launchImageLibrary(options, (response) => {
+      if (response.didCancel) {
+        console.log('User cancelled image picker');
+      } else if (response.errorCode) {
+        Alert.alert('Error', response.errorMessage);
+      } else if (response.assets && response.assets[0]) {
+        setSelectedImage(response.assets[0]);
+        console.log('Image selected:', response.assets[0].uri);
+      }
+    });
+  };
+
+  const handleSave = async () => {
+    if (!selectedImage) {
+      Alert.alert('Validation Error', 'Please select a new image');
+      return;
+    }
+
+    setSaving(true);
+    try {
+      await onSave({
+        id: item._id || item.id,
+        media_header: item.media_header || '',
+        media_narration: item.media_narration || '',
+        media_url: item.media_url || '',
+        media_type: 'AC',
+        media_file: selectedImage,
+      });
+      onClose();
+    } catch (error) {
+      Alert.alert('Error', 'Failed to update AC media');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Modal
+      visible={visible}
+      transparent
+      animationType="slide"
+      onRequestClose={onClose}
+    >
+      <View style={styles.modalOverlay}>
+        {/* ✅ USE THE NEW COMPACT STYLE */}
+        <View style={styles.imageModalContent}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Update AC Image</Text>
+            <TouchableOpacity onPress={onClose} style={styles.closeButton}>
+              <Icon name="close" size={18} color="#fff" />
+            </TouchableOpacity>
+          </View>
+
+          {/* ✅ REMOVE ScrollView, USE REGULAR VIEW */}
+          <View style={[styles.modalBody, { padding: 20, maxHeight: undefined }]}>
+            <Text style={[styles.formLabel, { marginBottom: 10 }]}>Select New Image *</Text>
+            <TouchableOpacity 
+              style={styles.imagePickerButton}
+              onPress={handlePickImage}
+            >
+              <Icon name="image" size={24} color="#e16e2b" />
+              <Text style={styles.imagePickerText}>
+                {selectedImage ? 'Change Image' : 'Choose Image'}
+              </Text>
+            </TouchableOpacity>
+
+            {selectedImage && (
+              <View style={styles.selectedImagePreview}>
+                <Image 
+                  source={{ uri: selectedImage.uri }} 
+                  style={styles.previewImage}
+                  resizeMode="cover"
+                />
+                <Text style={styles.imageInfoText}>
+                  {selectedImage.fileName || 'New image selected'}
+                </Text>
+              </View>
+            )}
+          </View>
+
+          {/* ✅ FOOTER WITH BUTTONS */}
+          <View style={styles.modalFooter}>
+            <TouchableOpacity 
+              style={[styles.modalButton, styles.cancelButton]}
+              onPress={onClose}
+            >
+              <Text style={styles.cancelButtonText}>Cancel</Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity 
+              style={[styles.modalButton, styles.saveButton]}
+              onPress={handleSave}
+              disabled={saving}
+            >
+              {saving ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={styles.saveButtonText}>Save</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+};
 
   // Update specific constituency in the list
   const handleAssemblyFormListChange = (index, field, value) => {
@@ -2083,7 +2388,6 @@ const fetchACMedia = async (memberIdentifier) => {
 );
 
 const renderACMediaGallery = () => {
-  // Early return if loading
   if (acMediaLoading) {
     return (
       <View style={styles.acMediaContainer}>
@@ -2095,36 +2399,51 @@ const renderACMediaGallery = () => {
     );
   }
 
-  // Early return if no data
   if (!acMediaData || !Array.isArray(acMediaData) || acMediaData.length === 0) {
     return null;
   }
 
-  // Render gallery
   return (
-    <View style={styles.acMediaContainer}>
-      <ScrollView 
-        horizontal 
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.acMediaScrollContent}
-      >
-        {acMediaData.map((item, index) => {
-          // Safety check for each item
-          if (!item || !item.media_file) {
-            return null;
-          }
-          
-          return (
-            <ACMediaImage
-              key={item._id || item.id || `ac-media-${index}`}
-              item={item}
-              index={index}
-              memberId={regdMobileNo}
-            />
-          );
-        })}
-      </ScrollView>
-    </View>
+    <>
+      <View style={styles.acMediaContainer}>
+        <ScrollView 
+          horizontal 
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.acMediaScrollContent}
+        >
+          {acMediaData.map((item, index) => {
+            if (!item || !item.media_file) {
+              return null;
+            }
+            
+            return (
+              <ACMediaImage
+                key={item._id || item.id || `ac-media-${index}`}
+                item={item}
+                index={index}
+                memberId={regdMobileNo}
+                isAdmin={isAdmin}
+                onEdit={handleACEdit}      // ✅ Pass the handler
+                onDelete={handleACDelete}  // ✅ Pass the handler
+              />
+            );
+          })}
+        </ScrollView>
+      </View>
+
+      {/* ✅ Only show edit modal for admin */}
+      {isAdmin && (
+        <EditACMediaModal
+          visible={editACModalVisible}
+          item={selectedACItem}
+          onClose={() => {
+            setEditACModalVisible(false);
+            setSelectedACItem(null);
+          }}
+          onSave={handleACSave}
+        />
+      )}
+    </>
   );
 };
 

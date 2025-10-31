@@ -23,7 +23,7 @@ import ConfigService from '../services/ConfigService';
 import ApiService from '../services/ApiService';
 import NotificationIcon from '../components/NotificationIcon';
 import { languageData } from '../components/languages';
-import { getCurrentUserRole } from '../../App';
+import { getCurrentUserRole,checkIfCurrentUserIsAdmin } from '../../App';
 import { launchImageLibrary } from 'react-native-image-picker';
 
 const { width } = Dimensions.get('window');
@@ -321,7 +321,8 @@ const HomeMediaImage = React.memo(({
   index, 
   memberId,
   onEdit,
-  onDelete 
+  onDelete, 
+  isAdmin // ✅ ADD THIS PROP
 }) => {
   const [imageUri, setImageUri] = useState(null);
   const [imageLoading, setImageLoading] = useState(true);
@@ -449,8 +450,9 @@ const HomeMediaImage = React.memo(({
   };
 
   return (
-    <View style={styles.homeMediaItem}>
-      {/* Three Dot Menu Button */}
+  <View style={styles.homeMediaItem}>
+    {/* ✅ Three Dot Menu Button - Only show for admin */}
+    {isAdmin && (
       <TouchableOpacity 
         style={styles.homeMediaMenuButton}
         onPress={handleMenuPress}
@@ -458,37 +460,38 @@ const HomeMediaImage = React.memo(({
       >
         <Text style={styles.homeMediaMenuIcon}>⋮</Text>
       </TouchableOpacity>
+    )}
 
-      <ThreeDotMenu
-        visible={menuVisible}
-        position={menuPosition}
-        onEdit={handleEdit}
-        onDelete={handleDelete}
-        onDismiss={() => setMenuVisible(false)}
+    <ThreeDotMenu
+      visible={menuVisible}
+      position={menuPosition}
+      onEdit={handleEdit}
+      onDelete={handleDelete}
+      onDismiss={() => setMenuVisible(false)}  // ✅ FIXED - was "on is this correctDismiss"
+    />
+
+    {imageLoading && (
+      <View style={styles.homeMediaLoadingContainer}>
+        <ActivityIndicator size="large" color="#e16e2b" />
+      </View>
+    )}
+
+    {!imageLoading && imageError && (
+      <View style={styles.homeMediaErrorContainer}>
+        <Text style={styles.homeMediaErrorIcon}>📷</Text>
+        <Text style={styles.homeMediaErrorText}>Image unavailable</Text>
+      </View>
+    )}
+
+    {!imageLoading && !imageError && imageUri && (
+      <Image 
+        source={{ uri: imageUri }}
+        style={styles.homeMediaImage} 
+        resizeMode="cover"
       />
-
-      {imageLoading && (
-        <View style={styles.homeMediaLoadingContainer}>
-          <ActivityIndicator size="large" color="#e16e2b" />
-        </View>
-      )}
-
-      {!imageLoading && imageError && (
-        <View style={styles.homeMediaErrorContainer}>
-          <Text style={styles.homeMediaErrorIcon}>📷</Text>
-          <Text style={styles.homeMediaErrorText}>Image unavailable</Text>
-        </View>
-      )}
-
-      {!imageLoading && !imageError && imageUri && (
-        <Image 
-          source={{ uri: imageUri }}
-          style={styles.homeMediaImage} 
-          resizeMode="cover"
-        />
-      )}
-    </View>
-  );
+    )}
+  </View>
+);
 });
 
 // MAIN COMPONENT
@@ -506,6 +509,43 @@ const HomeScreen = ({ navigation }) => {
 const [selectedNewsItem, setSelectedNewsItem] = useState(null);
 const [newsMenuVisible, setNewsMenuVisible] = useState(false);
 const [newsMenuPosition, setNewsMenuPosition] = useState({ x: 0, y: 0 });
+const [isAdmin, setIsAdmin] = useState(false);
+  const [userRole, setUserRole] = useState('user');
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+
+
+  // ✅ ADD THIS ADMIN CHECK FUNCTION
+const checkAdminRole = async () => {
+  try {
+    console.log('🔍 === CHECKING ADMIN ROLE IN HOME SCREEN ===');
+    
+    // Use the enhanced function from App.js
+    const adminCheck = await checkIfCurrentUserIsAdmin();
+    const currentRole = await getCurrentUserRole();
+    
+    console.log('👤 Current User Role Info:', currentRole);
+    console.log('👑 Admin Check Result:', adminCheck);
+    
+    setIsAdmin(adminCheck.isAdmin);
+    setUserRole(currentRole.userRole);
+    setIsLoggedIn(currentRole.isLoggedIn);
+    
+    console.log('✅ Role check completed:', {
+      isAdmin: adminCheck.isAdmin,
+      userRole: currentRole.userRole,
+      isLoggedIn: currentRole.isLoggedIn,
+    });
+    
+    return adminCheck.isAdmin;
+    
+  } catch (error) {
+    console.error('❌ Error checking admin role:', error);
+    setIsAdmin(false);
+    setUserRole('user');
+    setIsLoggedIn(false);
+    return false;
+  }
+};
 
   useEffect(() => {
     initializeHomeMedia();
@@ -576,30 +616,34 @@ const [newsMenuPosition, setNewsMenuPosition] = useState({ x: 0, y: 0 });
     }
   };
 
-  const initializeHomeMedia = async () => {
-    try {
-      setHomeMediaLoading(true);
-      const mobileNo = await getMobileNumberFromStorage();
-      setRegdMobileNo(mobileNo);
-      
-      const currentUserInfo = await getCurrentUserRole();
-      const email = currentUserInfo.loggedin_email || 'default@email.com';
-      setUserEmail(email);
-      
-      const homeMedia = await fetchHomeMedia(mobileNo);
-      
-      if (homeMedia.success && homeMedia.data) {
-        setHomeMediaData(homeMedia.data);
-      } else {
-        setHomeMediaData([]);
-      }
-    } catch (error) {
-      console.error('Error initializing home media:', error);
+const initializeHomeMedia = async () => {
+  try {
+    setHomeMediaLoading(true);
+    
+    // ✅ ADD THIS LINE - Check admin role
+    await checkAdminRole();
+    
+    const mobileNo = await getMobileNumberFromStorage();
+    setRegdMobileNo(mobileNo);
+    
+    const currentUserInfo = await getCurrentUserRole();
+    const email = currentUserInfo.loggedin_email || 'default@email.com';
+    setUserEmail(email);
+    
+    const homeMedia = await fetchHomeMedia(mobileNo);
+    
+    if (homeMedia.success && homeMedia.data) {
+      setHomeMediaData(homeMedia.data);
+    } else {
       setHomeMediaData([]);
-    } finally {
-      setHomeMediaLoading(false);
     }
-  };
+  } catch (error) {
+    console.error('Error initializing home media:', error);
+    setHomeMediaData([]);
+  } finally {
+    setHomeMediaLoading(false);
+  }
+};
 
   // ✅ Handle Edit (same logic as MediaCornerScreen)
   const handleEdit = (item) => {
@@ -654,7 +698,45 @@ const [newsMenuPosition, setNewsMenuPosition] = useState({ x: 0, y: 0 });
       Alert.alert('Error', error.message || 'Failed to update home media');
     }
   };
+const handleNewsSave = async (updatedData) => {
+  try {
+    const baseUrl = await ConfigService.getBaseUrl();
+    const apiUrl = `${baseUrl}/api/mediacorner`;
 
+    const formData = new FormData();
+    formData.append('regd_mobile_no', regdMobileNo);
+    formData.append('user_email_id', userEmail);
+    formData.append('media_header', updatedData.media_header);
+    formData.append('media_narration', updatedData.media_narration);
+    formData.append('media_url', updatedData.media_url || '');
+    formData.append('media_type', 'Home');
+    formData.append('id', updatedData.id);
+    
+    // ✅ DON'T append media_file at all for news updates
+    
+    console.log('📤 Sending PUT request for NEWS to:', apiUrl);
+    console.log('📋 News Update Data:', {
+      id: updatedData.id,
+      header: updatedData.media_header,
+      narration: updatedData.media_narration,
+      url: updatedData.media_url
+    });
+
+    const result = await ApiService.authPut(apiUrl, formData, {}, true);
+
+    if (result.success) {
+      Alert.alert('✅ Success', 'News item updated successfully');
+      setEditNewsModalVisible(false);
+      setSelectedNewsItem(null);
+      initializeHomeMedia(); // Refresh the list
+    } else {
+      throw new Error(result.message || 'Update failed');
+    }
+  } catch (error) {
+    console.error('❌ Error updating news item:', error);
+    Alert.alert('Error', error.message || 'Failed to update news item');
+  }
+};
   // ✅ Handle Delete (DELETE request)
   const handleDelete = async (item) => {
     try {
@@ -752,61 +834,62 @@ const handleNewsDelete = async (item) => {
     </TouchableOpacity>
   );
 
-  const renderHomeMediaGallery = () => {
-    if (homeMediaLoading) {
-      return (
-        <View style={styles.homeMediaContainer}>
-          <View style={styles.homeMediaLoadingState}>
-            <ActivityIndicator size="large" color="#e16e2b" />
-            <Text style={styles.loadingText}>Loading gallery...</Text>
-          </View>
-        </View>
-      );
-    }
-
-    if (!homeMediaData || !Array.isArray(homeMediaData) || homeMediaData.length === 0) {
-      return null;
-    }
-
+const renderHomeMediaGallery = () => {
+  if (homeMediaLoading) {
     return (
-      <>
-        <View style={styles.homeMediaContainer}>
-          <ScrollView 
-            horizontal 
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.homeMediaScrollContent}
-          >
-            {homeMediaData.map((item, index) => {
-              if (!item || !item.media_file) {
-                return null;
-              }
-              
-              return (
-                <HomeMediaImage
-                  key={item._id || item.id || `home-media-${index}`}
-                  item={item}
-                  index={index}
-                  memberId={regdMobileNo}
-                  onEdit={handleEdit}
-                  onDelete={handleDelete}
-                />
-              );
-            })}
-          </ScrollView>
+      <View style={styles.homeMediaContainer}>
+        <View style={styles.homeMediaLoadingState}>
+          <ActivityIndicator size="large" color="#e16e2b" />
+          <Text style={styles.loadingText}>Loading gallery...</Text>
         </View>
-
-        <EditHomeMediaModal
-          visible={editModalVisible}
-          item={selectedItem}
-          onClose={() => {
-            setEditModalVisible(false);
-            setSelectedItem(null);
-          }}
-          onSave={handleSave}
-        />
-      </>
+      </View>
     );
-  };
+  }
+
+  if (!homeMediaData || !Array.isArray(homeMediaData) || homeMediaData.length === 0) {
+    return null;
+  }
+
+  return (
+    <>
+      <View style={styles.homeMediaContainer}>
+        <ScrollView 
+          horizontal 
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.homeMediaScrollContent}
+        >
+          {homeMediaData.map((item, index) => {
+            if (!item || !item.media_file) {
+              return null;
+            }
+            
+            return (
+              <HomeMediaImage
+                key={item._id || item.id || `home-media-${index}`}
+                item={item}
+                index={index}
+                memberId={regdMobileNo}
+                onEdit={handleEdit}
+                onDelete={handleDelete}
+                isAdmin={isAdmin}  // ✅ PASS isAdmin PROP
+              />
+            );
+          })}
+        </ScrollView>
+      </View>
+
+      <EditHomeMediaModal
+        visible={editModalVisible}
+        item={selectedItem}
+        onClose={() => {
+          setEditModalVisible(false);
+          setSelectedItem(null);
+        }}
+        onSave={handleSave}
+      />
+    </>
+  );
+};
 
 const renderNewsSection = () => {
   const newsItems = homeMediaData?.filter(item => 
@@ -830,6 +913,8 @@ const renderNewsSection = () => {
     );
   }
 
+  
+
   return (
     <View style={styles.newsSection}>
       <Text style={[styles.sectionTitle, { fontSize: fontSize + 2 }]}>{lang.latestNews}</Text>
@@ -845,25 +930,44 @@ const renderNewsSection = () => {
 
         return (
           <View key={item._id || `news-${index}`} style={styles.newsCard}>
-            {/* ✅ Three Dot Menu for News */}
-            <TouchableOpacity 
-              style={styles.newsMenuButton}
-              onPress={(event) => {
-                const { pageX, pageY } = event.nativeEvent;
-                setNewsMenuPosition({ x: pageX, y: pageY + 10 });
-                setSelectedNewsItem(item);
-                setNewsMenuVisible(true);
-              }}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.newsMenuIcon}>⋮</Text>
-            </TouchableOpacity>
-
-            <View style={styles.newsHeader}>
-              <Icon name="campaign" size={20} color="#e16e2b" />
-              <Text style={[styles.newsTitle, { fontSize: fontSize, flex: 1, marginLeft: 8 }]}>
-                {item.media_header}
-              </Text>
+            {/* ✅ Header Row with conditional menu button */}
+             {isAdmin && (
+              <TouchableOpacity 
+                style={styles.newsMenuButton}
+                onPress={(event) => {
+                  const { pageX, pageY } = event.nativeEvent;
+                  setNewsMenuPosition({ x: pageX, y: pageY + 10 });
+                  setSelectedNewsItem(item);
+                  setNewsMenuVisible(true);
+                }}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.newsMenuIcon}>⋮</Text>
+              </TouchableOpacity>
+            )}
+            <View style={styles.newsHeaderRow}>
+              <View style={styles.newsHeader}>
+                <Icon name="campaign" size={20} color="#e16e2b" />
+                <Text style={[styles.newsTitle, { fontSize: fontSize, flex: 1, marginLeft: 8 }]}>
+                  {item.media_header}
+                </Text>
+              </View>
+              
+              {/* ✅ Three Dot Menu Button - Only show for admin */}
+              {isAdmin && (
+                <TouchableOpacity 
+                  style={styles.newsMenuButtonInline}
+                  onPress={(event) => {
+                    const { pageX, pageY } = event.nativeEvent;
+                    setNewsMenuPosition({ x: pageX, y: pageY + 10 });
+                    setSelectedNewsItem(item);
+                    setNewsMenuVisible(true);
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.newsMenuIcon}>⋮</Text>
+                </TouchableOpacity>
+              )}
             </View>
             
             <Text style={[styles.newsDate, { fontSize: fontSize - 2 }]}>
@@ -898,49 +1002,52 @@ const renderNewsSection = () => {
         );
       })}
 
-      {/* ✅ Three Dot Menu Component - Placed OUTSIDE the map */}
-      <ThreeDotMenu
-        visible={newsMenuVisible}
-        position={newsMenuPosition}
-        onEdit={() => {
-          setNewsMenuVisible(false);
-          if (selectedNewsItem) {
-            handleNewsEdit(selectedNewsItem);
-          }
-        }}
-        onDelete={() => {
-          setNewsMenuVisible(false);
-          if (selectedNewsItem) {
-            Alert.alert(
-              'Delete News',
-              'Are you sure you want to delete this news item?',
-              [
-                { text: 'Cancel', style: 'cancel' },
-                { 
-                  text: 'Yes', 
-                  onPress: () => handleNewsDelete(selectedNewsItem),
-                  style: 'destructive'
-                }
-              ]
-            );
-          }
-        }}
-        onDismiss={() => {
-          setNewsMenuVisible(false);
-          setSelectedNewsItem(null);
-        }}
-      />
+      {/* ✅ Only show menu and modals for admin */}
+      {isAdmin && (
+        <>
+          <ThreeDotMenu
+            visible={newsMenuVisible}
+            position={newsMenuPosition}
+            onEdit={() => {
+              setNewsMenuVisible(false);
+              if (selectedNewsItem) {
+                handleNewsEdit(selectedNewsItem);
+              }
+            }}
+            onDelete={() => {
+              setNewsMenuVisible(false);
+              if (selectedNewsItem) {
+                Alert.alert(
+                  'Delete News',
+                  'Are you sure you want to delete this news item?',
+                  [
+                    { text: 'Cancel', style: 'cancel' },
+                    { 
+                      text: 'Yes', 
+                      onPress: () => handleNewsDelete(selectedNewsItem),
+                      style: 'destructive'
+                    }
+                  ]
+                );
+              }
+            }}
+            onDismiss={() => {
+              setNewsMenuVisible(false);
+              setSelectedNewsItem(null);
+            }}
+          />
 
-      {/* ✅ Edit News Modal */}
-      <EditNewsModal
-        visible={editNewsModalVisible}
-        item={selectedNewsItem}
-        onClose={() => {
-          setEditNewsModalVisible(false);
-          setSelectedNewsItem(null);
-        }}
-        onSave={handleSave}
-      />
+          <EditNewsModal
+            visible={editNewsModalVisible}
+            item={selectedNewsItem}
+            onClose={() => {
+              setEditNewsModalVisible(false);
+              setSelectedNewsItem(null);
+            }}
+            onSave={handleNewsSave}
+          />
+        </>
+      )}
     </View>
   );
 };
@@ -1138,7 +1245,7 @@ const styles = StyleSheet.create({
   homeMediaContainer: { paddingVertical: 10, paddingLeft: 15, backgroundColor: '#fff', marginBottom: 20 },
   homeMediaScrollContent: { paddingRight: 15, paddingBottom: 5 },
   homeMediaItem: {
-    width: 280,
+    width: 330,
     height: 200,
     marginRight: 15,
     borderRadius: 12,

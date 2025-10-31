@@ -484,16 +484,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   modalContent: {
-    backgroundColor: '#fff',
-    borderRadius: 15,
-    width: '90%',
-    maxHeight: '80%',
-    elevation: 10,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 5 },
-    shadowOpacity: 0.3,
-    shadowRadius: 10,
-  },
+  backgroundColor: '#fff',
+  borderRadius: 15,
+  width: '90%',
+  maxHeight: '80%',  // This limits the height
+  elevation: 10,
+  shadowColor: '#000',
+  shadowOffset: { width: 0, height: 5 },
+  shadowOpacity: 0.3,
+  shadowRadius: 10,
+},
   modalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -833,7 +833,8 @@ acMediaScrollContent: {
   paddingBottom: 5,
 },
 acMediaItem: {
-  width: 280,
+  width: 330
+  ,
   height: 200,
   marginRight: 15,
   borderRadius: 12,
@@ -881,6 +882,70 @@ acMediaLoadingState: {
   footer: {
     height: 30,
   },
+  // Add to your stylesheet
+acMediaMenuButton: {
+  position: 'absolute',
+  top: 8,
+  right: 8,
+  backgroundColor: 'rgba(0, 0, 0, 0.6)',
+  borderRadius: 15,
+  width: 30,
+  height: 30,
+  justifyContent: 'center',
+  alignItems: 'center',
+  zIndex: 10,
+},
+acMediaMenuIcon: {
+  color: '#fff',
+  fontSize: 18,
+  fontWeight: 'bold',
+},
+imagePickerButton: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  justifyContent: 'center',
+  backgroundColor: '#f8f9fa',
+  padding: 15,
+  borderRadius: 8,
+  borderWidth: 1,
+  borderColor: '#e16e2b',
+  borderStyle: 'dashed',
+  marginBottom: 15,
+  minHeight: 60,  // Add minimum height
+},
+imageModalContent: {
+  backgroundColor: '#fff',
+  borderRadius: 15,
+  width: '90%',
+  maxHeight: '60%',  // Smaller height for image picker
+  elevation: 10,
+  shadowColor: '#000',
+  shadowOffset: { width: 0, height: 5 },
+  shadowOpacity: 0.3,
+  shadowRadius: 10,
+},
+
+imagePickerText: {
+  marginLeft: 10,
+  color: '#e16e2b',
+  fontWeight: 'bold',
+},
+selectedImagePreview: {
+  alignItems: 'center',
+  marginTop: 10,
+  marginBottom: 15,  // Add bottom margin
+},
+previewImage: {
+  width: 150,  // Reduced from 200
+  height: 150, // Reduced from 200
+  borderRadius: 8,
+  marginBottom: 10,
+},
+
+imageInfoText: {
+  fontSize: 12,
+  color: '#7f8c8d',
+},
 });
 
 export default styles;

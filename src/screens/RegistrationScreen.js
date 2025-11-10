@@ -23,8 +23,8 @@ import ApiService from '../services/ApiService';
 
 const RegistrationScreen = ({ navigation, route }) => {
   const [isEditMode, setIsEditMode] = useState(false);
-  const [originalData, setOriginalData] = useState({}); // Store original data for comparison
-  const [isProfileImageChanged, setIsProfileImageChanged] = useState(false); // Track if profile image changed
+  const [originalData, setOriginalData] = useState({});
+  const [isProfileImageChanged, setIsProfileImageChanged] = useState(false);
   const [apiEndpoints, setApiEndpoints] = useState(null);
   const [formData, setFormData] = useState({
     profile_image: null,
@@ -32,13 +32,13 @@ const RegistrationScreen = ({ navigation, route }) => {
     name: '',
     email: '',
     address: '',
-    city: '', // City field
+    city: '',
     pincode: '',
     district: '',
     state: '',
-    facebook: '', // Changed from facebookId to facebook
-    instagram: '', // Changed from instagramId to instagram
-    twitter: '', // Changed from xId to twitter
+    facebook: '',
+    instagram: '',
+    twitter: '',
     password: '',
     confirmPassword: '',
     declaration: false,
@@ -57,8 +57,11 @@ const RegistrationScreen = ({ navigation, route }) => {
 
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  
+  // ✅ LOGIN NAVIGATION STATES
+ 
 
-  // Initialize API endpoints
+  // ✅ useEffect 1: Initialize API endpoints
   useEffect(() => {
     const initializeEndpoints = async () => {
       try {
@@ -74,7 +77,7 @@ const RegistrationScreen = ({ navigation, route }) => {
     initializeEndpoints();
   }, []);
 
-  // Check if this is edit profile mode
+  // ✅ useEffect 2: Check if edit profile mode
   useEffect(() => {
     if (route?.params?.isEditMode) {
       setIsEditMode(true);
@@ -82,7 +85,7 @@ const RegistrationScreen = ({ navigation, route }) => {
     }
   }, [route?.params]);
 
-  // OTP timer countdown
+  // ✅ useEffect 3: OTP timer countdown (SINGLE INSTANCE - REMOVED DUPLICATE)
   useEffect(() => {
     let interval = null;
     if (otpTimer > 0) {
@@ -95,7 +98,9 @@ const RegistrationScreen = ({ navigation, route }) => {
     return () => clearInterval(interval);
   }, [otpTimer]);
 
-  // Add this utility function before the RegistrationScreen component
+  
+
+  // Add this utility function
   const capitalizeAfterSpace = (text) => {
     return text.replace(/\b\w/g, (char) => char.toUpperCase());
   };
@@ -674,63 +679,101 @@ const RegistrationScreen = ({ navigation, route }) => {
   };
 
   // UPDATED REGISTRATION HANDLER USING APISERVICE
-  const handleRegistration = async () => {
-    if (!apiEndpoints) {
-      Alert.alert('Error', 'API configuration not loaded');
-      return;
+// UPDATED REGISTRATION HANDLER USING APISERVICE
+const handleRegistration = async () => {
+  if (!apiEndpoints) {
+    Alert.alert('Error', 'API configuration not loaded');
+    return;
+  }
+
+  try {
+    const formDataToSend = new FormData();
+
+    formDataToSend.append('name', formData.name);
+    formDataToSend.append('email', formData.email);
+    formDataToSend.append('mobile', formData.mobile);
+    formDataToSend.append('password', formData.password);
+    formDataToSend.append('address', formData.address);
+    formDataToSend.append('city', formData.city);
+    formDataToSend.append('district', formData.district);
+    formDataToSend.append('state', formData.state);
+    formDataToSend.append('pincode', formData.pincode);
+    formDataToSend.append('facebook', formData.facebook || '');
+    formDataToSend.append('instagram', formData.instagram || '');
+    formDataToSend.append('twitter', formData.twitter || '');
+
+    if (formData.profile_image) {
+      formDataToSend.append('profile_image', {
+        uri: formData.profile_image.uri,
+        type: formData.profile_image.type || 'image/jpeg',
+        name: formData.profile_image.fileName || `profile-${Date.now()}.jpg`,
+      });
     }
 
-    try {
-      const formDataToSend = new FormData();
+    const result = await ApiService.post(apiEndpoints.auth.register, formDataToSend, {}, true);
 
-      formDataToSend.append('name', formData.name);
-      formDataToSend.append('email', formData.email);
-      formDataToSend.append('mobile', formData.mobile);
-      formDataToSend.append('password', formData.password);
-      formDataToSend.append('address', formData.address);
-      formDataToSend.append('city', formData.city);
-      formDataToSend.append('district', formData.district);
-      formDataToSend.append('state', formData.state);
-      formDataToSend.append('pincode', formData.pincode);
-      // Updated social media fields to match API
-      formDataToSend.append('facebook', formData.facebook || '');
-      formDataToSend.append('instagram', formData.instagram || '');
-      formDataToSend.append('twitter', formData.twitter || '');
+    console.log('Registration Response:', result);
 
-      if (formData.profile_image) {
-        formDataToSend.append('profile_image', {
-          uri: formData.profile_image.uri,
-          type: formData.profile_image.type || 'image/jpeg',
-          name: formData.profile_image.fileName || `profile-${Date.now()}.jpg`,
-        });
-      }
-
-      const result = await ApiService.post(apiEndpoints.auth.register, formDataToSend, {}, true);
-
-      console.log('Registration Response:', result);
-
-      if (result.success) {
-        Alert.alert(
-          'Success!',
-          'Your account has been created successfully!',
-          [
-            {
-              text: 'Continue to Login',
-              onPress: () => navigation.navigate('Login', {
-                message: 'Registration completed successfully! Please login to continue.',
-                registrationSuccess: true
-              })
-            }
-          ]
-        );
-      } else {
-        throw new Error(result.message || 'Registration failed');
-      }
-    } catch (error) {
-      console.error('Registration Error:', error);
-      Alert.alert('Error', error.message || 'Something went wrong during registration');
+    if (result.success) {
+      Alert.alert(
+        'Success!',
+        'Your account has been created successfully!',
+        [
+          {
+            text: 'Continue to Login',
+            onPress: () => navigation.navigate('Login', {
+              message: 'Registration completed successfully! Please login to continue.',
+              registrationSuccess: true
+            })
+          }
+        ]
+      );
+    } else {
+      throw new Error(result.message || 'Registration failed');
     }
-  };
+  } catch (error) {
+    console.error('Registration Error:', error);
+    console.error('Error message:', error.message);
+    
+    // ✅ GET THE ERROR MESSAGE
+    const errorMessage = error.message || 'Something went wrong during registration';
+    
+    // ✅ CHECK FOR EXACT MESSAGE OR SIMILAR VARIATIONS
+    const isEmailAlreadyRegistered = 
+      errorMessage.includes('Email Id already registered') ||
+      errorMessage.includes('email already registered') ||
+      errorMessage.includes('Email already exists') ||
+      errorMessage.includes('already registered');
+    
+ if (isEmailAlreadyRegistered) {
+  console.log('✅ Email already registered detected!');
+  
+  // ✅ FIXED: Direct navigation in Alert onPress
+  Alert.alert(
+    'Already Registered',
+    'This email is already registered. Please proceed to Login.',
+    [
+      {
+        text: 'Go to Login',  // 👈 Button text changed
+        onPress: () => {
+          console.log('🚀 Navigating to Login with email:', formData.email);
+          
+          // 👈 This navigates to Login screen when clicked
+          navigation.navigate('Login', {
+            email: formData.email,
+            message: 'This email is already registered. Please login with your credentials.'
+          });
+        }
+      }
+    ],
+    { cancelable: false }
+  );
+}else {
+      // ✅ SHOW GENERIC ERROR FOR OTHER CASES
+      Alert.alert('Error', errorMessage);
+    }
+  }
+};
 
   const handleSubmit = async () => {
     if (validateForm()) {

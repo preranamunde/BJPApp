@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -44,30 +44,24 @@ class DrawerImageService {
     }
     
     try {
-      // If it's already a full URL, normalize it
       if (imageUrl.startsWith('http://') || imageUrl.startsWith('https://')) {
         let normalizedUrl = imageUrl;
         
-        // Remove port from ngrok URLs
         if (normalizedUrl.includes('ngrok-free.app:')) {
           normalizedUrl = normalizedUrl.replace(/:(\d+)\//, '/');
         }
         
-        // Replace localhost with current base URL
         if (normalizedUrl.includes('localhost:5000') || normalizedUrl.includes('localhost:')) {
           const baseUrl = await ConfigService.getBaseUrl();
           normalizedUrl = normalizedUrl.replace(/http:\/\/localhost:\d+/, baseUrl);
         }
         
-        // Test if the normalized URL is accessible
         const isAccessible = await this.testImageUrl(normalizedUrl);
-        
         if (isAccessible) {
           return normalizedUrl;
         }
       }
       
-      // If URL is relative or previous attempts failed, try fallback paths
       const baseUrl = await ConfigService.getBaseUrl();
       const cleanPath = imageUrl.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '');
       const filename = cleanPath.split('/').pop();
@@ -94,6 +88,7 @@ class DrawerImageService {
     }
   }
 }
+
 const CustomDrawer = ({ navigation, handleLogout, handleEditProfile, handleMyProfile }) => {
   const [isLiteratureOpen, setIsLiteratureOpen] = useState(false);
   const [isUserLoggedIn, setIsUserLoggedIn] = useState(false);
@@ -101,176 +96,399 @@ const CustomDrawer = ({ navigation, handleLogout, handleEditProfile, handleMyPro
   const [userPhoto, setUserPhoto] = useState(null);
   const [userMobile, setUserMobile] = useState('');
   
-  // Check login status on component mount and when navigation changes
+  const pollingIntervalRef = useRef(null);
+  const lastCheckTimeRef = useRef(0);
+  const isLoadingRef = useRef(false);
+  const isMountedRef = useRef(true);
+  
+  // ✅ Load user data IMMEDIATELY on mount - TRIPLE LOAD for reliability
   useEffect(() => {
-    checkLoginStatus();
+    console.log('🎯 CustomDrawer mounted - TRIPLE IMMEDIATE LOAD');
+    isMountedRef.current = true;
     
-    // Listen for navigation state changes to update login status
+    // Load THREE times immediately for maximum reliability
+    loadUserDataImmediate();
+    setTimeout(() => loadUserDataImmediate(), 50);
+    setTimeout(() => loadUserDataImmediate(), 150);
+    
+    // Start aggressive polling
+    startPolling();
+    
+    // Navigation listeners for live updates
     const unsubscribe = navigation.addListener('state', () => {
-      checkLoginStatus();
+      console.log('🔄 Navigation changed - reload');
+      loadUserDataImmediate();
     });
 
-    // Listen for focus events to refresh user data
     const focusUnsubscribe = navigation.addListener('focus', () => {
-      checkLoginStatus();
+      console.log('🔄 Drawer focused - reload');
+      loadUserDataImmediate();
     });
+    
+    const drawerUnsubscribe = navigation.addListener('drawerOpen', () => {
+      console.log('🚪 Drawer opened - FORCE reload');
+      loadUserDataImmediate();
+    });
+    
+    // Global refresh function that can be called from anywhere
+    global.refreshDrawer = () => {
+      console.log('🌍 Global refresh called');
+      loadUserDataImmediate();
+    };
 
     return () => {
+      isMountedRef.current = false;
+      if (pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current);
+      }
       unsubscribe();
       focusUnsubscribe();
+      drawerUnsubscribe();
+      global.refreshDrawer = null;
     };
   }, [navigation]);
+  
+  // ✅ Start VERY aggressive polling
+  const startPolling = () => {
+    if (pollingIntervalRef.current) {
+      clearInterval(pollingIntervalRef.current);
+    }
+    
+    let pollCount = 0;
+    
+    // ULTRA FAST polling for first 5 seconds (30ms intervals)
+    pollingIntervalRef.current = setInterval(() => {
+      pollCount++;
+      
+      if (pollCount <= 166) { // First 5 seconds at 30ms
+        checkLoginStatus();
+      } else {
+        // After 5 seconds, switch to slower polling (500ms)
+        clearInterval(pollingIntervalRef.current);
+        pollingIntervalRef.current = setInterval(() => {
+          checkLoginStatus();
+        }, 500);
+        console.log('🔄 Switched to slower polling (500ms)');
+      }
+    }, 30); // 30ms for ultra-fast detection
+  };
+  
+  // ✅ Stop polling once data is fully loaded
+  useEffect(() => {
+    if (isUserLoggedIn && 
+        userName && 
+        userName !== 'Guest User' && 
+        userName !== 'User' && 
+        userName.trim() !== '') {
+      console.log('✅ User data CONFIRMED loaded:', userName, 'Mobile:', userMobile);
+      
+      // Stop aggressive polling after data is confirmed
+      setTimeout(() => {
+        if (pollingIntervalRef.current) {
+          clearInterval(pollingIntervalRef.current);
+          // Switch to very slow background polling (every 10 seconds)
+          pollingIntervalRef.current = setInterval(() => {
+            checkLoginStatus();
+          }, 10000);
+          console.log('✅ Switched to background polling (10s)');
+        }
+      }, 2000);
+    }
+  }, [isUserLoggedIn, userName, userMobile]);
+
+  // ✅ IMMEDIATE loading function - no delays, no locks
+  const loadUserDataImmediate = async () => {
+    if (!isMountedRef.current) return;
+    
+    try {
+      await checkLoginStatus();
+    } catch (error) {
+      console.error('❌ Error in immediate load:', error);
+    }
+  };
 
   const checkLoginStatus = async () => {
     try {
-      const loginStatus = await AsyncStorage.getItem('isLoggedin');
-      const isLoggedIn = loginStatus === 'TRUE' || global.isUserLoggedin;
-      setIsUserLoggedIn(isLoggedIn);
+      if (!isMountedRef.current) return;
       
-      if (isLoggedIn) {
-        loadUserData();
-      } else {
-        setUserName('Guest User');
-        setUserPhoto(null);
-        setUserMobile('');
+      // Light debounce - only prevent spam (reduced to 20ms)
+      const now = Date.now();
+      if (now - lastCheckTimeRef.current < 20) return;
+      lastCheckTimeRef.current = now;
+
+      // Check ALL possible sources for login status
+      const loginStatus = await AsyncStorage.getItem('isLoggedin');
+      const accessToken = await AsyncStorage.getItem('access_token');
+      const userEmail = await AsyncStorage.getItem('userEmail');
+      
+      const isLoggedIn = loginStatus === 'TRUE' || 
+                         loginStatus === 'true' || 
+                         global.isUserLoggedin === true ||
+                         !!accessToken ||
+                         !!userEmail;
+      
+      if (isMountedRef.current) {
+        setIsUserLoggedIn(isLoggedIn);
+        
+        if (isLoggedIn) {
+          await loadUserData();
+        } else {
+          setUserName('Guest User');
+          setUserPhoto(null);
+          setUserMobile('');
+        }
       }
     } catch (error) {
-      console.error('Error checking login status:', error);
-      setIsUserLoggedIn(false);
+      console.error('❌ Error checking login:', error);
+      if (isMountedRef.current) {
+        setIsUserLoggedIn(false);
+      }
     }
   };
 
   const loadUserData = async () => {
-  try {
-    console.log('🔄 Loading user data for drawer...');
-    
-    const userData = await AsyncStorage.getItem('userData');
-    if (userData) {
-      const parsedData = JSON.parse(userData);
-      console.log('📋 User data loaded:', {
-        name: parsedData.name,
-        mobile: parsedData.mobile || parsedData.mobileNo,
-        hasProfileImage: !!parsedData.profile_image
-      });
+    try {
+      if (!isMountedRef.current) return;
       
-      // Set user name and mobile
-      setUserName(parsedData.name || parsedData.fullName || 'User');
-      setUserMobile(parsedData.mobile || parsedData.mobileNo || '');
+      let userData = null;
+      let dataSource = '';
       
-      // Handle profile image
-      if (parsedData.profile_image && parsedData.profile_image !== 'placeholder') {
-        console.log('🖼️ Processing profile image:', parsedData.profile_image);
+      console.log('📊 Loading user data - checking all sources...');
+      
+      // ✅ PRIORITY 1: Global variables (INSTANT - no async delay)
+      if (global.currentUser && global.currentUser.name) {
+        userData = global.currentUser;
+        dataSource = 'global.currentUser';
+        console.log('✅ Source: global.currentUser');
+      }
+      // ✅ PRIORITY 2: Individual global variables
+      else if (global.currentUserName && global.currentUserName !== 'User') {
+        userData = {
+          name: global.currentUserName,
+          email: global.currentUserEmail,
+          mobile: global.currentUserMobile,
+          mobileNo: global.currentUserMobile,
+          profile_image: global.currentUserProfileImage
+        };
+        dataSource = 'global variables';
+        console.log('✅ Source: global variables');
+      }
+      
+      // ✅ PRIORITY 3: AsyncStorage - try MULTIPLE keys
+      if (!userData || !userData.name || userData.name === 'User') {
+        console.log('⏳ Checking AsyncStorage...');
         
-        try {
-          const workingImageUrl = await DrawerImageService.getWorkingImageUrl(parsedData.profile_image);
-          
-          if (workingImageUrl) {
-            console.log('✅ Profile image URL resolved:', workingImageUrl);
-            setUserPhoto(workingImageUrl);
-          } else {
-            console.log('⚠️ Could not resolve profile image URL');
-            setUserPhoto(null);
+        // Try userData key
+        const userDataStr = await AsyncStorage.getItem('userData');
+        if (userDataStr) {
+          try {
+            const parsedData = JSON.parse(userDataStr);
+            if (parsedData.name && parsedData.name !== 'User') {
+              userData = parsedData;
+              dataSource = 'AsyncStorage userData';
+              console.log('✅ Source: AsyncStorage userData');
+            }
+          } catch (e) {
+            console.error('Parse error userData:', e);
           }
-        } catch (imageError) {
-          console.log('❌ Error loading profile image:', imageError.message);
-          setUserPhoto(null);
+        }
+        
+        // Try userProfile key (backup)
+        if (!userData || !userData.name || userData.name === 'User') {
+          const userProfileStr = await AsyncStorage.getItem('userProfile');
+          if (userProfileStr) {
+            try {
+              const parsedData = JSON.parse(userProfileStr);
+              if (parsedData.name && parsedData.name !== 'User') {
+                userData = parsedData;
+                dataSource = 'AsyncStorage userProfile';
+                console.log('✅ Source: AsyncStorage userProfile');
+              }
+            } catch (e) {
+              console.error('Parse error userProfile:', e);
+            }
+          }
+        }
+        
+        // Try individual AsyncStorage keys as last resort
+        if (!userData || !userData.name || userData.name === 'User') {
+          const storedName = await AsyncStorage.getItem('userName');
+          const storedEmail = await AsyncStorage.getItem('userEmail');
+          const storedMobile = await AsyncStorage.getItem('userMobile');
+          
+          if (storedName && storedName !== 'User' && storedName.trim() !== '') {
+            userData = {
+              name: storedName,
+              email: storedEmail,
+              mobile: storedMobile,
+              mobileNo: storedMobile
+            };
+            dataSource = 'AsyncStorage individual keys';
+            console.log('✅ Source: AsyncStorage individual keys');
+          }
+        }
+      }
+      
+      // ✅ Process and display user data
+      if (userData && userData.name && userData.name !== 'User' && isMountedRef.current) {
+        const name = userData.name || userData.fullName || userData.username || '';
+        
+        // Don't show if name is still 'User' or empty
+        if (!name || name === 'User' || name.trim() === '') {
+          console.log('⚠️ Invalid name, keeping Guest User');
+          return;
+        }
+        
+        // ✅ Check ALL possible mobile field names
+        const mobile = userData.mobile || 
+                       userData.mobileNo || 
+                       userData.mobile_no || 
+                       userData.mobileNumber || 
+                       userData.mobile_number || 
+                       userData.phone || 
+                       userData.phoneNumber || 
+                       userData.contact ||
+                       '';
+        
+        console.log('✅ Drawer data READY:', {
+          source: dataSource,
+          name: name,
+          mobile: mobile,
+          hasImage: !!userData.profile_image
+        });
+        
+        // ✅ UPDATE STATE IMMEDIATELY
+        setUserName(name);
+        setUserMobile(mobile);
+        
+        // ✅ Update global variables for faster subsequent loads
+        global.currentUser = userData;
+        global.currentUserName = name;
+        global.currentUserEmail = userData.email || global.currentUserEmail;
+        global.currentUserMobile = mobile;
+        
+        // ✅ Handle profile image
+        if (userData.profile_image && userData.profile_image !== 'placeholder') {
+          if (userData.profile_image.startsWith('http://') || 
+              userData.profile_image.startsWith('https://') ||
+              userData.profile_image.startsWith('file://') ||
+              userData.profile_image.startsWith('content://')) {
+            
+            global.currentUserProfileImage = userData.profile_image;
+            
+            if (isMountedRef.current) {
+              setUserPhoto(userData.profile_image);
+            }
+          } else {
+            // Try to resolve the image URL
+            const workingImageUrl = await DrawerImageService.getWorkingImageUrl(userData.profile_image);
+            if (workingImageUrl && isMountedRef.current) {
+              global.currentUserProfileImage = workingImageUrl;
+              setUserPhoto(workingImageUrl);
+            }
+          }
         }
       } else {
-        console.log('ℹ️ No profile image available');
-        setUserPhoto(null);
+        console.log('⚠️ No valid user data found anywhere');
+        if (isMountedRef.current) {
+          setUserName('Guest User');
+          setUserPhoto(null);
+          setUserMobile('');
+        }
       }
-    } else {
-      console.log('⚠️ No user data found in storage');
-      setUserName('Guest User');
-      setUserPhoto(null);
-      setUserMobile('');
+    } catch (error) {
+      console.error('❌ Error loading user data:', error);
+      if (isMountedRef.current) {
+        setUserName('Guest User');
+        setUserPhoto(null);
+        setUserMobile('');
+      }
     }
-  } catch (error) {
-    console.error('❌ Error loading user data:', error);
-    setUserName('Guest User');
-    setUserPhoto(null);
-    setUserMobile('');
-  }
-};
+  };
 
- // Replace the handleLogoutPress function in CustomDrawer.js (starting around line 237)
+  const handleLogoutPress = async () => {
+    Alert.alert(
+      'Logout',
+      'Are you sure you want to logout?',
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+        {
+          text: 'Logout',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              console.log("🔄 Starting logout...");
+              
+              const refreshToken = await AsyncStorage.getItem('refresh_token');
+              
+              if (!refreshToken) {
+                console.warn('⚠️ No refresh token, clearing local data...');
+                await AuthService.clearTokens();
+                
+                // Clear ALL global variables
+                global.currentUser = null;
+                global.currentUserName = null;
+                global.currentUserEmail = null;
+                global.currentUserMobile = null;
+                global.currentUserProfileImage = null;
+                global.isUserLoggedin = false;
+                global.isUserAdmin = false;
+                
+                navigation.reset({
+                  index: 0,
+                  routes: [{ name: 'Login' }],
+                });
+                return;
+              }
 
-const handleLogoutPress = async () => {
-  Alert.alert(
-    'Logout',
-    'Are you sure you want to logout?',
-    [
-      {
-        text: 'Cancel',
-        style: 'cancel',
-      },
-      {
-        text: 'Logout',
-        style: 'destructive',
-        onPress: async () => {
-          try {
-            console.log("🔄 Starting logout process from drawer...");
-            
-            // Get the refresh token before calling logout
-            const refreshToken = await AsyncStorage.getItem('refresh_token');
-            console.log('🔑 Refresh token available:', !!refreshToken);
-            
-            if (!refreshToken) {
-              console.warn('⚠️ No refresh token found, clearing local data...');
-              await AuthService.clearTokens();
+              const logoutResult = await AuthService.logout();
+              
+              if (logoutResult.success) {
+                console.log("✅ Logout successful");
+                Alert.alert('Logout Successful', 'You have been logged out successfully.');
+              }
+
+              // Clear ALL global variables
+              global.currentUser = null;
+              global.currentUserName = null;
+              global.currentUserEmail = null;
+              global.currentUserMobile = null;
+              global.currentUserProfileImage = null;
+              global.isUserLoggedin = false;
+              global.isUserAdmin = false;
+
               navigation.reset({
                 index: 0,
                 routes: [{ name: 'Login' }],
               });
-              return;
-            }
-
-            // Call the logout API with the refresh token
-            const logoutResult = await AuthService.logout();
-            
-            if (logoutResult.success) {
-              console.log("✅ Logout successful:", logoutResult.message);
               
-              // Show success message
-              Alert.alert(
-                'Logout Successful',
-                'You have been logged out successfully.',
-                [{ text: 'OK' }]
-              );
-            } else {
-              console.log("⚠️ Logout completed with issues:", logoutResult.message);
+            } catch (error) {
+              console.error("❌ Logout error:", error);
+              await AuthService.clearTokens();
+              
+              // Clear ALL global variables
+              global.currentUser = null;
+              global.currentUserName = null;
+              global.currentUserEmail = null;
+              global.currentUserMobile = null;
+              global.currentUserProfileImage = null;
+              global.isUserLoggedin = false;
+              global.isUserAdmin = false;
+              
+              navigation.reset({
+                index: 0,
+                routes: [{ name: 'Login' }],
+              });
+              Alert.alert('Logout', 'Logout completed.');
             }
-
-            // Always reset navigation to Login screen after logout
-            navigation.reset({
-              index: 0,
-              routes: [{ name: 'Login' }],
-            });
-
-            console.log("✅ Logout complete — redirected to Login.");
-            
-          } catch (error) {
-            console.error("❌ Logout error:", error);
-            
-            // Fallback: Clear tokens locally and redirect anyway
-            await AuthService.clearTokens();
-            
-            navigation.reset({
-              index: 0,
-              routes: [{ name: 'Login' }],
-            });
-            
-            Alert.alert(
-              'Logout',
-              'Logout completed, but there may have been network issues.',
-              [{ text: 'OK' }]
-            );
-          }
+          },
         },
-      },
-    ]
-  );
-};
+      ]
+    );
+  };
 
   const handleOpenURL = (url) => {
     Linking.openURL(url).catch(err => console.error('Error opening URL:', err));
@@ -278,14 +496,10 @@ const handleLogoutPress = async () => {
 
   const handleReferUs = async () => {
     try {
-      const result = await Share.share({
+      await Share.share({
         message: 'Check out this amazing political app! Download it now: https://www.nutantek.com',
         title: 'Share App',
       });
-
-      if (result.action === Share.sharedAction) {
-        console.log('Shared successfully');
-      }
     } catch (error) {
       console.error('Error sharing:', error.message);
     }
@@ -294,13 +508,12 @@ const handleLogoutPress = async () => {
   const handleRateUs = () => {
     Alert.alert(
       'Rate Us',
-      'Thank you for using our app! Please rate us on the App Store.',
+      'Thank you for using our app!',
       [
         { text: 'Cancel', style: 'cancel' },
         { 
           text: 'Rate Now', 
           onPress: () => {
-            // Replace with your actual app store URLs
             const playStoreUrl = 'https://play.google.com/store/apps/details?id=com.yourapp';
             handleOpenURL(playStoreUrl);
           }
@@ -318,56 +531,46 @@ const handleLogoutPress = async () => {
         'Please login or register to continue',
         [
           { text: 'Cancel', style: 'cancel' },
-          { 
-            text: 'Login', 
-            onPress: () => navigation.navigate('Login')
-          },
-          { 
-            text: 'Register', 
-            onPress: () => navigation.navigate('Registration')
-          },
+          { text: 'Login', onPress: () => navigation.navigate('Login') },
+          { text: 'Register', onPress: () => navigation.navigate('Registration') },
         ]
       );
     }
   };
 
- const renderProfileImage = () => {
-  if (userPhoto && userPhoto !== 'placeholder') {
-    // Check if it's a valid image URI
-    if (userPhoto.startsWith('file://') || 
-        userPhoto.startsWith('content://') || 
-        userPhoto.startsWith('http://') || 
-        userPhoto.startsWith('https://')) {
-      return (
-        <View style={styles.profileImageContainer}>
-          <Image
-            source={{ uri: userPhoto }}
-            style={styles.profileImage}
-            onError={(error) => {
-              console.log('🖼️ Image load error in drawer:', error.nativeEvent?.error);
-              setUserPhoto(null); // Fallback to placeholder on error
-            }}
-            onLoad={() => {
-              console.log('✅ Profile image loaded successfully in drawer');
-            }}
-          />
-          {isUserLoggedIn && (
-            <View style={styles.photoIndicator}>
-              <Icon name="camera-alt" size={12} color="#fff" />
-            </View>
-          )}
-        </View>
-      );
+  const renderProfileImage = () => {
+    if (userPhoto && userPhoto !== 'placeholder') {
+      if (userPhoto.startsWith('file://') || 
+          userPhoto.startsWith('content://') || 
+          userPhoto.startsWith('http://') || 
+          userPhoto.startsWith('https://')) {
+        return (
+          <View style={styles.profileImageContainer}>
+            <Image
+              source={{ uri: userPhoto }}
+              style={styles.profileImage}
+              onError={(error) => {
+                console.log('🖼️ Image error:', error.nativeEvent?.error);
+                setUserPhoto(null);
+              }}
+              onLoad={() => console.log('✅ Image loaded successfully')}
+            />
+            {isUserLoggedIn && (
+              <View style={styles.photoIndicator}>
+                <Icon name="camera-alt" size={12} color="#fff" />
+              </View>
+            )}
+          </View>
+        );
+      }
     }
-  }
-  
-  // Fallback placeholder
-  return (
-    <View style={styles.profileImagePlaceholder}>
-      <Icon name="person" size={50} color="#e16e2b" />
-    </View>
-  );
-};
+    
+    return (
+      <View style={styles.profileImagePlaceholder}>
+        <Icon name="person" size={50} color="#e16e2b" />
+      </View>
+    );
+  };
 
   return (
     <ScrollView style={styles.drawerContainer}>
@@ -383,9 +586,6 @@ const handleLogoutPress = async () => {
             {isUserLoggedIn && userMobile && (
               <Text style={styles.userMobile}>{userMobile}</Text>
             )}
-            <Text style={styles.userStatus}>
-              {isUserLoggedIn ? 'Tap to view profile' : 'Tap to login'}
-            </Text>
           </View>
         </TouchableOpacity>
       </View>
@@ -424,7 +624,6 @@ const handleLogoutPress = async () => {
           <Text style={styles.drawerItemText}>Development Landscape</Text>
         </TouchableOpacity>
 
-        {/* Literature Dropdown */}
         <TouchableOpacity
           style={styles.drawerItem}
           onPress={() => setIsLiteratureOpen(!isLiteratureOpen)}
@@ -474,7 +673,6 @@ const handleLogoutPress = async () => {
 
         <View style={styles.divider} />
 
-        {/* View Profile - Always visible */}
         <TouchableOpacity
           style={styles.drawerItem}
           onPress={() => navigation.navigate('ViewProfile')}
@@ -483,7 +681,6 @@ const handleLogoutPress = async () => {
           <Text style={styles.drawerItemText}>View Profile</Text>
         </TouchableOpacity>
 
-        {/* Login-specific items */}
         {isUserLoggedIn && (
           <>
             <TouchableOpacity
@@ -495,12 +692,12 @@ const handleLogoutPress = async () => {
             </TouchableOpacity>
 
             <TouchableOpacity
-      style={styles.drawerItem}
-      onPress={() => navigation.navigate('ChangePassword')}
-    >
-      <Icon name="lock" size={24} color="#e16e2b" />
-      <Text style={styles.drawerItemText}>Change Password</Text>
-    </TouchableOpacity>
+              style={styles.drawerItem}
+              onPress={() => navigation.navigate('ChangePassword')}
+            >
+              <Icon name="lock" size={24} color="#e16e2b" />
+              <Text style={styles.drawerItemText}>Change Password</Text>
+            </TouchableOpacity>
 
             <TouchableOpacity
               style={styles.drawerItem}
@@ -524,7 +721,6 @@ const handleLogoutPress = async () => {
 
         <View style={styles.divider} />
 
-        {/* App-related items */}
         <TouchableOpacity
           style={styles.drawerItem}
           onPress={handleReferUs}
@@ -578,7 +774,6 @@ const handleLogoutPress = async () => {
         </TouchableOpacity>
       </View>
 
-      {/* App Version Info */}
       <View style={styles.versionContainer}>
         <Text style={styles.versionText}>Version 1.0.0</Text>
       </View>
@@ -607,8 +802,6 @@ const styles = StyleSheet.create({
     height: 100,
     borderRadius: 50,
     backgroundColor: '#f0f0f0',
-    justifyContent: 'center',
-    alignItems: 'center',
     borderWidth: 3,
     borderColor: '#e16e2b',
   },

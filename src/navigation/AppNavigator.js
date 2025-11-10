@@ -1,5 +1,6 @@
 import React from 'react';
 import { createStackNavigator } from '@react-navigation/stack';
+import { BackHandler } from 'react-native';
 import DrawerNavigator from '../navigation/DrawerNavigator';
 
 // Screens
@@ -23,14 +24,17 @@ import HomeScreen from '../screens/HomeScreen';
 import DetailedFormScreen from '../screens/DetailedFormScreen';
 import ChangePasswordScreen from '../screens/ChangePasswordScreen';
 import ForgotPasswordScreen from '../screens/ForgotPasswordScreen';
+import PartyUpdatesScreen from '../screens/PartyUpdatesScreen';
+import FeedbackScreen from '../screens/FeedbackScreen';
 
 const Stack = createStackNavigator();
 
 const AppNavigator = () => {
   return (
     <Stack.Navigator
+      initialRouteName="MainDrawer"
       screenOptions={{
-           headerShown: true,
+        headerShown: true,
         headerStyle: {
           backgroundColor: '#e16e2b',
           height: 90,
@@ -43,26 +47,29 @@ const AppNavigator = () => {
         },
       }}
     >
-      {/* Hide header for Drawer (Home) */}
+      {/* Home/Drawer - First in stack */}
       <Stack.Screen
         name="MainDrawer"
         component={DrawerNavigator}
         options={{ headerShown: false }}
       />
 
-      {/* Hide header for Login and Registration */}
+      {/* Login and Registration - Can navigate back to MainDrawer */}
+      <Stack.Screen
+        name="Login"
+        component={LoginScreen}
+        options={{ 
+          headerShown: false,
+        }}
+      />
+      
       <Stack.Screen
         name="Registration"
         component={RegistrationScreen}
         options={{ headerShown: false }}
       />
-      <Stack.Screen
-        name="Login"
-        component={LoginScreen}
-        options={{ headerShown: false }}
-      />
 
-      {/* Screens with header and back icon */}
+      {/* Other screens with header */}
       <Stack.Screen name="ViewProfile" component={ViewProfileScreen}/>
       <Stack.Screen name="KnowYourLeader" component={KnowYourLeaderScreen} />
       <Stack.Screen name="AboutConstituency" component={AboutConstituencyScreen} />
@@ -77,7 +84,8 @@ const AppNavigator = () => {
       <Stack.Screen name="DetailedFormScreen" component={DetailedFormScreen}/>
       <Stack.Screen name="ChangePassword" component={ChangePasswordScreen}/>
       <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen}/>
-      
+      <Stack.Screen name="PartyUpdates" component={PartyUpdatesScreen}/>
+      <Stack.Screen name="Feedback" component={FeedbackScreen}/>
       
       <Stack.Screen
         name="SamvadScreen"

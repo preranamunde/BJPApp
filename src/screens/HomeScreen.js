@@ -197,6 +197,122 @@ const EditHomeMediaModal = ({ visible, item, onClose, onSave }) => {
   );
 };
 
+// Add New Home Media Modal Component
+const AddHomeMediaModal = ({ visible, onClose, onSave }) => {
+  const [selectedImage, setSelectedImage] = useState(null);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (visible) {
+      setSelectedImage(null);
+    }
+  }, [visible]);
+
+  const handlePickImage = () => {
+    const options = {
+      mediaType: 'photo',
+      quality: 0.8,
+      maxWidth: 1920,
+      maxHeight: 1080,
+    };
+
+    launchImageLibrary(options, (response) => {
+      if (response.didCancel) {
+        console.log('User cancelled image picker');
+      } else if (response.errorCode) {
+        Alert.alert('Error', response.errorMessage);
+      } else if (response.assets && response.assets[0]) {
+        setSelectedImage(response.assets[0]);
+        console.log('Home media image selected:', response.assets[0].uri);
+      }
+    });
+  };
+
+  const handleSave = async () => {
+    if (!selectedImage) {
+      Alert.alert('Validation Error', 'Please select an image');
+      return;
+    }
+
+    setSaving(true);
+    try {
+      await onSave(selectedImage);
+      onClose();
+    } catch (error) {
+      Alert.alert('Error', 'Failed to add home media');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Modal
+      visible={visible}
+      transparent
+      animationType="slide"
+      onRequestClose={onClose}
+    >
+      <View style={styles.modalOverlay}>
+        <View style={styles.modalContainer}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Add New Home Media</Text>
+            <TouchableOpacity onPress={onClose}>
+              <Text style={styles.closeButton}>✕</Text>
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView style={styles.modalContent}>
+            <Text style={styles.label}>Select Image *</Text>
+            <TouchableOpacity 
+              style={styles.imagePickerButton}
+              onPress={handlePickImage}
+            >
+              <Icon name="image" size={24} color="#e16e2b" />
+              <Text style={styles.imagePickerText}>
+                {selectedImage ? 'Change Image' : 'Choose Image'}
+              </Text>
+            </TouchableOpacity>
+
+            {selectedImage && (
+              <View style={styles.selectedImagePreview}>
+                <Image 
+                  source={{ uri: selectedImage.uri }} 
+                  style={styles.previewImage}
+                  resizeMode="cover"
+                />
+                <Text style={styles.imageInfoText}>
+                  {selectedImage.fileName || 'Image selected'}
+                </Text>
+              </View>
+            )}
+          </ScrollView>
+
+          <View style={styles.modalFooter}>
+            <TouchableOpacity 
+              style={[styles.modalButton, styles.cancelButton]}
+              onPress={onClose}
+            >
+              <Text style={styles.cancelButtonText}>Cancel</Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity 
+              style={[styles.modalButton, styles.saveButton]}
+              onPress={handleSave}
+              disabled={saving}
+            >
+              {saving ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={styles.saveButtonText}>Add Media</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+};
+
 // ✅ Edit Modal Component for News Items
 const EditNewsModal = ({ visible, item, onClose, onSave }) => {
   const [header, setHeader] = useState('');
@@ -322,15 +438,13 @@ const HomeMediaImage = React.memo(({
   memberId,
   onEdit,
   onDelete, 
-  isAdmin // ✅ ADD THIS PROP
+  isAdmin
 }) => {
   const [imageUri, setImageUri] = useState(null);
   const [imageLoading, setImageLoading] = useState(true);
   const [imageError, setImageError] = useState(false);
   const [menuVisible, setMenuVisible] = useState(false);
   const [menuPosition, setMenuPosition] = useState({ x: 0, y: 0 });
-
-  
 
   useEffect(() => {
     let mounted = true;
@@ -450,48 +564,63 @@ const HomeMediaImage = React.memo(({
   };
 
   return (
-  <View style={styles.homeMediaItem}>
-    {/* ✅ Three Dot Menu Button - Only show for admin */}
-    {isAdmin && (
-      <TouchableOpacity 
-        style={styles.homeMediaMenuButton}
-        onPress={handleMenuPress}
-        activeOpacity={0.7}
-      >
-        <Text style={styles.homeMediaMenuIcon}>⋮</Text>
-      </TouchableOpacity>
-    )}
+    <View style={styles.homeMediaItem}>
+      {/* ✅ Three Dot Menu Button - Only show for admin */}
+      {isAdmin && (
+        <TouchableOpacity 
+          style={styles.homeMediaMenuButton}
+          onPress={handleMenuPress}
+          activeOpacity={0.7}
+        >
+          <Text style={styles.homeMediaMenuIcon}>⋮</Text>
+        </TouchableOpacity>
+      )}
 
-    <ThreeDotMenu
-      visible={menuVisible}
-      position={menuPosition}
-      onEdit={handleEdit}
-      onDelete={handleDelete}
-      onDismiss={() => setMenuVisible(false)}  // ✅ FIXED - was "on is this correctDismiss"
-    />
-
-    {imageLoading && (
-      <View style={styles.homeMediaLoadingContainer}>
-        <ActivityIndicator size="large" color="#e16e2b" />
-      </View>
-    )}
-
-    {!imageLoading && imageError && (
-      <View style={styles.homeMediaErrorContainer}>
-        <Text style={styles.homeMediaErrorIcon}>📷</Text>
-        <Text style={styles.homeMediaErrorText}>Image unavailable</Text>
-      </View>
-    )}
-
-    {!imageLoading && !imageError && imageUri && (
-      <Image 
-        source={{ uri: imageUri }}
-        style={styles.homeMediaImage} 
-        resizeMode="cover"
+      <ThreeDotMenu
+        visible={menuVisible}
+        position={menuPosition}
+        onEdit={handleEdit}
+        onDelete={handleDelete}
+        onDismiss={() => setMenuVisible(false)}
       />
-    )}
-  </View>
-);
+
+      {imageLoading && (
+        <View style={styles.homeMediaLoadingContainer}>
+          <ActivityIndicator size="large" color="#e16e2b" />
+        </View>
+      )}
+
+      {!imageLoading && imageError && (
+        <View style={styles.homeMediaErrorContainer}>
+          <Text style={styles.homeMediaErrorIcon}>📷</Text>
+          <Text style={styles.homeMediaErrorText}>Image unavailable</Text>
+        </View>
+      )}
+
+      {/* ✅ CLICKABLE IMAGE - Opens media_url when tapped */}
+      {!imageLoading && !imageError && imageUri && (
+        <TouchableOpacity
+          activeOpacity={0.8}
+          onPress={() => {
+            if (item.media_url && item.media_url.trim() !== '') {
+              Linking.openURL(item.media_url).catch(err => {
+                console.error('Failed to open URL:', err);
+                Alert.alert('Error', 'Could not open the link');
+              });
+            } else {
+              Alert.alert('Info', 'No URL available for this image');
+            }
+          }}
+        >
+          <Image 
+            source={{ uri: imageUri }}
+            style={styles.homeMediaImage} 
+            resizeMode="cover"
+          />
+        </TouchableOpacity>
+      )}
+    </View>
+  );
 });
 
 // MAIN COMPONENT
@@ -512,6 +641,10 @@ const [newsMenuPosition, setNewsMenuPosition] = useState({ x: 0, y: 0 });
 const [isAdmin, setIsAdmin] = useState(false);
   const [userRole, setUserRole] = useState('user');
   const [isLoggedIn, setIsLoggedIn] = useState(false);
+  // ADD THIS LINE with your other state declarations:
+const [addMediaModalVisible, setAddMediaModalVisible] = useState(false);
+// Add with other useState declarations
+const [ownerName, setOwnerName] = useState('Leader App');
 
 
   // ✅ ADD THIS ADMIN CHECK FUNCTION
@@ -620,7 +753,6 @@ const initializeHomeMedia = async () => {
   try {
     setHomeMediaLoading(true);
     
-    // ✅ ADD THIS LINE - Check admin role
     await checkAdminRole();
     
     const mobileNo = await getMobileNumberFromStorage();
@@ -629,6 +761,16 @@ const initializeHomeMedia = async () => {
     const currentUserInfo = await getCurrentUserRole();
     const email = currentUserInfo.loggedin_email || 'default@email.com';
     setUserEmail(email);
+    
+    // ✅ ADD THIS BLOCK - Get and set owner name
+    const fetchedOwnerName = currentUserInfo.owner_name || '';
+    if (fetchedOwnerName && fetchedOwnerName.trim() !== '') {
+      setOwnerName(fetchedOwnerName);
+      console.log('✅ Owner name loaded:', fetchedOwnerName);
+    } else {
+      setOwnerName('Leader App');
+      console.log('⚠️ No owner name found, using default');
+    }
     
     const homeMedia = await fetchHomeMedia(mobileNo);
     
@@ -640,6 +782,7 @@ const initializeHomeMedia = async () => {
   } catch (error) {
     console.error('Error initializing home media:', error);
     setHomeMediaData([]);
+    setOwnerName('Leader App'); // ✅ Fallback on error
   } finally {
     setHomeMediaLoading(false);
   }
@@ -783,6 +926,50 @@ const handleNewsDelete = async (item) => {
   }
 };
 
+// ✅ Handle Add New Home Media
+const handleAddMedia = async (selectedImage) => {
+  try {
+    console.log('➕ Adding new home media...');
+    
+    const baseUrl = await ConfigService.getBaseUrl();
+    const apiUrl = `${baseUrl}/api/mediacorner`;
+
+    const formData = new FormData();
+    formData.append('regd_mobile_no', regdMobileNo);
+    formData.append('user_email_id', userEmail);
+    formData.append('media_header', 'null');
+    formData.append('media_narration', 'null');
+    formData.append('media_url', 'null');
+    formData.append('media_type', 'Home');
+
+    // Append the selected image file
+    const fileUri = selectedImage.uri;
+    const fileName = selectedImage.fileName || fileUri.split('/').pop();
+    const fileType = selectedImage.type || 'image/jpeg';
+
+    formData.append('media_file', {
+      uri: fileUri,
+      name: fileName,
+      type: fileType,
+    });
+
+    console.log('📤 Sending POST request to create home media...');
+
+    const result = await ApiService.authPost(apiUrl, formData, {}, true);
+
+    if (result.success) {
+      Alert.alert('✅ Success', 'Home media added successfully');
+      setAddMediaModalVisible(false);
+      initializeHomeMedia(); // Refresh the data
+    } else {
+      throw new Error(result.message || 'Creation failed');
+    }
+  } catch (error) {
+    console.error('❌ Error adding home media:', error);
+    Alert.alert('Error', error.message || 'Failed to add home media');
+  }
+};
+
   const fontSize = 16;
   const lang = languageData[selectedLanguage];
 
@@ -794,8 +981,8 @@ const handleNewsDelete = async (item) => {
   const quickActions = [
     { id: 1, title: lang.knowLeader, icon: 'person', screen: 'KnowYourLeader' },
     { id: 2, title: lang.aboutConstituency, icon: 'location-on', screen: 'AboutConstituency' },
-    { id: 3, title: lang.partyUpdates, icon: 'update', action: () => Alert.alert(lang.partyUpdates, 'Latest updates coming soon!') },
-    { id: 4, title: lang.feedback, icon: 'feedback', action: () => Alert.alert(lang.feedback, 'Feedback form coming soon!') },
+    { id: 3, title: lang.partyUpdates, icon: 'update', screen: 'PartyUpdates' },
+    { id: 4, title: lang.feedback, icon: 'feedback', screen: 'Feedback' },
   ];
 
   const handleLanguageSelect = (language) => {
@@ -833,7 +1020,6 @@ const handleNewsDelete = async (item) => {
       )}
     </TouchableOpacity>
   );
-
 const renderHomeMediaGallery = () => {
   if (homeMediaLoading) {
     return (
@@ -846,9 +1032,8 @@ const renderHomeMediaGallery = () => {
     );
   }
 
-  if (!homeMediaData || !Array.isArray(homeMediaData) || homeMediaData.length === 0) {
-    return null;
-  }
+  // ✅ UPDATED: Show "Add New" button if admin AND (0 banners OR 1+ banners)
+  const showAddButton = isAdmin && homeMediaData && (homeMediaData.length === 0 || homeMediaData.length >= 1);
 
   return (
     <>
@@ -858,7 +1043,8 @@ const renderHomeMediaGallery = () => {
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.homeMediaScrollContent}
         >
-          {homeMediaData.map((item, index) => {
+          {/* Render existing home media items */}
+          {homeMediaData && Array.isArray(homeMediaData) && homeMediaData.map((item, index) => {
             if (!item || !item.media_file) {
               return null;
             }
@@ -871,26 +1057,53 @@ const renderHomeMediaGallery = () => {
                 memberId={regdMobileNo}
                 onEdit={handleEdit}
                 onDelete={handleDelete}
-                isAdmin={isAdmin}  // ✅ PASS isAdmin PROP
+                isAdmin={isAdmin}
               />
             );
           })}
+
+          {/* ✅ Add New Button - Show if admin AND (0 OR 1+ banners) */}
+          {showAddButton && (
+            <TouchableOpacity
+              style={styles.homeMediaAddButton}
+              onPress={() => setAddMediaModalVisible(true)}
+              activeOpacity={0.7}
+            >
+              <View style={styles.homeMediaAddContent}>
+                <Icon name="add-circle" size={48} color="#e16e2b" />
+                <Text style={styles.homeMediaAddText}>
+                  {homeMediaData.length === 0 ? 'Add Banner' : 'Add New'}
+                </Text>
+              </View>
+            </TouchableOpacity>
+          )}
         </ScrollView>
       </View>
 
-      <EditHomeMediaModal
-        visible={editModalVisible}
-        item={selectedItem}
-        onClose={() => {
-          setEditModalVisible(false);
-          setSelectedItem(null);
-        }}
-        onSave={handleSave}
-      />
+      {/* Edit Modal for existing home media */}
+      {isAdmin && (
+        <EditHomeMediaModal
+          visible={editModalVisible}
+          item={selectedItem}
+          onClose={() => {
+            setEditModalVisible(false);
+            setSelectedItem(null);
+          }}
+          onSave={handleSave}
+        />
+      )}
+
+      {/* ✅ Add Modal for new home media */}
+      {isAdmin && (
+        <AddHomeMediaModal
+          visible={addMediaModalVisible}
+          onClose={() => setAddMediaModalVisible(false)}
+          onSave={handleAddMedia}
+        />
+      )}
     </>
   );
 };
-
 const renderNewsSection = () => {
   const newsItems = homeMediaData?.filter(item => 
     item.media_header && 
@@ -928,78 +1141,63 @@ const renderNewsSection = () => {
             })
           : 'Recent';
 
-        return (
-          <View key={item._id || `news-${index}`} style={styles.newsCard}>
-            {/* ✅ Header Row with conditional menu button */}
-             {isAdmin && (
-              <TouchableOpacity 
-                style={styles.newsMenuButton}
-                onPress={(event) => {
-                  const { pageX, pageY } = event.nativeEvent;
-                  setNewsMenuPosition({ x: pageX, y: pageY + 10 });
-                  setSelectedNewsItem(item);
-                  setNewsMenuVisible(true);
-                }}
-                activeOpacity={0.7}
-              >
-                <Text style={styles.newsMenuIcon}>⋮</Text>
-              </TouchableOpacity>
-            )}
-            <View style={styles.newsHeaderRow}>
-              <View style={styles.newsHeader}>
-                <Icon name="campaign" size={20} color="#e16e2b" />
-                <Text style={[styles.newsTitle, { fontSize: fontSize, flex: 1, marginLeft: 8 }]}>
-                  {item.media_header}
-                </Text>
-              </View>
-              
-              {/* ✅ Three Dot Menu Button - Only show for admin */}
-              {isAdmin && (
-                <TouchableOpacity 
-                  style={styles.newsMenuButtonInline}
-                  onPress={(event) => {
-                    const { pageX, pageY } = event.nativeEvent;
-                    setNewsMenuPosition({ x: pageX, y: pageY + 10 });
-                    setSelectedNewsItem(item);
-                    setNewsMenuVisible(true);
-                  }}
-                  activeOpacity={0.7}
-                >
-                  <Text style={styles.newsMenuIcon}>⋮</Text>
-                </TouchableOpacity>
-              )}
-            </View>
-            
-            <Text style={[styles.newsDate, { fontSize: fontSize - 2 }]}>
-              {newsDate}
-            </Text>
-            
-            <Text 
-              style={[styles.newsDescription, { fontSize: fontSize - 2 }]}
-              numberOfLines={3}
-            >
-              {item.media_narration}
-            </Text>
+       return (
+  <View key={item._id || `news-${index}`} style={styles.newsCard}>
+    {/* ✅ Three Dot Menu Button - Absolutely positioned at top-right */}
+    {isAdmin && (
+      <TouchableOpacity 
+        style={styles.newsMenuButton}
+        onPress={(event) => {
+          const { pageX, pageY } = event.nativeEvent;
+          setNewsMenuPosition({ x: pageX, y: pageY + 10 });
+          setSelectedNewsItem(item);
+          setNewsMenuVisible(true);
+        }}
+        activeOpacity={0.7}
+      >
+        <Text style={styles.newsMenuIcon}>⋮</Text>
+      </TouchableOpacity>
+    )}
 
-            {item.media_url && (
-              <TouchableOpacity
-                style={styles.readMoreButton}
-                onPress={() => {
-                  if (item.media_url) {
-                    Linking.openURL(item.media_url).catch(err => {
-                      console.error('Failed to open URL:', err);
-                      Alert.alert('Error', 'Could not open the link');
-                    });
-                  }
-                }}
-                activeOpacity={0.7}
-              >
-                <Text style={styles.readMoreText}>Read More</Text>
-                <Icon name="arrow-forward" size={14} color="#e16e2b" />
-              </TouchableOpacity>
-            )}
-          </View>
-        );
+    <View style={styles.newsHeaderRow}>
+      <View style={styles.newsHeader}>
+        <Icon name="campaign" size={20} color="#e16e2b" />
+        <Text style={[styles.newsTitle, { fontSize: fontSize, flex: 1, marginLeft: 8 }]}>
+          {item.media_header}
+        </Text>
+      </View>
+    </View>
+    
+    <Text style={[styles.newsDate, { fontSize: fontSize - 2 }]}>
+      {newsDate}
+    </Text>
+    
+    <Text 
+      style={[styles.newsDescription, { fontSize: fontSize - 2 }]}
+      numberOfLines={3}
+    >
+      {item.media_narration}
+    </Text>
+
+    {item.media_url && (
+      <TouchableOpacity
+        style={styles.readMoreButton}
+        onPress={() => {
+          if (item.media_url) {
+            Linking.openURL(item.media_url).catch(err => {
+              console.error('Failed to open URL:', err);
+              Alert.alert('Error', 'Could not open the link');
+            });
+          }
+        }}
+        activeOpacity={0.7}
+      >
+        <Text style={styles.readMoreText}>Read More</Text>
+        <Icon name="arrow-forward" size={14} color="#e16e2b" />
+      </TouchableOpacity>
+    )}
+  </View>
+);
       })}
 
       {/* ✅ Only show menu and modals for admin */}
@@ -1060,7 +1258,7 @@ const renderNewsSection = () => {
           onPress={() => navigation.openDrawer()}>
           <Icon name="menu" size={35} color="#fff" />
         </TouchableOpacity>
-        <Text style={[styles.headerTitle, { fontSize: 20 }]}>{lang.appTitle}</Text>
+        <Text style={[styles.headerTitle, { fontSize: 19 }]}>{ownerName}</Text>
 
         <View style={styles.rightHeaderSection}>
           <TouchableOpacity
@@ -1086,10 +1284,15 @@ const renderNewsSection = () => {
       </View>
 
       <ScrollView style={styles.content}>
-        <View style={styles.welcomeSection}>
-          <Text style={[styles.welcomeTitle, { fontSize: fontSize + 8 }]}>{lang.welcome}</Text>
-          <Text style={[styles.welcomeSubtitle, { fontSize: fontSize }]}>{lang.stayConnected}</Text>
-        </View>
+       <View style={styles.welcomeSection}>
+  
+  <Text style={[styles.welcomeSubtitle, { fontSize: fontSize+8 }]}>
+    Welcome to {ownerName} App
+  </Text>
+  <Text style={[styles.welcomeDescription, { fontSize: fontSize - 2 }]}>
+    {lang.stayConnected}
+  </Text>
+</View>
 
         <View style={styles.quickActionsSection}>
           <Text style={[styles.sectionTitle, { fontSize: fontSize + 2 }]}>{lang.quickActions}</Text>
@@ -1471,6 +1674,42 @@ newsMenuIcon: {
   lineHeight: 18,
 },
   saveButtonText: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
+  // Add these to the styles object:
+
+homeMediaAddButton: {
+  width: 330,
+  height: 200,
+  marginRight: 15,
+  borderRadius: 12,
+  backgroundColor: '#f8f9fa',
+  borderWidth: 2,
+  borderColor: '#e16e2b',
+  borderStyle: 'dashed',
+  justifyContent: 'center',
+  alignItems: 'center',
+},
+homeMediaAddContent: {
+  alignItems: 'center',
+},
+homeMediaAddText: {
+  marginTop: 10,
+  fontSize: 16,
+  fontWeight: '600',
+  color: '#e16e2b',
+},
+ welcomeSubtitle: { 
+    color: '#fff', 
+    opacity: 0.9,
+    fontWeight: '600' // ✅ Make it slightly bold
+  },
+  
+  // ✅ ADD THIS NEW STYLE
+  welcomeDescription: { 
+    color: '#fff', 
+    opacity: 0.85,
+    marginTop: 4,
+    lineHeight: 20
+  },
 });
 
 export default HomeScreen;

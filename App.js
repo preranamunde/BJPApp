@@ -14,9 +14,11 @@ import AppNavigator from './src/navigation/AppNavigator';
 import { generateAppKey } from './src/utils/generateAppKey';
 
 // Global variables for user state - Centralized Management
+// Add this with other global variables at top
 let loggedin_email = '';
 let owner_emailid = '';
 let owner_mobile = '';
+let owner_name = ''; // ✅ ADD THIS LINE
 let userRole = 'user';
 let isAppBootstrapped = false;
 
@@ -189,6 +191,35 @@ const setupGlobalVariablesFromBootstrap = async (appOwnerInfo) => {
     }
     
     owner_mobile = extractedOwnerMobile;
+    // Inside setupGlobalVariablesFromBootstrap function
+// After extracting owner_mobile, add this:
+
+// ✅ ADD THIS BLOCK - Extract client_name
+const possibleNameFields = [
+  'client_name', 'name', 'owner_name', 'ownerName', 'fullName',
+  'full_name', 'Name', 'CLIENT_NAME', 'clientName', 'leaderName',
+  'leader_name', 'userName', 'user_name'
+];
+
+let extractedOwnerName = '';
+for (const field of possibleNameFields) {
+  if (appOwnerInfo[field] && typeof appOwnerInfo[field] === 'string') {
+    extractedOwnerName = appOwnerInfo[field].trim();
+    console.log(`✅ Found owner name in field '${field}': ${extractedOwnerName}`);
+    break;
+  }
+}
+
+owner_name = extractedOwnerName;
+
+// Store owner name
+if (owner_name) {
+  await EncryptedStorage.setItem('OWNER_NAME', owner_name);
+  console.log('💾 Owner name stored:', owner_name);
+} else {
+  console.log('⚠️ No owner name found - will use default');
+  await EncryptedStorage.setItem('OWNER_NAME', '');
+}
     
     // Store owner information in encrypted storage
     if (owner_emailid) {
@@ -251,6 +282,7 @@ const setupGlobalVariablesFromBootstrap = async (appOwnerInfo) => {
     global.loggedin_email = loggedin_email;
     global.owner_emailid = owner_emailid;
     global.owner_mobile = owner_mobile;
+    global.owner_name = owner_name;
     global.userRole = userRole;
     global.isAppBootstrapped = true;
     isAppBootstrapped = true;
@@ -258,6 +290,7 @@ const setupGlobalVariablesFromBootstrap = async (appOwnerInfo) => {
     console.log('✅ Global variables initialized:');
     console.log('   📧 Owner Email:', owner_emailid);
     console.log('   📱 Owner Mobile:', owner_mobile);
+    console.log('   👤 Owner Name:', owner_name);
     console.log('   👤 Logged In Email:', loggedin_email);
     console.log('   🔑 User Role:', userRole);
     console.log('   🚀 App Bootstrapped:', isAppBootstrapped);
@@ -266,6 +299,7 @@ const setupGlobalVariablesFromBootstrap = async (appOwnerInfo) => {
       loggedin_email,
       owner_emailid,
       owner_mobile,
+      owner_name,
       userRole,
       isBootstrapped: true
     };
@@ -792,7 +826,6 @@ export const logoutUser = async () => {
 
 export const getCurrentUserRole = async () => {
   try {
-    // Get current role from storage, fallback to global variable
     const role = await EncryptedStorage.getItem('USER_ROLE') || userRole || 'user';
     const loggedInEmail = await AsyncStorage.getItem('userEmail') || 
                          await EncryptedStorage.getItem('LOGGED_IN_EMAIL') || 
@@ -800,12 +833,14 @@ export const getCurrentUserRole = async () => {
     
     const ownerEmail = await EncryptedStorage.getItem('OWNER_EMAIL') || owner_emailid;
     const ownerMobile = await EncryptedStorage.getItem('OWNER_MOBILE') || owner_mobile;
+    const ownerName = await EncryptedStorage.getItem('OWNER_NAME') || owner_name || ''; // ✅ ADD THIS
     
     return {
       userRole: role,
       loggedin_email: loggedInEmail,
       owner_emailid: ownerEmail,
       owner_mobile: ownerMobile,
+      owner_name: ownerName, // ✅ ADD THIS LINE
       isAdmin: role === 'admin',
       isLoggedIn: !!loggedInEmail,
       isAppBootstrapped: global.isAppBootstrapped || isAppBootstrapped
@@ -817,6 +852,7 @@ export const getCurrentUserRole = async () => {
       loggedin_email: '',
       owner_emailid: '',
       owner_mobile: '',
+      owner_name: '', // ✅ ADD THIS LINE
       isAdmin: false,
       isLoggedIn: false,
       isAppBootstrapped: false

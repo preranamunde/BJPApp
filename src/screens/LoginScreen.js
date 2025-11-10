@@ -9,6 +9,7 @@ import {
   Alert,
   KeyboardAvoidingView,
   Platform,
+  BackHandler, 
   ActivityIndicator,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
@@ -410,6 +411,16 @@ const LoginScreen = ({ navigation, route }) => {
     }
   }, [route?.params]);
 
+  // Handle hardware back button
+useEffect(() => {
+  const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
+    navigation.navigate('MainDrawer');
+    return true;
+  });
+
+  return () => backHandler.remove();
+}, [navigation]);
+
   const handleInputChange = (field, value) => {
     setFormData(prev => ({
       ...prev,
@@ -473,201 +484,332 @@ const LoginScreen = ({ navigation, route }) => {
   };
 
   // ENHANCED: Silent Profile Loading Function with better error handling
-  const silentProfileLoad = async (userEmail) => {
+ // ✅ ENHANCED: Load full profile from API with proper data structure
+const silentProfileLoad = async (userEmail) => {
+  try {
+    LoginLoggingService.loginInfo('🔇 === LOADING FULL PROFILE FROM API ===', { userEmail });
+    setProfileLoading(true);
+    
+    // Get owner mobile from EncryptedStorage
+    let ownerMobile = '';
     try {
-      LoginLoggingService.loginInfo('🔇 === SILENT PROFILE LOAD STARTED ===', { userEmail });
-      setProfileLoading(true);
+      ownerMobile = await EncryptedStorage.getItem('OWNER_MOBILE') || '';
+      console.log('📱 Owner mobile:', ownerMobile);
+    } catch (error) {
+      console.log('⚠️ Could not get owner mobile:', error.message);
+    }
+    
+    // Get API endpoint
+    const endpoints = await ConfigService.getApiEndpoints();
+    const profileEndpoint = endpoints.user.profile;
+    
+    console.log('🌐 Profile endpoint:', profileEndpoint);
+    
+    // Build POST body (matching your ViewProfile API call)
+    const requestBody = {
+      leader_regd_mobile_no: ownerMobile,
+      user_email_id: userEmail
+    };
+    
+    console.log('📡 Profile API Request:', requestBody);
+    
+    // Call profile API
+    const result = await ApiService.authPost(profileEndpoint, requestBody);
+    
+    console.log('📥 Profile API Response:', {
+      success: result.success,
+      status: result.status,
+      hasData: !!result.data
+    });
+    
+    if (result.success && result.data) {
+      LoginLoggingService.loginInfo('✅ Profile API call successful');
       
-      // Get profile data from API using LoginProfileAPI
-      const result = await LoginProfileAPI.getProfile();
+      // Extract user data from response (matching your ViewProfile structure)
+      let userData;
       
-      if (result.success && result.data) {
-        LoginLoggingService.loginInfo('✅ Silent profile API call successful');
-        
-        // Enhance profile with admin status
-        const enhancedProfile = await LoginAdminService.enhanceUserDataWithAdminStatus(
-          result.data, 
-          userEmail
-        );
-        
-        // Update stored data with full profile
-        await AsyncStorage.setItem('userData', JSON.stringify(enhancedProfile));
-        await AsyncStorage.setItem('profileLastUpdated', new Date().toISOString());
-        
-        // Update global variables with complete profile
-        global.currentUser = enhancedProfile;
-        global.currentUserName = enhancedProfile.name || enhancedProfile.fullName;
-        global.currentUserEmail = enhancedProfile.email;
-        global.isUserAdmin = enhancedProfile.isAdmin || false;
-        global.currentUserMobile = enhancedProfile.mobile || enhancedProfile.mobileNo;
-        global.currentUserCity = enhancedProfile.city;
-        global.currentUserProfileImage = enhancedProfile.profile_image;
-        global.isUserLoggedin = true;
-        
-        // Fix profile image URL if needed
-        if (enhancedProfile.profile_image && enhancedProfile.profile_image !== 'placeholder') {
-          const workingImageUrl = await LoginImageService.getWorkingImageUrl(enhancedProfile.profile_image);
-          if (workingImageUrl) {
-            global.currentUserProfileImage = workingImageUrl;
-            enhancedProfile.profile_image = workingImageUrl;
-            await AsyncStorage.setItem('userData', JSON.stringify(enhancedProfile));
-          }
-        }
-        
-        LoginLoggingService.loginInfo('✅ Silent profile load completed - data ready for drawer', {
-          userName: global.currentUserName,
-          userEmail: global.currentUserEmail,
-          isAdmin: global.isUserAdmin,
-          hasProfileImage: !!global.currentUserProfileImage,
-          profileImageUrl: global.currentUserProfileImage
-        });
-        
-        // Trigger drawer refresh if needed
-        if (global.refreshDrawer && typeof global.refreshDrawer === 'function') {
-          LoginLoggingService.loginInfo('🔄 Triggering drawer refresh');
-          global.refreshDrawer();
-        }
-        
-        return enhancedProfile;
-      } else {
-        LoginLoggingService.loginWarn('⚠️ Silent profile API call failed, keeping existing data');
+      if (result.data.formattedData) {
+        userData = result.data.formattedData;
+        console.log('✅ Using formattedData');
+      } else if (result.data.user) {
+        userData = result.data.user;
+        console.log('✅ Using user data');
+      } else if (result.data.data) {
+        userData = result.data.data;
+        console.log('✅ Using data field');
+      } else if (result.data._id || result.data.email) {
+        userData = result.data;
+        console.log('✅ Using direct data');
+      }
+      
+      if (!userData) {
+        console.log('❌ No user data in response');
         return null;
       }
-    } catch (error) {
-      LoginLoggingService.loginError('❌ Silent profile load error', {
-        error: error.message,
+      
+      // Enhance with admin status
+      const enhancedProfile = await LoginAdminService.enhanceUserDataWithAdminStatus(
+        userData, 
         userEmail
-      });
-      return null;
-    } finally {
-      setProfileLoading(false);
-    }
-  };
-
-  const handleLogin = async () => {
-    if (!validateForm()) return;
-
-    setLoading(true);
-
-    try {
-      LoginLoggingService.loginInfo('🚀 === STARTING LOGIN PROCESS ===', {
-        email: formData.email.trim().toLowerCase()
+      );
+      
+      // ✅ CRITICAL: Normalize mobile field
+      const mobile = enhancedProfile.mobile || 
+                     enhancedProfile.mobileNo || 
+                     enhancedProfile.mobile_no || 
+                     enhancedProfile.mobileNumber || 
+                     '';
+      
+      const normalizedProfile = {
+        ...enhancedProfile,
+        mobile: mobile,
+        mobileNo: mobile
+      };
+      
+      console.log('📋 Normalized profile data:', {
+        name: normalizedProfile.name,
+        email: normalizedProfile.email,
+        mobile: mobile,
+        hasImage: !!normalizedProfile.profile_image
       });
       
-      // Call the original login service
-      const result = await AuthService.loginUser(formData.email, formData.password);
-      
-      LoginLoggingService.loginDebug('Login service result', {
-        success: result.success,
-        hasUser: !!result.user,
-        message: result.message
-      });
-
-      if (result.success) {
-        LoginLoggingService.loginInfo('✅ Login successful, enhancing with admin status...');
-
-        // Enhance the login result with admin status checking
-        const enhancedResult = await enhanceLoginResponse(result);
-
-        LoginLoggingService.loginInfo('🎉 Login process completed successfully', {
-          isAdmin: enhancedResult.user?.isAdmin,
-          emailVerified: enhancedResult.user?.emailVerified,
-          userRole: enhancedResult.user?.userRole
-        });
-
-        // Update global user login status using App.js helper function
-        const updateResult = await updateUserLoginStatus(
-          formData.email.trim().toLowerCase(),
-          result.accessToken || result.token,
-          enhancedResult.user
-        );
-
-        LoginLoggingService.loginInfo('🔄 Global login status update result', {
-          success: updateResult.success,
-          userRole: updateResult.userRole,
-          isAdmin: updateResult.isAdmin
-        });
-
-        // STORE USER DATA IMMEDIATELY
+      // Handle profile image URL
+      if (normalizedProfile.profile_image && normalizedProfile.profile_image !== 'placeholder') {
         try {
-          await AsyncStorage.setItem('userData', JSON.stringify(enhancedResult.user));
-          await AsyncStorage.setItem('isLoggedin', 'TRUE');
-          
-          // Set global variables for immediate drawer access
-          global.currentUser = enhancedResult.user;
-          global.currentUserName = enhancedResult.user.name || enhancedResult.user.fullName;
-          global.currentUserEmail = enhancedResult.user.email;
-          global.isUserAdmin = enhancedResult.user.isAdmin || false;
-          global.isUserLoggedin = true;
-          
-          LoginLoggingService.loginInfo('💾 User data stored and global variables set');
-        } catch (storageError) {
-          LoginLoggingService.loginError('❌ Error storing user data', storageError);
-        }
-
-        // ENHANCED: Load full profile and WAIT for it to complete before navigation
-        LoginLoggingService.loginInfo('⏳ Loading full profile before navigation...');
-        
-        try {
-          const fullProfile = await silentProfileLoad(formData.email.trim().toLowerCase());
-          
-          if (fullProfile) {
-            LoginLoggingService.loginInfo('✅ Full profile loaded successfully before navigation');
-          } else {
-            LoginLoggingService.loginWarn('⚠️ Full profile load failed, but proceeding with navigation');
+          const workingImageUrl = await LoginImageService.getWorkingImageUrl(normalizedProfile.profile_image);
+          if (workingImageUrl) {
+            normalizedProfile.profile_image = workingImageUrl;
+            console.log('✅ Profile image URL resolved:', workingImageUrl);
           }
-        } catch (profileError) {
-          LoginLoggingService.loginError('❌ Profile load error, but proceeding with navigation', profileError);
+        } catch (imageError) {
+          console.log('⚠️ Image resolution error:', imageError.message);
         }
-
-        // Show success message and navigate
-        const isAdmin = enhancedResult.user?.isAdmin || updateResult.isAdmin;
-        const successMsg = isAdmin 
-          ? '👑 Admin Login Successful!' 
-          : '✅ Login Successful!';
-
-        const detailMsg = isAdmin
-          ? 'Welcome back, Administrator! Your profile has been loaded and you have full system access.'
-          : 'Welcome back! Your profile has been loaded successfully.';
-
-        const debugInfo = __DEV__ ? 
-          `\n\n🔧 DEBUG INFO:\n` +
-          `User Role: ${updateResult.userRole}\n` +
-          `Is Admin: ${updateResult.isAdmin}\n` +
-          `Owner Email: ${updateResult.owner_emailid}\n` +
-          `Login Email: ${updateResult.loggedin_email}\n` +
-          `Profile Loaded: ${!!global.currentUser}\n` +
-          `Username Ready: ${!!global.currentUserName}`
-          : '';
-
-        Alert.alert(
-          'Success', 
-          `${successMsg}\n${detailMsg}${debugInfo}`, 
-          [
-            {
-              text: 'OK',
-              onPress: () => {
-                // Navigate to main app - drawer should now have user data
-                LoginLoggingService.loginInfo('🏠 Navigating to MainDrawer with loaded profile');
-                navigation.reset({
-                  index: 0,
-                  routes: [{ name: 'MainDrawer' }],
-                });
-              },
-            },
-          ]
-        );
-      } else {
-        LoginLoggingService.loginError('❌ Login failed', { message: result.message });
-        Alert.alert('Error', result.message);
       }
-    } catch (error) {
-      LoginLoggingService.loginError('💥 Login error', error);
-      Alert.alert('Error', 'Login failed. Please try again.');
-    } finally {
-      setLoading(false);
+      
+      // ✅ STORE with multiple keys for reliability
+      await AsyncStorage.setItem('userData', JSON.stringify(normalizedProfile));
+      await AsyncStorage.setItem('userProfile', JSON.stringify(normalizedProfile));
+      await AsyncStorage.setItem('profileLastUpdated', new Date().toISOString());
+      await AsyncStorage.setItem('userName', normalizedProfile.name || '');
+      await AsyncStorage.setItem('userEmail', normalizedProfile.email || '');
+      await AsyncStorage.setItem('userMobile', mobile);
+      
+      // ✅ UPDATE ALL GLOBAL VARIABLES
+      global.currentUser = normalizedProfile;
+      global.currentUserName = normalizedProfile.name || normalizedProfile.fullName;
+      global.currentUserEmail = normalizedProfile.email;
+      global.isUserAdmin = normalizedProfile.isAdmin || false;
+      global.currentUserMobile = mobile;
+      global.currentUserCity = normalizedProfile.city;
+      global.currentUserProfileImage = normalizedProfile.profile_image;
+      global.isUserLoggedin = true;
+      
+      console.log('✅ Profile loaded and stored - data ready for drawer:', {
+        name: global.currentUserName,
+        email: global.currentUserEmail,
+        mobile: global.currentUserMobile,
+        hasImage: !!global.currentUserProfileImage,
+        imageUrl: global.currentUserProfileImage
+      });
+      
+      // Trigger drawer refresh
+      if (global.refreshDrawer && typeof global.refreshDrawer === 'function') {
+        console.log('🔄 Triggering drawer refresh');
+        global.refreshDrawer();
+      }
+      
+      return normalizedProfile;
+      
+    } else {
+      console.log('⚠️ Profile API failed:', result.message);
+      return null;
     }
-  };
+    
+  } catch (error) {
+    LoginLoggingService.loginError('❌ Profile load error', {
+      error: error.message,
+      userEmail
+    });
+    return null;
+  } finally {
+    setProfileLoading(false);
+  }
+};
+
+  
+// Add this helper function BEFORE handleLogin in LoginScreen.js
+
+// ✅ IMPROVED: Store user data with proper mobile field handling
+const storeUserDataReliably = async (userData) => {
+  try {
+    console.log('💾 storeUserDataReliably called');
+    
+    // Normalize mobile number - check ALL possible field names
+    const mobile = userData.mobile || 
+                   userData.mobileNo || 
+                   userData.mobile_no || 
+                   userData.mobileNumber || 
+                   userData.mobile_number || 
+                   userData.phone || 
+                   userData.phoneNumber || 
+                   '';
+    
+    const normalizedUserData = {
+      ...userData,
+      mobile: mobile,
+      mobileNo: mobile
+    };
+    
+    console.log('📋 Storing normalized data:', {
+      name: normalizedUserData.name,
+      email: normalizedUserData.email,
+      mobile: mobile
+    });
+    
+    // Store in AsyncStorage with multiple keys for redundancy
+    await AsyncStorage.setItem('userData', JSON.stringify(normalizedUserData));
+    await AsyncStorage.setItem('userProfile', JSON.stringify(normalizedUserData)); // Backup key
+    await AsyncStorage.setItem('isLoggedin', 'TRUE');
+    await AsyncStorage.setItem('userName', normalizedUserData.name || '');
+    await AsyncStorage.setItem('userEmail', normalizedUserData.email || '');
+    await AsyncStorage.setItem('userMobile', mobile);
+    
+    // Set ALL global variables
+    global.currentUser = normalizedUserData;
+    global.currentUserName = normalizedUserData.name || normalizedUserData.fullName;
+    global.currentUserEmail = normalizedUserData.email;
+    global.isUserAdmin = normalizedUserData.isAdmin || false;
+    global.isUserLoggedin = true;
+    global.currentUserMobile = mobile;
+    global.currentUserCity = normalizedUserData.city;
+    global.currentUserProfileImage = normalizedUserData.profile_image;
+    
+    console.log('✅ Storage complete. Global state:', {
+      name: global.currentUserName,
+      email: global.currentUserEmail,
+      mobile: global.currentUserMobile,
+      isLoggedIn: global.isUserLoggedin
+    });
+    
+    return true;
+    
+  } catch (error) {
+    console.error('❌ Storage error:', error);
+    
+    // Even if storage fails, set global variables as fallback
+    const mobile = userData.mobile || userData.mobileNo || userData.mobile_number || '';
+    global.currentUser = userData;
+    global.currentUserName = userData.name || userData.fullName;
+    global.currentUserEmail = userData.email;
+    global.isUserLoggedin = true;
+    global.currentUserMobile = mobile;
+    
+    return false;
+  }
+};
+
+// ✅ REPLACE the handleLogin function with this improved version:
+
+// ✅ OPTIMIZED: Replace your handleLogin function with this version
+
+const handleLogin = async () => {
+  if (!validateForm()) return;
+
+  setLoading(true);
+
+  try {
+    LoginLoggingService.loginInfo('🚀 === STARTING LOGIN PROCESS ===', {
+      email: formData.email.trim().toLowerCase()
+    });
+    
+    // Call the original login service
+    const result = await AuthService.loginUser(formData.email, formData.password);
+    
+    LoginLoggingService.loginDebug('Login service result', {
+      success: result.success,
+      hasUser: !!result.user,
+      message: result.message
+    });
+
+    if (result.success) {
+      LoginLoggingService.loginInfo('✅ Login successful');
+
+      // Enhance with admin status
+      const enhancedResult = await enhanceLoginResponse(result);
+
+      // Update global login status
+      const updateResult = await updateUserLoginStatus(
+        formData.email.trim().toLowerCase(),
+        result.accessToken || result.token,
+        enhancedResult.user
+      );
+
+      console.log('💾 === STORING INITIAL DATA ===');
+      
+      // Store basic data first
+      await storeUserDataReliably(enhancedResult.user);
+      
+      console.log('⏳ === LOADING FULL PROFILE FROM API ===');
+      
+      // ✅ LOAD FULL PROFILE FROM API - WAIT for completion
+      const fullProfile = await silentProfileLoad(formData.email.trim().toLowerCase());
+
+      if (fullProfile) {
+        console.log('✅ Full profile loaded from API');
+        
+        // Store the complete profile data
+        await storeUserDataReliably(fullProfile);
+        
+        console.log('✅ Complete profile data ready for drawer!');
+      } else {
+        console.log('⚠️ Profile API failed, using basic login data');
+      }
+
+      // Small delay to ensure drawer can read the data
+      await new Promise(resolve => setTimeout(resolve, 200));
+
+      // Show success and navigate
+      const isAdmin = fullProfile?.isAdmin || enhancedResult.user?.isAdmin || updateResult.isAdmin;
+      const successMsg = isAdmin ? '👑 Admin Login Successful!' : '✅ Login Successful!';
+
+      Alert.alert('Success', successMsg, [
+        {
+          text: 'OK',
+          onPress: () => {
+            console.log('🏠 Navigating to MainDrawer');
+            
+            // Navigate
+            navigation.reset({
+              index: 0,
+              routes: [{ name: 'MainDrawer' }],
+            });
+            
+            // Trigger drawer refreshes at multiple intervals
+            const refreshDelays = [0, 100, 300, 600, 1000];
+            refreshDelays.forEach(delay => {
+              setTimeout(() => {
+                if (global.refreshDrawer) {
+                  console.log(`🔄 Drawer refresh at ${delay}ms`);
+                  global.refreshDrawer();
+                }
+              }, delay);
+            });
+          },
+        },
+      ]);
+      
+    } else {
+      LoginLoggingService.loginError('❌ Login failed', { message: result.message });
+      Alert.alert('Error', result.message);
+    }
+  } catch (error) {
+    LoginLoggingService.loginError('💥 Login error', error);
+    Alert.alert('Error', 'Login failed. Please try again.');
+  } finally {
+    setLoading(false);
+  }
+};
+
 
   const handleForgotPassword = () => {
   navigation.navigate('ForgotPassword'); // Navigate to forgot password screen

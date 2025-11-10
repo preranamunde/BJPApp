@@ -1355,6 +1355,128 @@ kylMediaMenuIcon: {
   fontWeight: 'bold',
   lineHeight: 18,
 },
+kylMediaAddButton: {
+  width: 300,
+  height: 200,
+  marginRight: 12,
+  borderRadius: 12,
+  borderWidth: 2,
+  borderColor: '#e16e2b',
+  borderStyle: 'dashed',
+  backgroundColor: '#fff',
+  justifyContent: 'center',
+  alignItems: 'center',
+},
+kylMediaAddContent: {
+  alignItems: 'center',
+  justifyContent: 'center',
+},
+kylMediaAddText: {
+  marginTop: 8,
+  fontSize: 14,
+  color: '#e16e2b',
+  fontWeight: '600',
+},
+modalOverlay: {
+  flex: 1,
+  backgroundColor: 'rgba(0, 0, 0, 0.5)',
+  justifyContent: 'center',
+  alignItems: 'center',
+},
+modalContainer: {
+  width: '90%',
+  backgroundColor: '#fff',
+  borderRadius: 12,
+  overflow: 'hidden',
+},
+modalHeader: {
+  flexDirection: 'row',
+  justifyContent: 'space-between',
+  alignItems: 'center',
+  padding: 16,
+  backgroundColor: '#e16e2b',
+},
+modalTitle: {
+  fontSize: 18,
+  fontWeight: 'bold',
+  color: '#fff',
+},
+closeButton: {
+  fontSize: 24,
+  color: '#fff',
+  fontWeight: 'bold',
+},
+modalContent: {
+  padding: 20,
+},
+label: {
+  fontSize: 14,
+  fontWeight: '600',
+  color: '#2c3e50',
+  marginBottom: 8,
+},
+imagePickerButton: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  justifyContent: 'center',
+  padding: 16,
+  borderWidth: 2,
+  borderColor: '#e16e2b',
+  borderRadius: 8,
+  borderStyle: 'dashed',
+  backgroundColor: '#fff',
+},
+imagePickerText: {
+  marginLeft: 8,
+  fontSize: 16,
+  color: '#e16e2b',
+  fontWeight: '600',
+},
+selectedImagePreview: {
+  marginTop: 16,
+  alignItems: 'center',
+},
+previewImage: {
+  width: '100%',
+  height: 200,
+  borderRadius: 8,
+},
+imageInfoText: {
+  marginTop: 8,
+  fontSize: 12,
+  color: '#7f8c8d',
+},
+modalFooter: {
+  flexDirection: 'row',
+  padding: 16,
+  borderTopWidth: 1,
+  borderTopColor: '#ecf0f1',
+},
+modalButton: {
+  flex: 1,
+  padding: 12,
+  borderRadius: 8,
+  alignItems: 'center',
+  justifyContent: 'center',
+},
+cancelButton: {
+  backgroundColor: '#95a5a6',
+  marginRight: 8,
+},
+saveButton: {
+  backgroundColor: '#e16e2b',
+  marginLeft: 8,
+},
+cancelButtonText: {
+  color: '#fff',
+  fontSize: 16,
+  fontWeight: '600',
+},
+saveButtonText: {
+  color: '#fff',
+  fontSize: 16,
+  fontWeight: '600',
+},
 });
 
 export default styles;

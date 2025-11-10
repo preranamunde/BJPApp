@@ -10,6 +10,7 @@ import {
   RefreshControl,
   ScrollView,
   Modal,
+  Linking,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import EncryptedStorage from 'react-native-encrypted-storage';
@@ -193,12 +194,123 @@ const EditDashboardBannerModal = ({ visible, item, onClose, onSave }) => {
   );
 };
 
-// ============================================
-// DASHBOARD BANNER IMAGE COMPONENT (Updated)
-// ============================================
-// ============================================
-// DASHBOARD BANNER IMAGE COMPONENT (Updated with Blob/FileReader)
-// ============================================
+// Add New Dashboard Banner Modal Component
+const AddDashboardBannerModal = ({ visible, onClose, onSave }) => {
+  const [selectedImage, setSelectedImage] = useState(null);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (visible) {
+      setSelectedImage(null);
+    }
+  }, [visible]);
+
+  const handlePickImage = () => {
+    const options = {
+      mediaType: 'photo',
+      quality: 0.8,
+      maxWidth: 1920,
+      maxHeight: 1080,
+    };
+
+    launchImageLibrary(options, (response) => {
+      if (response.didCancel) {
+        console.log('User cancelled image picker');
+      } else if (response.errorCode) {
+        Alert.alert('Error', response.errorMessage);
+      } else if (response.assets && response.assets[0]) {
+        setSelectedImage(response.assets[0]);
+        console.log('Image selected:', response.assets[0].uri);
+      }
+    });
+  };
+
+  const handleSave = async () => {
+    if (!selectedImage) {
+      Alert.alert('Validation Error', 'Please select an image');
+      return;
+    }
+
+    setSaving(true);
+    try {
+      await onSave(selectedImage);
+      onClose();
+    } catch (error) {
+      Alert.alert('Error', 'Failed to add dashboard banner');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Modal
+      visible={visible}
+      transparent
+      animationType="slide"
+      onRequestClose={onClose}
+    >
+      <View style={styles.modalOverlay}>
+        <View style={styles.modalContainer}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Add New Dashboard Banner</Text>
+            <TouchableOpacity onPress={onClose}>
+              <Text style={styles.closeButton}>✕</Text>
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView style={styles.modalContent}>
+            <Text style={styles.label}>Dashboard Banner Image *</Text>
+            <TouchableOpacity 
+              style={styles.imagePickerButton}
+              onPress={handlePickImage}
+            >
+              <Icon name="image" size={24} color="#e16e2b" />
+              <Text style={styles.imagePickerText}>
+                {selectedImage ? 'Change Image' : 'Choose Image'}
+              </Text>
+            </TouchableOpacity>
+
+            {selectedImage && (
+              <View style={styles.selectedImagePreview}>
+                <Image 
+                  source={{ uri: selectedImage.uri }} 
+                  style={styles.previewImage}
+                  resizeMode="cover"
+                />
+                <Text style={styles.imageInfoText}>
+                  {selectedImage.fileName || 'Image selected'}
+                </Text>
+              </View>
+            )}
+          </ScrollView>
+
+          <View style={styles.modalFooter}>
+            <TouchableOpacity 
+              style={[styles.modalButton, styles.cancelButton]}
+              onPress={onClose}
+            >
+              <Text style={styles.cancelButtonText}>Cancel</Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity 
+              style={[styles.modalButton, styles.saveButton]}
+              onPress={handleSave}
+              disabled={saving}
+            >
+              {saving ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={styles.saveButtonText}>Add Banner</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+};
+
+
 const DashboardBannerImage = React.memo(({ 
   item, 
   index, 
@@ -232,7 +344,7 @@ const DashboardBannerImage = React.memo(({
         
         let mediaUrl = item.media_file;
         
-        // ✅ SAME LOGIC AS HOMESCREEN - Handle different URL formats
+        // Handle different URL formats
         if (mediaUrl.startsWith('http://') || mediaUrl.startsWith('https://')) {
           // Handle ngrok URL with port
           if (mediaUrl.includes('ngrok-free.app:')) {
@@ -254,7 +366,7 @@ const DashboardBannerImage = React.memo(({
           mediaUrl = `${baseUrl}/api/mediacorner/asset/?leader_regd_mobile_no=${memberId}&user_email_id=${encodedEmail}&media_file=${encodedMediaFile}`;
         }
         
-        // ✅ SAME AS HOMESCREEN - Get auth headers
+        // Get auth headers
         const appKey = await EncryptedStorage.getItem('APP_KEY');
         const accessToken = await EncryptedStorage.getItem('ACCESS_TOKEN') ||
                            await AsyncStorage.getItem('userAccessToken') ||
@@ -262,7 +374,7 @@ const DashboardBannerImage = React.memo(({
         
         console.log('📊 Fetching dashboard banner from:', mediaUrl);
         
-        // ✅ SAME AS HOMESCREEN - Fetch as blob and convert to base64
+        // Fetch as blob and convert to base64
         const response = await fetch(mediaUrl, {
           method: 'GET',
           headers: {
@@ -277,7 +389,7 @@ const DashboardBannerImage = React.memo(({
           throw new Error(`HTTP ${response.status}: ${response.statusText}`);
         }
 
-        // ✅ SAME AS HOMESCREEN - Convert blob to base64 using FileReader
+        // Convert blob to base64 using FileReader
         const blob = await response.blob();
         const reader = new FileReader();
         
@@ -343,7 +455,7 @@ const DashboardBannerImage = React.memo(({
 
   return (
     <View style={styles.dashboardMediaItem}>
-      {/* ✅ Three Dot Menu Button - Only show for admin */}
+      {/* Three Dot Menu Button - Only show for admin */}
       {isAdmin && (
         <TouchableOpacity 
           style={styles.dashboardMediaMenuButton}
@@ -375,12 +487,27 @@ const DashboardBannerImage = React.memo(({
         </View>
       )}
 
+      {/* ✅ UPDATED: Clickable Image that opens media_url */}
       {!loading && !imageError && imageUri && (
-        <Image 
-          source={{ uri: imageUri }}
-          style={styles.dashboardMediaImage} 
-          resizeMode="cover"
-        />
+        <TouchableOpacity
+          activeOpacity={0.8}
+          onPress={() => {
+            if (item.media_url && item.media_url.trim() !== '') {
+              Linking.openURL(item.media_url).catch(err => {
+                console.error('Failed to open URL:', err);
+                Alert.alert('Error', 'Could not open the link');
+              });
+            } else {
+              Alert.alert('Info', 'No URL available for this banner');
+            }
+          }}
+        >
+          <Image 
+            source={{ uri: imageUri }}
+            style={styles.dashboardMediaImage} 
+            resizeMode="cover"
+          />
+        </TouchableOpacity>
       )}
     </View>
   );
@@ -411,6 +538,8 @@ const [selectedBanner, setSelectedBanner] = useState(null);
 const [isAdmin, setIsAdmin] = useState(false);
 const [userRole, setUserRole] = useState('user');
 const [isLoggedIn, setIsLoggedIn] = useState(false);
+// ADD THIS LINE with your other dashboard banner states:
+const [addBannerModalVisible, setAddBannerModalVisible] = useState(false);
 
   // Load counts when screen comes into focus
   useFocusEffect(
@@ -956,6 +1085,50 @@ const handleDeleteDashboardBanner = async (item) => {
   }
 };
 
+// 👑 ADMIN ONLY: Handle Add New Banner
+const handleAddDashboardBanner = async (selectedImage) => {
+  try {
+    console.log('➕ Admin adding new dashboard banner...');
+    
+    const baseUrl = await ConfigService.getBaseUrl();
+    const apiUrl = `${baseUrl}/api/mediacorner`;
+
+    const formData = new FormData();
+    formData.append('regd_mobile_no', userInfo.leaderMobile);
+    formData.append('user_email_id', userInfo.userEmail);
+    formData.append('media_header', 'null');
+    formData.append('media_narration', 'null');
+    formData.append('media_url', 'null');
+    formData.append('media_type', 'Dashboard');
+
+    // Append the selected image file
+    const fileUri = selectedImage.uri;
+    const fileName = selectedImage.fileName || fileUri.split('/').pop();
+    const fileType = selectedImage.type || 'image/jpeg';
+
+    formData.append('media_file', {
+      uri: fileUri,
+      name: fileName,
+      type: fileType,
+    });
+
+    console.log('📤 Sending POST request to create dashboard banner...');
+
+    const result = await ApiService.authPost(apiUrl, formData, {}, true);
+
+    if (result.success) {
+      Alert.alert('✅ Success', 'Dashboard banner added successfully');
+      setAddBannerModalVisible(false);
+      loadUserInfoAndCounts(); // Refresh the data
+    } else {
+      throw new Error(result.message || 'Creation failed');
+    }
+  } catch (error) {
+    console.error('❌ Error adding dashboard banner:', error);
+    Alert.alert('Error', error.message || 'Failed to add dashboard banner');
+  }
+};
+
   const onRefresh = async () => {
     setRefreshing(true);
     await loadUserInfoAndCounts();
@@ -1000,23 +1173,19 @@ const renderDashboardBannerGallery = () => {
     );
   }
 
-  // Empty State - No banners
-  if (!dashboardBannersData || dashboardBannersData.length === 0) {
-    return null; // Don't show anything if no banners
-  }
+  // ✅ UPDATED: Show "Add New" button if admin AND (0 banners OR 1+ banners)
+  const showAddButton = isAdmin && (dashboardBannersData.length === 0 || dashboardBannersData.length >= 1);
 
-  // Render Banner Gallery - VISIBLE TO ALL (Admin + User)
   return (
     <>
       <View style={styles.dashboardBannerContainer}>
-        {/* ❌ REMOVED: Header with "Featured Highlights" and "Admin" badge */}
-        
         <ScrollView 
           horizontal 
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.dashboardBannerScrollContent}
         >
-          {dashboardBannersData.map((item, index) => {
+          {/* Render existing dashboard banner items */}
+          {dashboardBannersData && Array.isArray(dashboardBannersData) && dashboardBannersData.map((item, index) => {
             if (!item || !item.media_file) {
               return null;
             }
@@ -1033,10 +1202,26 @@ const renderDashboardBannerGallery = () => {
               />
             );
           })}
+
+          {/* ✅ Add New Button - Show if admin AND (0 OR 1+ banners) */}
+          {showAddButton && (
+            <TouchableOpacity
+              style={styles.dashboardBannerAddButton}
+              onPress={() => setAddBannerModalVisible(true)}
+              activeOpacity={0.7}
+            >
+              <View style={styles.dashboardBannerAddContent}>
+                <Icon name="add-circle" size={48} color="#e16e2b" />
+                <Text style={styles.dashboardBannerAddText}>
+                  {dashboardBannersData.length === 0 ? 'Add Banner' : 'Add New'}
+                </Text>
+              </View>
+            </TouchableOpacity>
+          )}
         </ScrollView>
       </View>
 
-      {/* 👑 ADMIN ONLY: Edit Modal */}
+      {/* Edit Modal for existing dashboard banners */}
       {isAdmin && (
         <EditDashboardBannerModal
           visible={editBannerModalVisible}
@@ -1046,6 +1231,15 @@ const renderDashboardBannerGallery = () => {
             setSelectedBanner(null);
           }}
           onSave={handleSaveDashboardBanner}
+        />
+      )}
+
+      {/* ✅ Add Modal for new dashboard banners */}
+      {isAdmin && (
+        <AddDashboardBannerModal
+          visible={addBannerModalVisible}
+          onClose={() => setAddBannerModalVisible(false)}
+          onSave={handleAddDashboardBanner}
         />
       )}
     </>
@@ -1461,6 +1655,34 @@ dashboardMediaMenuIcon: {
   color: '#2c3e50',
   fontWeight: 'bold',
   lineHeight: 18,
+},
+// Add these to the styles object (around line 1100):
+
+dashboardBannerAddButton: {
+  width: 330,
+  height: 180,
+  marginRight: 15,
+  borderRadius: 12,
+  backgroundColor: '#f8f9fa',
+  borderWidth: 2,
+  borderColor: '#e16e2b',
+  borderStyle: 'dashed',
+  justifyContent: 'center',
+  alignItems: 'center',
+},
+dashboardBannerAddContent: {
+  alignItems: 'center',
+},
+dashboardBannerAddText: {
+  marginTop: 10,
+  fontSize: 16,
+  fontWeight: '600',
+  color: '#e16e2b',
+},
+loadingText: {
+  marginTop: 10,
+  fontSize: 14,
+  color: '#7f8c8d',
 },
 });
 

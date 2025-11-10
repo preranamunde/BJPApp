@@ -274,7 +274,7 @@ const ACMediaImage = React.memo(({ item, index, memberId, isAdmin, onEdit, onDel
 
   const handleEdit = () => {
     setMenuVisible(false);
-    onEdit(item);  // ✅ Use the prop instead of calling handleACEdit directly
+    onEdit(item);
   };
 
   const handleDelete = () => {
@@ -286,7 +286,7 @@ const ACMediaImage = React.memo(({ item, index, memberId, isAdmin, onEdit, onDel
         { text: 'Cancel', style: 'cancel' },
         { 
           text: 'Yes', 
-          onPress: () => onDelete(item),  // ✅ Use the prop instead
+          onPress: () => onDelete(item),
           style: 'destructive'
         }
       ]
@@ -330,12 +330,27 @@ const ACMediaImage = React.memo(({ item, index, memberId, isAdmin, onEdit, onDel
         </View>
       )}
 
+      {/* ✅ CLICKABLE IMAGE - Opens media_url when tapped */}
       {!imageLoading && !imageError && imageUri && (
-        <Image 
-          source={{ uri: imageUri }}
-          style={styles.acMediaImage} 
-          resizeMode="cover"
-        />
+        <TouchableOpacity
+          activeOpacity={0.8}
+          onPress={() => {
+            if (item.media_url && item.media_url.trim() !== '') {
+              Linking.openURL(item.media_url).catch(err => {
+                console.error('Failed to open URL:', err);
+                Alert.alert('Error', 'Could not open the link');
+              });
+            } else {
+              Alert.alert('Info', 'No URL available for this image');
+            }
+          }}
+        >
+          <Image 
+            source={{ uri: imageUri }}
+            style={styles.acMediaImage} 
+            resizeMode="cover"
+          />
+        </TouchableOpacity>
       )}
     </View>
   );
@@ -383,6 +398,9 @@ const [acMediaLoading, setAcMediaLoading] = useState(false);
 // Add these new states for AC media edit/delete
 const [editACModalVisible, setEditACModalVisible] = useState(false);
 const [selectedACItem, setSelectedACItem] = useState(null);
+// Add AC Media Modal States
+const [addACModalVisible, setAddACModalVisible] = useState(false);
+const [addACLoading, setAddACLoading] = useState(false);
 const handleACEdit = (item) => {
   setSelectedACItem(item);
   setEditACModalVisible(true);
@@ -462,6 +480,60 @@ const handleACDelete = async (item) => {
   }
 };
 
+// Handle AC Media Add/Create
+const handleACAdd = async (selectedImage) => {
+  try {
+    const baseUrl = await ConfigService.getBaseUrl();
+    const apiUrl = `${baseUrl}/api/mediacorner`;
+    
+    const currentUserInfo = await getCurrentUserRole();
+    const userEmailId = currentUserInfo.loggedin_email || '';
+
+    console.log('📤 Creating new AC media with:', {
+      mobile: regdMobileNo,
+      email: userEmailId,
+      mediaType: 'AC',
+      fileName: selectedImage.fileName
+    });
+
+    const formData = new FormData();
+    formData.append('regd_mobile_no', regdMobileNo);
+    formData.append('user_email_id', userEmailId);
+    formData.append('media_header', 'null');
+    formData.append('media_narration', 'null');
+    formData.append('media_url', 'null');
+    formData.append('media_type', 'AC');  // ✅ This is already correct - passing 'AC' as string
+
+    // Append the selected image file
+    const fileUri = selectedImage.uri;
+    const fileName = selectedImage.fileName || fileUri.split('/').pop();
+    const fileType = selectedImage.type || 'image/jpeg';
+
+    formData.append('media_file', {
+      uri: fileUri,
+      name: fileName,
+      type: fileType,
+    });
+
+    console.log('📤 FormData prepared with media_type: AC');
+    console.log('📤 Sending POST request to:', apiUrl);
+
+    const result = await ApiService.authPost(apiUrl, formData, {}, true);
+
+    console.log('📥 POST Response:', result);
+
+    if (result.success) {
+      Alert.alert('✅ Success', 'AC media added successfully');
+      setAddACModalVisible(false);
+      fetchConstituencyData(regdMobileNo); // Refresh the data
+    } else {
+      throw new Error(result.message || 'Creation failed');
+    }
+  } catch (error) {
+    console.error('❌ Error adding AC media:', error);
+    Alert.alert('Error', error.message || 'Failed to add AC media');
+  }
+};
 
   const showSectionDropdown = (sectionKey, event) => {
     if (!isAdmin) {
@@ -710,6 +782,128 @@ const EditACMediaModal = ({ visible, item, onClose, onSave }) => {
   );
 };
 
+
+// Add AC Media Modal Component
+// Add AC Media Modal Component
+const AddACMediaModal = ({ visible, onClose, onSave }) => {
+  const [selectedImage, setSelectedImage] = useState(null);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    
+    if (visible) {
+      setSelectedImage(null);
+    }
+  }, [visible]);
+
+  const handlePickImage = () => {
+    const options = {
+      mediaType: 'photo',
+      quality: 0.8,
+      maxWidth: 1920,
+      maxHeight: 1080,
+    };
+
+    launchImageLibrary(options, (response) => {
+      if (response.didCancel) {
+        console.log('User cancelled image picker');
+      } else if (response.errorCode) {
+        Alert.alert('Error', response.errorMessage);
+      } else if (response.assets && response.assets[0]) {
+        setSelectedImage(response.assets[0]);
+        console.log('Image selected:', response.assets[0].uri);
+      }
+    });
+  };
+
+  const handleSave = async () => {
+    if (!selectedImage) {
+      Alert.alert('Validation Error', 'Please select an image');
+      return;
+    }
+
+    setSaving(true);
+    try {
+      await onSave(selectedImage);
+      onClose();
+    } catch (error) {
+      Alert.alert('Error', 'Failed to add AC media');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Modal
+      visible={visible}
+      transparent
+      animationType="slide"
+      onRequestClose={onClose}
+    >
+      <View style={styles.modalOverlay}>
+        <View style={styles.imageModalContent}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Add New AC Media</Text>
+            <TouchableOpacity onPress={onClose} style={styles.closeButton}>
+              <Icon name="close" size={18} color="#fff" />
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView 
+            style={[styles.modalBody, { padding: 20 }]}
+            contentContainerStyle={{ paddingBottom: 20 }}
+            showsVerticalScrollIndicator={true}
+          >
+            <Text style={[styles.formLabel, { marginBottom: 10 }]}>Select Image *</Text>
+            <TouchableOpacity 
+              style={styles.imagePickerButton}
+              onPress={handlePickImage}
+            >
+              <Icon name="image" size={24} color="#e16e2b" />
+              <Text style={styles.imagePickerText}>
+                {selectedImage ? 'Change Image' : 'Choose Image'}
+              </Text>
+            </TouchableOpacity>
+
+            {selectedImage && (
+              <View style={styles.selectedImagePreview}>
+                <Image 
+                  source={{ uri: selectedImage.uri }} 
+                  style={styles.previewImage}
+                  resizeMode="cover"
+                />
+                <Text style={styles.imageInfoText}>
+                  {selectedImage.fileName || 'Image selected'}
+                </Text>
+              </View>
+            )}
+          </ScrollView>
+
+          <View style={styles.modalFooter}>
+            <TouchableOpacity 
+              style={[styles.modalButton, styles.cancelButton]}
+              onPress={onClose}
+            >
+              <Text style={styles.cancelButtonText}>Cancel</Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity 
+              style={[styles.modalButton, styles.saveButton]}
+              onPress={handleSave}
+              disabled={saving}
+            >
+              {saving ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={styles.saveButtonText}>Add Media</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+};
   // Update specific constituency in the list
   const handleAssemblyFormListChange = (index, field, value) => {
     const updatedList = [...assemblyFormList];
@@ -2399,9 +2593,8 @@ const renderACMediaGallery = () => {
     );
   }
 
-  if (!acMediaData || !Array.isArray(acMediaData) || acMediaData.length === 0) {
-    return null;
-  }
+  // ✅ UPDATED: Show "Add New" button if admin AND (0 banners OR 2+ banners)
+  const showAddButton = isAdmin && acMediaData && (acMediaData.length === 0 || acMediaData.length >= 1);
 
   return (
     <>
@@ -2411,7 +2604,8 @@ const renderACMediaGallery = () => {
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.acMediaScrollContent}
         >
-          {acMediaData.map((item, index) => {
+          {/* Render existing AC media items */}
+          {acMediaData && Array.isArray(acMediaData) && acMediaData.map((item, index) => {
             if (!item || !item.media_file) {
               return null;
             }
@@ -2423,15 +2617,31 @@ const renderACMediaGallery = () => {
                 index={index}
                 memberId={regdMobileNo}
                 isAdmin={isAdmin}
-                onEdit={handleACEdit}      // ✅ Pass the handler
-                onDelete={handleACDelete}  // ✅ Pass the handler
+                onEdit={handleACEdit}
+                onDelete={handleACDelete}
               />
             );
           })}
+
+          {/* ✅ Add New Button - Show if admin AND (0 OR 2+ banners) */}
+          {showAddButton && (
+            <TouchableOpacity
+              style={styles.acMediaAddButton}
+              onPress={() => setAddACModalVisible(true)}
+              activeOpacity={0.7}
+            >
+              <View style={styles.acMediaAddContent}>
+                <Icon name="add-circle" size={48} color="#e16e2b" />
+                <Text style={styles.acMediaAddText}>
+                  {acMediaData.length === 0 ? 'Add Banner' : 'Add New'}
+                </Text>
+              </View>
+            </TouchableOpacity>
+          )}
         </ScrollView>
       </View>
 
-      {/* ✅ Only show edit modal for admin */}
+      {/* Edit Modal for existing AC media */}
       {isAdmin && (
         <EditACMediaModal
           visible={editACModalVisible}
@@ -2441,6 +2651,15 @@ const renderACMediaGallery = () => {
             setSelectedACItem(null);
           }}
           onSave={handleACSave}
+        />
+      )}
+
+      {/* Add Modal for new AC media */}
+      {isAdmin && (
+        <AddACMediaModal
+          visible={addACModalVisible}
+          onClose={() => setAddACModalVisible(false)}
+          onSave={handleACAdd}
         />
       )}
     </>

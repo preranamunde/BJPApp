@@ -212,6 +212,9 @@ const [kylMediaLoading, setKylMediaLoading] = useState(false);
 // Add these states after your existing state declarations
 const [editKYLModalVisible, setEditKYLModalVisible] = useState(false);
 const [selectedKYLItem, setSelectedKYLItem] = useState(null);
+
+const [addKYLModalVisible, setAddKYLModalVisible] = useState(false);
+const [addKYLLoading, setAddKYLLoading] = useState(false);
   useEffect(() => {
     initializeApp();
   }, []);
@@ -364,6 +367,60 @@ const handleKYLDelete = async (item) => {
   } catch (error) {
     console.error('Error deleting KYL media:', error);
     Alert.alert('Error', 'Failed to delete KYL media');
+  }
+};
+
+// Handle KYL Media Add/Create
+const handleKYLAdd = async (selectedImage) => {
+  try {
+    const baseUrl = await ConfigService.getBaseUrl();
+    const apiUrl = `${baseUrl}/api/mediacorner`;
+    
+    const currentUserInfo = await getCurrentUserRole();
+    const userEmailId = currentUserInfo.loggedin_email || '';
+
+    console.log('📤 Creating new KYL media with:', {
+      mobile: memberId,
+      email: userEmailId,
+      mediaType: 'KYL',
+      fileName: selectedImage.fileName
+    });
+
+    const formData = new FormData();
+    formData.append('regd_mobile_no', memberId);
+    formData.append('user_email_id', userEmailId);
+    formData.append('media_header', 'null');
+    formData.append('media_narration', 'null');
+    formData.append('media_url', 'null');
+    formData.append('media_type', 'KYL');
+
+    // Append the selected image file
+    const fileUri = selectedImage.uri;
+    const fileName = selectedImage.fileName || fileUri.split('/').pop();
+    const fileType = selectedImage.type || 'image/jpeg';
+
+    formData.append('media_file', {
+      uri: fileUri,
+      name: fileName,
+      type: fileType,
+    });
+
+    console.log('📤 Sending POST request to:', apiUrl);
+
+    const result = await ApiService.authPost(apiUrl, formData, {}, true);
+
+    console.log('📥 POST Response:', result);
+
+    if (result.success) {
+      Alert.alert('✅ Success', 'KYL media added successfully');
+      setAddKYLModalVisible(false);
+      loadInitialData(memberId); // Refresh the data
+    } else {
+      throw new Error(result.message || 'Creation failed');
+    }
+  } catch (error) {
+    console.error('❌ Error adding KYL media:', error);
+    Alert.alert('Error', error.message || 'Failed to add KYL media');
   }
 };
   // Show current user status
@@ -3113,13 +3170,16 @@ const renderEducationInfo = () => {
       )}
       
       {/* Add Education Button - Show for both admin and regular users */}
-      <TouchableOpacity
-        style={styles.addEducationButton}
-        onPress={() => setAddEducationModalVisible(true)}
-      >
-        <Text style={styles.addEducationIcon}>+</Text>
-        <Text style={styles.addEducationText}>Add New Education</Text>
-      </TouchableOpacity>
+      {/* Add Education Button - Show only for admin */}
+{isAdmin && (
+  <TouchableOpacity
+    style={styles.addEducationButton}
+    onPress={() => setAddEducationModalVisible(true)}
+  >
+    <Text style={styles.addEducationIcon}>+</Text>
+    <Text style={styles.addEducationText}>Add New Education</Text>
+  </TouchableOpacity>
+)}
     </View>,
     '#ffffff',
     'education',
@@ -3273,9 +3333,8 @@ const renderKYLMediaGallery = () => {
     );
   }
 
-  if (!kylMediaData || kylMediaData.length === 0) {
-    return null;
-  }
+  // ✅ UPDATED: Show "Add New" button if admin AND (0 banners OR 1+ banners)
+  const showAddButton = isAdmin && (kylMediaData.length === 0 || kylMediaData.length >= 1);
 
   return (
     <>
@@ -3285,18 +3344,35 @@ const renderKYLMediaGallery = () => {
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.kylMediaScrollContent}
         >
-          {kylMediaData.map((item, index) => (
+          {/* Render existing KYL media items */}
+          {kylMediaData && kylMediaData.map((item, index) => (
             <KYLMediaImage
               key={item._id || item.id || index}
               item={item}
               index={index}
-              isAdmin={isAdmin}  // ✅ ADD THIS LINE
+              isAdmin={isAdmin}
             />
           ))}
+
+          {/* ✅ Add New Button - Show if admin AND (0 OR 1+ banners) */}
+          {showAddButton && (
+            <TouchableOpacity
+              style={styles.kylMediaAddButton}
+              onPress={() => setAddKYLModalVisible(true)}
+              activeOpacity={0.7}
+            >
+              <View style={styles.kylMediaAddContent}>
+                <Icon name="add-circle" size={48} color="#e16e2b" />
+                <Text style={styles.kylMediaAddText}>
+                  {kylMediaData.length === 0 ? 'Add Banner' : 'Add New'}
+                </Text>
+              </View>
+            </TouchableOpacity>
+          )}
         </ScrollView>
       </View>
 
-      {/* ✅ Only show edit modal for admin */}
+      {/* Edit Modal for existing KYL media */}
       {isAdmin && (
         <EditKYLMediaModal
           visible={editKYLModalVisible}
@@ -3308,11 +3384,20 @@ const renderKYLMediaGallery = () => {
           onSave={handleKYLSave}
         />
       )}
+
+      {/* ✅ Add Modal for new KYL media */}
+      {isAdmin && (
+        <AddKYLMediaModal
+          visible={addKYLModalVisible}
+          onClose={() => setAddKYLModalVisible(false)}
+          onSave={handleKYLAdd}
+        />
+      )}
     </>
   );
 };
 
-const KYLMediaImage = React.memo(({ item, index , isAdmin}) => {
+const KYLMediaImage = React.memo(({ item, index, isAdmin }) => {
   const [imageUri, setImageUri] = useState(null);
   const [imageLoading, setImageLoading] = useState(true);
   const [imageError, setImageError] = useState(false);
@@ -3409,7 +3494,7 @@ const KYLMediaImage = React.memo(({ item, index , isAdmin}) => {
     };
   }, [item.media_file, memberId]);
 
-  const handleMenuPress = (event) => {
+const handleMenuPress = (event) => {
     const { pageX, pageY } = event.nativeEvent;
     setMenuPosition({ x: pageX, y: pageY + 10 });
     setMenuVisible(true);
@@ -3473,12 +3558,27 @@ const KYLMediaImage = React.memo(({ item, index , isAdmin}) => {
         </View>
       )}
 
+      {/* ✅ WRAP IMAGE IN TOUCHABLE OPACITY TO MAKE IT CLICKABLE */}
       {!imageLoading && !imageError && imageUri && (
-        <Image 
-          source={{ uri: imageUri }}
-          style={styles.kylMediaImage} 
-          resizeMode="cover"
-        />
+        <TouchableOpacity
+          activeOpacity={0.8}
+          onPress={() => {
+            if (item.media_url && item.media_url.trim() !== '') {
+              Linking.openURL(item.media_url).catch(err => {
+                console.error('Failed to open URL:', err);
+                Alert.alert('Error', 'Could not open the link');
+              });
+            } else {
+              Alert.alert('Info', 'No URL available for this image');
+            }
+          }}
+        >
+          <Image 
+            source={{ uri: imageUri }}
+            style={styles.kylMediaImage} 
+            resizeMode="cover"
+          />
+        </TouchableOpacity>
       )}
     </View>
   );
@@ -3627,14 +3727,17 @@ const renderTimeline = () => {
         </View>
       )}
       
-      {/* Add Timeline Button */}
-      <TouchableOpacity
-        style={styles.addEducationButton}
-        onPress={() => setAddTimelineModalVisible(true)}
-      >
-        <Text style={styles.addEducationIcon}>+</Text>
-        <Text style={styles.addEducationText}>Add New Timeline Entry</Text>
-      </TouchableOpacity>
+   
+     {/* Add Timeline Button - Show only for admin */}
+{isAdmin && (
+  <TouchableOpacity
+    style={styles.addEducationButton}
+    onPress={() => setAddTimelineModalVisible(true)}
+  >
+    <Text style={styles.addEducationIcon}>+</Text>
+    <Text style={styles.addEducationText}>Add New Timeline Entry</Text>
+  </TouchableOpacity>
+)}
     </View>,
     '#ffffff',
     'timeline',
@@ -3774,6 +3877,125 @@ const renderTimeline = () => {
   );
 };
 
+// Add KYL Media Modal Component
+const AddKYLMediaModal = ({ visible, onClose, onSave }) => {
+  const [selectedImage, setSelectedImage] = useState(null);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (visible) {
+      setSelectedImage(null);
+    }
+  }, [visible]);
+
+  const handlePickImage = () => {
+    const options = {
+      mediaType: 'photo',
+      quality: 0.8,
+      maxWidth: 1920,
+      maxHeight: 1080,
+    };
+
+    launchImageLibrary(options, (response) => {
+      if (response.didCancel) {
+        console.log('User cancelled image picker');
+      } else if (response.errorCode) {
+        Alert.alert('Error', response.errorMessage);
+      } else if (response.assets && response.assets[0]) {
+        setSelectedImage(response.assets[0]);
+        console.log('Image selected:', response.assets[0].uri);
+      }
+    });
+  };
+
+  const handleSave = async () => {
+    if (!selectedImage) {
+      Alert.alert('Validation Error', 'Please select an image');
+      return;
+    }
+
+    setSaving(true);
+    try {
+      await onSave(selectedImage);
+      onClose();
+    } catch (error) {
+      Alert.alert('Error', 'Failed to add KYL media');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Modal
+      visible={visible}
+      transparent
+      animationType="slide"
+      onRequestClose={onClose}
+    >
+      <View style={styles.modalOverlay}>
+        <View style={[styles.modalContainer, { maxHeight: '80%' }]}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Add New KYL Media</Text>
+            <TouchableOpacity onPress={onClose}>
+              <Text style={styles.closeButton}>✕</Text>
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView 
+            style={styles.modalContent}
+            contentContainerStyle={{ paddingBottom: 20 }}
+            showsVerticalScrollIndicator={true}
+          >
+            <Text style={styles.label}>Select Image *</Text>
+            <TouchableOpacity 
+              style={styles.imagePickerButton}
+              onPress={handlePickImage}
+            >
+              <Icon name="image" size={24} color="#e16e2b" />
+              <Text style={styles.imagePickerText}>
+                {selectedImage ? 'Change Image' : 'Choose Image'}
+              </Text>
+            </TouchableOpacity>
+
+            {selectedImage && (
+              <View style={styles.selectedImagePreview}>
+                <Image 
+                  source={{ uri: selectedImage.uri }} 
+                  style={styles.previewImage}
+                  resizeMode="cover"
+                />
+                <Text style={styles.imageInfoText}>
+                  {selectedImage.fileName || 'Image selected'}
+                </Text>
+              </View>
+            )}
+          </ScrollView>
+
+          <View style={styles.modalFooter}>
+            <TouchableOpacity 
+              style={[styles.modalButton, styles.cancelButton]}
+              onPress={onClose}
+            >
+              <Text style={styles.cancelButtonText}>Cancel</Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity 
+              style={[styles.modalButton, styles.saveButton]}
+              onPress={handleSave}
+              disabled={saving}
+            >
+              {saving ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={styles.saveButtonText}>Add Media</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+};
 // Edit Modal for KYL Media (Image Only)
 // Edit Modal for KYL Media (Image Only)
 const EditKYLMediaModal = ({ visible, item, onClose, onSave }) => {

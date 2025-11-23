@@ -12,6 +12,8 @@ import LogoSplash from './src/components/LogoSplash';
 import YouTubeSplash from './src/components/YouTubeSplash';
 import AppNavigator from './src/navigation/AppNavigator';
 import { generateAppKey } from './src/utils/generateAppKey';
+import messaging from '@react-native-firebase/messaging';
+import crashlytics from '@react-native-firebase/crashlytics';
 
 // Global variables for user state - Centralized Management
 // Add this with other global variables at top
@@ -42,6 +44,63 @@ const App = () => {
       console.error('❌ Error initializing configuration:', error);
     }
   };
+
+// ✅ ADD THIS SIMPLE FUNCTION
+const initializeCrashlytics = async () => {
+  try {
+    // Enable Crashlytics
+    await crashlytics().setCrashlyticsCollectionEnabled(true);
+    
+    // Set custom attributes for better debugging
+    await crashlytics().setAttribute('app_name', 'Leader App');
+    await crashlytics().setAttribute('environment', __DEV__ ? 'development' : 'production');
+    
+    // Log initialization
+    crashlytics().log('Crashlytics initialized successfully');
+    console.log('✅ Firebase Crashlytics initialized');
+    
+    // Set user ID if available
+    try {
+      const userEmail = await AsyncStorage.getItem('userEmail');
+      if (userEmail) {
+        await crashlytics().setUserId(userEmail);
+        crashlytics().log(`User identified: ${userEmail}`);
+      }
+    } catch (err) {
+      console.log('Could not set user ID:', err);
+    }
+    
+    // ONLY show alert in DEV mode
+    if (__DEV__) {
+      console.log('🎉 Crashlytics Ready - Test crash button available in HomeScreen');
+    }
+    
+  } catch (error) {
+    console.error('❌ Crashlytics initialization error:', error);
+  }
+};
+
+  // ✅ Handle notification tap - Navigate to Home
+useEffect(() => {
+  // When app is opened from notification (background)
+  const unsubscribe = messaging().onNotificationOpenedApp(remoteMessage => {
+    console.log('📲 Notification opened app from background:', remoteMessage);
+    Alert.alert('Notification Tapped!', 'Opening Home Screen...');
+    // Navigation happens automatically since Home is the first screen
+  });
+
+  // When app is opened from notification (quit state)
+  messaging()
+    .getInitialNotification()
+    .then(remoteMessage => {
+      if (remoteMessage) {
+        console.log('📲 Notification opened app from quit state:', remoteMessage);
+        Alert.alert('Notification Tapped!', 'Opening Home Screen...');
+      }
+    });
+
+  return unsubscribe;
+}, []);
 
   // Function to validate API response structure
   const validateBootstrapResponse = (data) => {
@@ -219,6 +278,32 @@ if (owner_name) {
 } else {
   console.log('⚠️ No owner name found - will use default');
   await EncryptedStorage.setItem('OWNER_NAME', '');
+
+}
+
+const possibleAppNameFields = [
+  'client_app_name', 'app_name', 'appName', 'application_name',
+  'CLIENT_APP_NAME', 'AppName', 'clientAppName'
+];
+
+let extractedAppName = '';
+for (const field of possibleAppNameFields) {
+  if (appOwnerInfo[field] && typeof appOwnerInfo[field] === 'string') {
+    extractedAppName = appOwnerInfo[field].trim();
+    console.log(`✅ Found app name in field '${field}': ${extractedAppName}`);
+    break;
+  }
+}
+
+global.client_app_name = extractedAppName;
+
+// Store client_app_name in encrypted storage
+if (extractedAppName) {
+  await EncryptedStorage.setItem('CLIENT_APP_NAME', extractedAppName);
+  console.log('💾 Client app name stored:', extractedAppName);
+} else {
+  console.log('⚠️ No client app name found - will use default');
+  await EncryptedStorage.setItem('CLIENT_APP_NAME', 'Leader App');
 }
     
     // Store owner information in encrypted storage
@@ -311,161 +396,95 @@ if (owner_name) {
 };
 
   // Improved bootstrap API call function with ConfigService integration
-  const callBootstrapAPI = async (appKey) => {
-    console.log('📡 Starting bootstrap API call...');
+ // Replace your existing callBootstrapAPI function with this updated version
 
-    try {
-      // Get the bootstrap API URL from ConfigService
-      const baseUrl = await ConfigService.getBaseUrl();
-      const bootstrapUrl = `${baseUrl}/api/bootstrap`;
-      
-      console.log('🔗 Bootstrap API URL:', bootstrapUrl);
-      console.log('🔑 App Key (first 10 chars):', appKey.substring(0, 10) + '...');
+// Replace your existing callBootstrapAPI function with this updated version
 
-      // Get device fingerprint using DeviceService
-      console.log('📱 Getting device fingerprint from DeviceService...');
-      const deviceFingerprint = await DeviceService.getDeviceFingerprint();
-      console.log('📱 Device Fingerprint (first 20 chars):', deviceFingerprint.substring(0, 20) + '...');
+const callBootstrapAPI = async (appKey) => {
+  console.log('📡 Starting bootstrap API call...');
 
-      // Get additional device info for logging
-      const deviceInfo = await DeviceService.getDeviceInfo();
-      console.log('📱 Device Info:', deviceInfo);
+  try {
+    const baseUrl = await ConfigService.getBaseUrl();
+    const bootstrapUrl = `${baseUrl}/api/bootstrap`;
+    
+    console.log('🔗 Bootstrap API URL:', bootstrapUrl);
+    console.log('🔑 App Key (first 10 chars):', appKey.substring(0, 10) + '...');
 
-      // Test server connectivity first
-      console.log('🔍 Testing server connectivity...');
-      const isServerReachable = await ConfigService.testConnection(baseUrl, 5000);
-      
-      if (!isServerReachable) {
-        console.warn('⚠️ Server connectivity test failed, but attempting bootstrap anyway...');
-      } else {
-        console.log('✅ Server is reachable');
-      }
+    console.log('📱 Getting device fingerprint from DeviceService...');
+    const deviceFingerprint = await DeviceService.getDeviceFingerprint();
+    console.log('📱 Device Fingerprint (first 20 chars):', deviceFingerprint.substring(0, 20) + '...');
 
-      // Make the API request
-      const response = await axios.post(bootstrapUrl, {}, {
+    const deviceInfo = await DeviceService.getDeviceInfo();
+    console.log('📱 Device Info:', deviceInfo);
+
+    // ✅ REMOVED: No longer passing device info in bootstrap
+    // Just pass user email if logged in
+    const userEmail = await AsyncStorage.getItem('userEmail') || 
+                     await EncryptedStorage.getItem('LOGGED_IN_EMAIL') || 
+                     'null';
+    
+    console.log('📧 User Email for bootstrap:', userEmail);
+
+    // ✅ SIMPLIFIED: Only send user email
+    const requestBody = {
+      user_email_id: userEmail
+    };
+
+    console.log('📤 Request Body:', JSON.stringify(requestBody, null, 2));
+
+    console.log('🔍 Testing server connectivity...');
+    const isServerReachable = await ConfigService.testConnection(baseUrl, 5000);
+    
+    if (!isServerReachable) {
+      console.warn('⚠️ Server connectivity test failed, but attempting bootstrap anyway...');
+    } else {
+      console.log('✅ Server is reachable');
+    }
+
+    // Make the API request
+    const response = await axios.post(
+      bootstrapUrl, 
+      requestBody,
+      {
         headers: {
           'x-app-key': appKey,
           'x-device-fingerprint': deviceFingerprint,
           'Content-Type': 'application/json'
         },
-        timeout: 10000 // 10 seconds timeout
-      });
-
-      console.log('✅ Bootstrap API Request Successful!');
-      console.log('📊 Response Status:', response.status);
-      console.log('📊 Response Status Text:', response.statusText);
-      console.log('📋 Response Headers:', JSON.stringify(response.headers, null, 2));
-      console.log('📋 Raw Response Data:', JSON.stringify(response.data, null, 2));
-
-      // Validate the response
-      const validation = validateBootstrapResponse(response.data);
-      
-      if (validation.isValid) {
-        console.log('✅ Response validation passed:', validation.message);
-        
-        // Setup global variables and determine user role
-        const globalSetup = await setupGlobalVariablesFromBootstrap(response.data.AppOwnerInfo);
-        
-        // Show success alert with role status
-        const roleMessage = globalSetup.userRole === 'admin' 
-          ? `👑 ADMIN STATUS DETECTED\n(Owner logged in: ${globalSetup.loggedin_email})`
-          : globalSetup.loggedin_email 
-            ? `👤 USER STATUS\n(Logged in: ${globalSetup.loggedin_email})`
-            : `🔓 NO USER LOGGED IN\n(Default: user role)`;
-        
-        Alert.alert(
-          '🎉 Bootstrap Success!',
-          `✅ App initialized successfully!\n\n` +
-          `Status: ${response.status}\n` +
-          `Base URL: ${baseUrl}\n` +
-          `Device: ${deviceInfo}\n\n` +
-          `🏛️ APP OWNER INFO:\n` +
-          `Owner Email: ${globalSetup.owner_emailid}\n` +
-          `Owner Mobile: ${globalSetup.owner_mobile}\n\n` +
-          `👤 CURRENT USER STATUS:\n${roleMessage}\n\n` +
-          `🔧 AppOwnerInfo Keys: ${Object.keys(response.data.AppOwnerInfo).join(', ')}`,
-          [{ text: 'Continue', onPress: () => setStage('app') }]
-        );
-        
-        return { success: true, data: response.data, globalSetup };
-        
-      } else {
-        console.log('❌ Response validation failed:', validation.message);
-        Alert.alert(
-          '⚠️ Invalid Response',
-          `API responded but data is invalid:\n${validation.message}\n\nRaw response logged to console.`,
-          [{ text: 'Continue', onPress: () => setStage('app') }]
-        );
-        return { success: false, error: validation.message, data: response.data };
+        timeout: 10000
       }
+    );
 
-    } catch (error) {
-      console.log('❌ Bootstrap API Request Failed!');
+    console.log('✅ Bootstrap API Request Successful!');
+    console.log('📊 Response Status:', response.status);
+    
+    // ... rest of your existing validation and setup code
+    const validation = validateBootstrapResponse(response.data);
+    
+    if (validation.isValid) {
+      console.log('✅ Response validation passed:', validation.message);
+      const globalSetup = await setupGlobalVariablesFromBootstrap(response.data.AppOwnerInfo);
       
-      if (error.response) {
-        // Server responded with error status
-        console.error('📊 Error Status:', error.response.status);
-        console.error('📊 Error Status Text:', error.response.statusText);
-        console.error('📋 Error Response Data:', JSON.stringify(error.response.data, null, 2));
-        console.error('📋 Error Response Headers:', JSON.stringify(error.response.headers, null, 2));
-        
-        Alert.alert(
-          '❌ Server Error',
-          `Server responded with error:\n\n` +
-          `Status: ${error.response.status}\n` +
-          `Message: ${error.response.statusText}\n` +
-          `URL: ${await ConfigService.getBaseUrl()}\n` +
-          `Data: ${JSON.stringify(error.response.data, null, 2)}`,
-          [
-            { text: 'Continue', onPress: () => setStage('app') },
-            { 
-              text: 'Change Server', 
-              onPress: () => showServerConfigDialog() 
-            }
-          ]
-        );
-        
-        return { success: false, error: `Server error: ${error.response.status}`, data: error.response.data };
-        
-      } else if (error.request) {
-        // Request was made but no response received
-        console.error('📡 Network Error - No response received');
-        console.error('📋 Request Details:', error.request);
-        
-        const currentBaseUrl = await ConfigService.getBaseUrl();
-        Alert.alert(
-          '📡 Network Error',
-          `No response from server. Please check:\n\n` +
-          `• Internet connection\n` +
-          `• Server is running\n` +
-          `• Current URL: ${currentBaseUrl}\n` +
-          `• Bootstrap endpoint: /api/bootstrap`,
-          [
-            { text: 'Continue', onPress: () => setStage('app') },
-            { 
-              text: 'Change Server', 
-              onPress: () => showServerConfigDialog() 
-            }
-          ]
-        );
-        
-        return { success: false, error: 'Network error - no response', data: null };
-        
-      } else {
-        // Something else happened
-        console.error('❌ Request Setup Error:', error.message);
-        console.error('❌ Error Stack:', error.stack);
-        
-        Alert.alert(
-          '❌ Request Error',
-          `Failed to make request:\n${error.message}`,
-          [{ text: 'Continue', onPress: () => setStage('app') }]
-        );
-        
-        return { success: false, error: error.message, data: null };
-      }
+      Alert.alert(
+        '🎉 Bootstrap Success!',
+        `✅ App initialized successfully!\n\n` +
+        `Status: ${response.status}\n` +
+        `Base URL: ${baseUrl}\n\n` +
+        `🏛️ APP OWNER INFO:\n` +
+        `Owner Email: ${globalSetup.owner_emailid || 'Not found'}\n` +
+        `Owner Mobile: ${globalSetup.owner_mobile || 'Not found'}\n\n` +
+        `👤 CURRENT USER STATUS:\n${globalSetup.userRole === 'admin' ? '👑 ADMIN' : '👤 USER'}`,
+        [{ text: 'Continue', onPress: () => setStage('app') }]
+      );
+      
+      return { success: true, data: response.data, globalSetup };
     }
-  };
+    // ... rest of error handling
+
+  } catch (error) {
+    // ... your existing error handling
+  }
+};
 
   // Show server configuration dialog
   const showServerConfigDialog = async () => {
@@ -616,7 +635,37 @@ if (owner_name) {
       setIsBootstrapped(true);
     }
   };
+useEffect(() => {
+  if (stage === 'app') {
+    initializeFCM();
+     initializeCrashlytics(); 
+  }
+}, [stage]);
 
+const initializeFCM = async () => {
+  try {
+    console.log('🔔 Initializing FCM...');
+    
+    // Request permission
+    const authStatus = await messaging().requestPermission();
+    const enabled =
+      authStatus === messaging.AuthorizationStatus.AUTHORIZED ||
+      authStatus === messaging.AuthorizationStatus.PROVISIONAL;
+
+    if (enabled) {
+      console.log('✅ Notification permission granted');
+      
+      // Get FCM token
+      const token = await messaging().getToken();
+      console.log('🔑 FCM Token:', token);
+      
+      // Store token
+      await AsyncStorage.setItem('FCM_TOKEN', token);
+    }
+  } catch (error) {
+    console.error('❌ FCM initialization error:', error);
+  }
+};
   if (stage === 'static') {
     return <StaticBannerSplash onComplete={() => setStage('logo')} />;
   }
@@ -636,6 +685,8 @@ if (owner_name) {
       </NavigationContainer>
     );
   }
+
+  // ✅ ADD THIS - Initialize FCM and show token
 
   return null;
 };
@@ -833,14 +884,16 @@ export const getCurrentUserRole = async () => {
     
     const ownerEmail = await EncryptedStorage.getItem('OWNER_EMAIL') || owner_emailid;
     const ownerMobile = await EncryptedStorage.getItem('OWNER_MOBILE') || owner_mobile;
-    const ownerName = await EncryptedStorage.getItem('OWNER_NAME') || owner_name || ''; // ✅ ADD THIS
+    const ownerName = await EncryptedStorage.getItem('OWNER_NAME') || owner_name || '';
+    const clientAppName = await EncryptedStorage.getItem('CLIENT_APP_NAME') || 'Leader App'; // ✅ ADD THIS
     
     return {
       userRole: role,
       loggedin_email: loggedInEmail,
       owner_emailid: ownerEmail,
       owner_mobile: ownerMobile,
-      owner_name: ownerName, // ✅ ADD THIS LINE
+      owner_name: ownerName,
+      client_app_name: clientAppName, // ✅ ADD THIS LINE
       isAdmin: role === 'admin',
       isLoggedIn: !!loggedInEmail,
       isAppBootstrapped: global.isAppBootstrapped || isAppBootstrapped
@@ -852,7 +905,8 @@ export const getCurrentUserRole = async () => {
       loggedin_email: '',
       owner_emailid: '',
       owner_mobile: '',
-      owner_name: '', // ✅ ADD THIS LINE
+      owner_name: '',
+      client_app_name: 'Leader App', // ✅ ADD THIS LINE
       isAdmin: false,
       isLoggedIn: false,
       isAppBootstrapped: false

@@ -401,6 +401,47 @@ const [selectedACItem, setSelectedACItem] = useState(null);
 // Add AC Media Modal States
 const [addACModalVisible, setAddACModalVisible] = useState(false);
 const [addACLoading, setAddACLoading] = useState(false);
+// Add Constituency Profile Modal States
+const [addConstituencyModalVisible, setAddConstituencyModalVisible] = useState(false);
+const [addConstituencyData, setAddConstituencyData] = useState({
+  const_no: '',
+  constituency_type: 'LokSabha',
+  const_name: '',
+  district: '',
+  state: '',
+  established: '',
+  overview: '',
+  sitting_member: '',
+  member_party: '',
+  election_year: '',
+  electon_header: '',
+  geography: '',
+  eci_url: '',
+  reservation_status: 'General',
+  assembly_segment_count: '',
+  // ECI Summary fields
+  electors_general_male_data: '',
+  electors_general_female_data: '',
+  electors_general_tg_data: '',
+  electors_general_total_data: '',
+  electors_overseas_male_data: '',
+  electors_overseas_female_data: '',
+  electors_overseas_tg_data: '',
+  electors_overseas_total_data: '',
+  electors_service_male_data: '',
+  electors_service_female_data: '',
+  electors_service_tg_data: '',
+  electors_service_total_data: '',
+  electors_total_male_data: '',
+  electors_total_female_data: '',
+  electors_total_tg_data: '',
+  electors_grand_total_data: '',
+  polling_station_count: '',
+  avg_no_electors_per_ps_data: '',
+  total_no_voters_data: '',
+  voter_trunout_ratio_data: ''
+});
+const [addConstituencyLoading, setAddConstituencyLoading] = useState(false);
 const handleACEdit = (item) => {
   setSelectedACItem(item);
   setEditACModalVisible(true);
@@ -1212,22 +1253,7 @@ const fetchConstituencyData = async (mobileNo) => {
       ConstituencyLoggingService.constWarn('⚠️ No constituency profile found, using mock data');
       
       // ✅ ENSURE ALL MOCK VALUES ARE STRINGS OR NULL
-      setConstituencyData({
-        const_name: 'Constituency Information',
-        const_no: '',
-        state: '',
-        district: '',
-        constituency_type: 'Lok Sabha',
-        reservation_status: '',
-        established: '',
-        sitting_member: '',
-        member_party: '',
-        assembly_segment_count: '',
-        overview: '',
-        geography: '',
-        eci_url: '',
-        member_image: null
-      });
+    setConstituencyData(null);
     }
 
     // ========== PROCESS ASSEMBLY CONSTITUENCIES ==========
@@ -2480,6 +2506,195 @@ const fetchACMedia = async (memberIdentifier) => {
       setSaveLoading(false);
     }
   };
+
+  const handleCreateConstituencyProfile = async () => {
+  try {
+    // Validate required fields
+    if (!addConstituencyData.const_name.trim()) {
+      Alert.alert('Validation Error', 'Constituency name is required');
+      return;
+    }
+    if (!addConstituencyData.const_no.trim()) {
+      Alert.alert('Validation Error', 'Constituency number is required');
+      return;
+    }
+    if (!addConstituencyData.state.trim()) {
+      Alert.alert('Validation Error', 'State is required');
+      return;
+    }
+
+    setAddConstituencyLoading(true);
+
+    if (!regdMobileNo) {
+      Alert.alert('Error', 'Mobile number not available. Please refresh the screen.');
+      return;
+    }
+
+    // Get email
+    let emailToUse = loggedInEmail || ownerEmail;
+    if (!emailToUse) {
+      try {
+        const appOwnerInfoStr = await EncryptedStorage.getItem('AppOwnerInfo');
+        if (appOwnerInfoStr) {
+          const appOwnerInfo = JSON.parse(appOwnerInfoStr);
+          emailToUse = appOwnerInfo.email || appOwnerInfo.user_email || appOwnerInfo.emailId || '';
+        }
+      } catch (error) {
+        ConstituencyLoggingService.constError('Error getting email', error);
+      }
+    }
+
+    if (!emailToUse) {
+      emailToUse = 'sanjay.jaiswal@gmail.com'; // fallback
+    }
+
+    const baseUrl = await ConfigService.getBaseUrl();
+
+    // Prepare request payload matching Postman structure
+    const requestPayload = {
+      user_email_id: emailToUse,
+      constitency_profile: {
+        regd_mobile_no: regdMobileNo,
+        const_no: addConstituencyData.const_no.trim(),
+        constituency_type: addConstituencyData.constituency_type || 'LokSabha',
+        const_name: addConstituencyData.const_name.trim(),
+        district: addConstituencyData.district.trim() || '',
+        state: addConstituencyData.state.trim(),
+        constituency_map: 'none',
+        established: addConstituencyData.established.trim() || '',
+        overview: addConstituencyData.overview.trim() || '',
+        sitting_member: addConstituencyData.sitting_member.trim() || '',
+        member_image: 'none',
+        member_party: addConstituencyData.member_party.trim() || '',
+        election_year: addConstituencyData.election_year.trim() || '',
+        electon_header: addConstituencyData.electon_header.trim() || '',
+        geography: addConstituencyData.geography.trim() || '',
+        eci_lablel: 'ECI Summary Data',
+        eci_url: addConstituencyData.eci_url.trim() || '',
+        reservation_status: addConstituencyData.reservation_status || 'General',
+        assembly_segment_count: addConstituencyData.assembly_segment_count.trim() || '',
+        
+        // ECI Summary Data
+        electors_breakups_label: 'Electors',
+        electors_general_label: 'General',
+        electors_general_male_data: addConstituencyData.electors_general_male_data.trim() || '',
+        electors_general_female_data: addConstituencyData.electors_general_female_data.trim() || '',
+        electors_general_tg_data: addConstituencyData.electors_general_tg_data.trim() || '',
+        electors_general_total_data: addConstituencyData.electors_general_total_data.trim() || '',
+        
+        electors_overseas_label: 'Overseas',
+        electors_overseas_male_data: addConstituencyData.electors_overseas_male_data.trim() || '',
+        electors_overseas_female_data: addConstituencyData.electors_overseas_female_data.trim() || '',
+        electors_overseas_tg_data: addConstituencyData.electors_overseas_tg_data.trim() || '',
+        electors_overseas_total_data: addConstituencyData.electors_overseas_total_data.trim() || '',
+        
+        electors_service_label: 'Service',
+        electors_service_male_data: addConstituencyData.electors_service_male_data.trim() || '',
+        electors_service_female_data: addConstituencyData.electors_service_female_data.trim() || '',
+        electors_service_tg_data: addConstituencyData.electors_service_tg_data.trim() || '',
+        electors_service_total_data: addConstituencyData.electors_service_total_data.trim() || '',
+        
+        electors_total_male_data: addConstituencyData.electors_total_male_data.trim() || '',
+        electors_total_female_data: addConstituencyData.electors_total_female_data.trim() || '',
+        electors_total_tg_data: addConstituencyData.electors_total_tg_data.trim() || '',
+        electors_grand_total_data: addConstituencyData.electors_grand_total_data.trim() || '',
+        
+        polling_station_label: 'Polling Stations',
+        polling_station_count: addConstituencyData.polling_station_count.trim() || '',
+        avg_no_electors_per_ps_label: 'Avg Electors/PS',
+        avg_no_electors_per_ps_data: addConstituencyData.avg_no_electors_per_ps_data.trim() || '',
+        total_no_voters_label: 'Total Voters',
+        total_no_voters_data: addConstituencyData.total_no_voters_data.trim() || '',
+        voter_trunout_ratio_label: 'Turnout Ratio',
+        voter_trunout_ratio_data: addConstituencyData.voter_trunout_ratio_data.trim() || ''
+      }
+    };
+
+    ConstituencyLoggingService.constInfo('📤 Creating constituency profile', {
+      mobile: regdMobileNo,
+      email: emailToUse,
+      constName: addConstituencyData.const_name
+    });
+
+    // Use authPost for POST request
+    const result = await ApiService.authPost(
+      `${baseUrl}/api/constituencyprofile`,
+      requestPayload,
+      {
+        'x-user-id': emailToUse,
+        'x-user-role': userRole,
+      }
+    );
+
+    console.log('📥 POST Response:', result);
+
+    if (result.success) {
+      Alert.alert(
+        'Success',
+        'Constituency profile created successfully!',
+        [
+          {
+            text: 'OK',
+            onPress: () => {
+              // Reset form
+              setAddConstituencyData({
+                const_no: '',
+                constituency_type: 'LokSabha',
+                const_name: '',
+                district: '',
+                state: '',
+                established: '',
+                overview: '',
+                sitting_member: '',
+                member_party: '',
+                election_year: '',
+                electon_header: '',
+                geography: '',
+                eci_url: '',
+                reservation_status: 'General',
+                assembly_segment_count: '',
+                electors_general_male_data: '',
+                electors_general_female_data: '',
+                electors_general_tg_data: '',
+                electors_general_total_data: '',
+                electors_overseas_male_data: '',
+                electors_overseas_female_data: '',
+                electors_overseas_tg_data: '',
+                electors_overseas_total_data: '',
+                electors_service_male_data: '',
+                electors_service_female_data: '',
+                electors_service_tg_data: '',
+                electors_service_total_data: '',
+                electors_total_male_data: '',
+                electors_total_female_data: '',
+                electors_total_tg_data: '',
+                electors_grand_total_data: '',
+                polling_station_count: '',
+                avg_no_electors_per_ps_data: '',
+                total_no_voters_data: '',
+                voter_trunout_ratio_data: ''
+              });
+
+              // Close modal
+              setAddConstituencyModalVisible(false);
+
+              // Refresh data
+              fetchConstituencyData(regdMobileNo);
+            }
+          }
+        ]
+      );
+    } else {
+      throw new Error(result.message || result.error || 'Failed to create constituency profile');
+    }
+
+  } catch (error) {
+    ConstituencyLoggingService.constError('❌ Error creating constituency profile', error);
+    Alert.alert('Error', `Failed to create constituency profile: ${error.message}`);
+  } finally {
+    setAddConstituencyLoading(false);
+  }
+};
   const handleSubmitEdit = () => {
     if (editingConstituency) {
       handleUpdateConstituency();
@@ -2537,49 +2752,75 @@ const fetchACMedia = async (memberIdentifier) => {
   };
 
   // Render functions
-  const renderHeader = () => (
-  <View style={styles.header}>
-    <View style={styles.headerTop}>
-      <TouchableOpacity
-        style={styles.titleContainer}
-        onPress={handleTitlePress}
-        activeOpacity={0.8}
-      >
-        <Text style={styles.title}>
-          {`${constituencyData?.const_no || ''}${constituencyData?.const_no ? ', ' : ''}${constituencyData?.const_name || 'Constituency Name'}`}
-        </Text>
-      </TouchableOpacity>
+ const renderHeader = () => {
+  // If no constituency data exists, show "Add New Profile" button
+  if (!constituencyData || !constituencyData.const_name) {
+    return (
+      <View style={styles.header}>
+        <View style={styles.headerTop}>
+          <Text style={styles.title}>Constituency Profile</Text>
+        </View>
+        <Text style={styles.subtitle}>No constituency data available</Text>
+        
+        {isAdmin && (
+          <TouchableOpacity
+            style={styles.addAssemblyButton}
+            onPress={() => setAddConstituencyModalVisible(true)}
+            activeOpacity={0.7}
+          >
+            <Icon name="add-circle" size={20} color="#fff" />
+            <Text style={styles.addAssemblyButtonText}>Add New Constituency Profile</Text>
+          </TouchableOpacity>
+        )}
+      </View>
+    );
+  }
 
-      {isAdmin && (
+  // Existing header code when data exists...
+  return (
+    <View style={styles.header}>
+      <View style={styles.headerTop}>
         <TouchableOpacity
-          style={styles.headerEditButton}
-          onPress={() => openEditSection('generalInfo')}
-          activeOpacity={0.7}
+          style={styles.titleContainer}
+          onPress={handleTitlePress}
+          activeOpacity={0.8}
         >
-          <Icon name="edit" size={18} color="#fff" />
+          <Text style={styles.title}>
+            {`${constituencyData?.const_no || ''}${constituencyData?.const_no ? ', ' : ''}${constituencyData?.const_name || 'Constituency Name'}`}
+          </Text>
         </TouchableOpacity>
+
+        {isAdmin && (
+          <TouchableOpacity
+            style={styles.headerEditButton}
+            onPress={() => openEditSection('generalInfo')}
+            activeOpacity={0.7}
+          >
+            <Icon name="edit" size={18} color="#fff" />
+          </TouchableOpacity>
+        )}
+      </View>
+
+      <Text style={styles.subtitle}>
+        {`${constituencyData?.constituency_type || 'Lok Sabha'} Constituency`}
+      </Text>
+
+      {constituencyData?.reservation_status && (
+        <View style={[styles.badge, { backgroundColor: '#27ae60', marginTop: 10 }]}>
+          <Text style={styles.badgeText}>
+            {constituencyData.reservation_status}
+          </Text>
+        </View>
       )}
-    </View>
 
-    <Text style={styles.subtitle}>
-      {`${constituencyData?.constituency_type || 'Lok Sabha'} Constituency`}
-    </Text>
-
-    {constituencyData?.reservation_status && (
-      <View style={[styles.badge, { backgroundColor: '#27ae60', marginTop: 10 }]}>
+      <View style={[styles.badge, { marginTop: 8 }]}>
         <Text style={styles.badgeText}>
-          {constituencyData.reservation_status}
+          {constituencyData?.state || 'State'}
         </Text>
       </View>
-    )}
-
-    <View style={[styles.badge, { marginTop: 8 }]}>
-      <Text style={styles.badgeText}>
-        {constituencyData?.state || 'State'}
-      </Text>
     </View>
-  </View>
-);
+  );
+};
 
 const renderACMediaGallery = () => {
   if (acMediaLoading) {
@@ -2667,6 +2908,24 @@ const renderACMediaGallery = () => {
 };
 
  const renderInfoCards = () => {
+  // If no constituency data, show empty state
+  if (!constituencyData || !constituencyData.const_name) {
+    return (
+      <View style={styles.card}>
+        <View style={styles.noDataContainer}>
+          <Icon name="info" size={48} color="#95a5a6" />
+          <Text style={[styles.noDataText, { fontSize: 18, marginTop: 10 }]}>
+            No Constituency Data Available
+          </Text>
+          <Text style={styles.noDataText}>
+            Click "Add New Constituency Profile" to get started
+          </Text>
+        </View>
+      </View>
+    );
+  }
+
+  // Existing code for when data exists...
   const memberImageUrl = constituencyData?.member_image;
   const shouldShowImage = memberImageUrl && 
                           memberImageUrl !== 'none' && 
@@ -2676,7 +2935,15 @@ const renderACMediaGallery = () => {
     <>
       {/* Overview Card */}
       <View style={styles.card}>
-        {/* ... existing overview card code ... */}
+        <View style={styles.cardHeader}>
+          <Icon name="description" size={20} color="#3498db" />
+          <Text style={styles.cardTitle}>Overview</Text>
+        </View>
+        <View style={styles.cardContent}>
+          <Text style={styles.overviewText}>
+            {getOverviewText()}
+          </Text>
+        </View>
       </View>
 
       {/* Info Cards Grid */}
@@ -2726,7 +2993,15 @@ const renderACMediaGallery = () => {
   );
 };
   const renderElectionTable = () => {
-    if (!constituencyData) return null;
+    if (!constituencyData || !constituencyData.const_name) {
+    return (
+      <View style={styles.noDataContainer}>
+        <Icon name="info" size={24} color="#95a5a6" />
+        <Text style={styles.noDataText}>No election information available</Text>
+      </View>
+    );
+  }
+   
 
     // Create election results table
     const createElectorsTable = () => {
@@ -3016,22 +3291,27 @@ const renderACMediaGallery = () => {
   };
 
   const renderGeographyCard = () => {
-    if (!constituencyData?.geography) return null;
+  // If no constituency data or no geography, return null
+  if (!constituencyData || !constituencyData.const_name) {
+    return null;
+  }
 
-    return (
-      <View style={styles.card}>
-        <View style={styles.cardHeader}>
-          <Icon name="public" size={20} color="#27ae60" />
-          <Text style={styles.cardTitle}>Geography</Text>
-        </View>
-        <View style={styles.cardContent}>
-          <Text style={styles.overviewText}>
-            {constituencyData.geography}
-          </Text>
-        </View>
+  if (!constituencyData?.geography) return null;
+
+  return (
+    <View style={styles.card}>
+      <View style={styles.cardHeader}>
+        <Icon name="public" size={20} color="#27ae60" />
+        <Text style={styles.cardTitle}>Geography</Text>
       </View>
-    );
-  };
+      <View style={styles.cardContent}>
+        <Text style={styles.overviewText}>
+          {constituencyData.geography}
+        </Text>
+      </View>
+    </View>
+  );
+};
 
   const renderExternalLinks = () => (
     <View style={styles.card}>
@@ -4055,6 +4335,617 @@ const renderACMediaGallery = () => {
       </Modal>
     );
   };
+
+  const renderAddConstituencyModal = () => {
+  return (
+    <Modal
+      visible={addConstituencyModalVisible}
+      animationType="slide"
+      transparent={true}
+      onRequestClose={() => setAddConstituencyModalVisible(false)}
+    >
+      <View style={styles.modalOverlay}>
+        <View style={[styles.modalContent, { maxHeight: '90%' }]}>
+          <View style={[styles.modalHeader, { backgroundColor: '#e16e2b' }]}>
+            <Icon name="add-circle" size={18} color="#fff" />
+            <Text style={styles.modalTitle}>Add Constituency Profile</Text>
+            <TouchableOpacity
+              onPress={() => setAddConstituencyModalVisible(false)}
+              style={styles.closeButton}
+            >
+              <Icon name="close" size={18} color="#fff" />
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={true}>
+            {/* BASIC INFORMATION SECTION */}
+            <View style={[styles.tableSubHeader, { backgroundColor: '#e16e2b' }]}>
+              <Text style={styles.tableSubHeaderText}>BASIC INFORMATION</Text>
+            </View>
+
+            <View style={styles.formGroup}>
+              <Text style={[styles.formLabel, styles.requiredLabel]}>
+                Constituency Number *
+              </Text>
+              <TextInput
+                style={styles.formInput}
+                value={addConstituencyData.const_no}
+                onChangeText={(text) => setAddConstituencyData({
+                  ...addConstituencyData,
+                  const_no: text
+                })}
+                placeholder="e.g., 2"
+                placeholderTextColor="#bdc3c7"
+                keyboardType="numeric"
+              />
+            </View>
+
+            <View style={styles.formGroup}>
+              <Text style={[styles.formLabel, styles.requiredLabel]}>
+                Constituency Name *
+              </Text>
+              <TextInput
+                style={styles.formInput}
+                value={addConstituencyData.const_name}
+                onChangeText={(text) => setAddConstituencyData({
+                  ...addConstituencyData,
+                  const_name: text
+                })}
+                placeholder="e.g., Paschim Champaran"
+                placeholderTextColor="#bdc3c7"
+              />
+            </View>
+
+            <View style={styles.formGroup}>
+              <Text style={styles.formLabel}>Constituency Type</Text>
+              <TextInput
+                style={styles.formInput}
+                value={addConstituencyData.constituency_type}
+                onChangeText={(text) => setAddConstituencyData({
+                  ...addConstituencyData,
+                  constituency_type: text
+                })}
+                placeholder="e.g., LokSabha"
+                placeholderTextColor="#bdc3c7"
+              />
+            </View>
+
+            <View style={styles.formGroup}>
+              <Text style={[styles.formLabel, styles.requiredLabel]}>State *</Text>
+              <TextInput
+                style={styles.formInput}
+                value={addConstituencyData.state}
+                onChangeText={(text) => setAddConstituencyData({
+                  ...addConstituencyData,
+                  state: text
+                })}
+                placeholder="e.g., Bihar"
+                placeholderTextColor="#bdc3c7"
+              />
+            </View>
+
+            <View style={styles.formGroup}>
+              <Text style={styles.formLabel}>District</Text>
+              <TextInput
+                style={styles.formInput}
+                value={addConstituencyData.district}
+                onChangeText={(text) => setAddConstituencyData({
+                  ...addConstituencyData,
+                  district: text
+                })}
+                placeholder="e.g., Paschim Champaran"
+                placeholderTextColor="#bdc3c7"
+              />
+            </View>
+
+            <View style={styles.formGroup}>
+              <Text style={styles.formLabel}>Reservation Status</Text>
+              <TextInput
+                style={styles.formInput}
+                value={addConstituencyData.reservation_status}
+                onChangeText={(text) => setAddConstituencyData({
+                  ...addConstituencyData,
+                  reservation_status: text
+                })}
+                placeholder="e.g., General, SC, ST"
+                placeholderTextColor="#bdc3c7"
+              />
+            </View>
+
+            <View style={styles.formGroup}>
+              <Text style={styles.formLabel}>Established Year</Text>
+              <TextInput
+                style={styles.formInput}
+                value={addConstituencyData.established}
+                onChangeText={(text) => setAddConstituencyData({
+                  ...addConstituencyData,
+                  established: text
+                })}
+                placeholder="e.g., 2008"
+                placeholderTextColor="#bdc3c7"
+                keyboardType="numeric"
+              />
+            </View>
+
+            <View style={styles.formGroup}>
+              <Text style={styles.formLabel}>Current MP</Text>
+              <TextInput
+                style={styles.formInput}
+                value={addConstituencyData.sitting_member}
+                onChangeText={(text) => setAddConstituencyData({
+                  ...addConstituencyData,
+                  sitting_member: text
+                })}
+                placeholder="e.g., Dr. Sanjay Jaiswal"
+                placeholderTextColor="#bdc3c7"
+              />
+            </View>
+
+            <View style={styles.formGroup}>
+              <Text style={styles.formLabel}>Member Party</Text>
+              <TextInput
+                style={styles.formInput}
+                value={addConstituencyData.member_party}
+                onChangeText={(text) => setAddConstituencyData({
+                  ...addConstituencyData,
+                  member_party: text
+                })}
+                placeholder="e.g., BJP"
+                placeholderTextColor="#bdc3c7"
+              />
+            </View>
+
+            <View style={styles.formGroup}>
+              <Text style={styles.formLabel}>Assembly Segment Count</Text>
+              <TextInput
+                style={styles.formInput}
+                value={addConstituencyData.assembly_segment_count}
+                onChangeText={(text) => setAddConstituencyData({
+                  ...addConstituencyData,
+                  assembly_segment_count: text
+                })}
+                placeholder="e.g., 6"
+                placeholderTextColor="#bdc3c7"
+                keyboardType="numeric"
+              />
+            </View>
+
+            <View style={styles.formGroup}>
+              <Text style={styles.formLabel}>Overview</Text>
+              <TextInput
+                style={[styles.formInput, styles.textArea]}
+                value={addConstituencyData.overview}
+                onChangeText={(text) => setAddConstituencyData({
+                  ...addConstituencyData,
+                  overview: text
+                })}
+                placeholder="Brief overview of the constituency"
+                placeholderTextColor="#bdc3c7"
+                multiline={true}
+                numberOfLines={3}
+              />
+            </View>
+
+            <View style={styles.formGroup}>
+              <Text style={styles.formLabel}>Geography</Text>
+              <TextInput
+                style={[styles.formInput, styles.textArea]}
+                value={addConstituencyData.geography}
+                onChangeText={(text) => setAddConstituencyData({
+                  ...addConstituencyData,
+                  geography: text
+                })}
+                placeholder="Geographical description"
+                placeholderTextColor="#bdc3c7"
+                multiline={true}
+                numberOfLines={3}
+              />
+            </View>
+
+            <View style={styles.formGroup}>
+              <Text style={styles.formLabel}>ECI URL</Text>
+              <TextInput
+                style={styles.formInput}
+                value={addConstituencyData.eci_url}
+                onChangeText={(text) => setAddConstituencyData({
+                  ...addConstituencyData,
+                  eci_url: text
+                })}
+                placeholder="https://www.eci.gov.in/..."
+                placeholderTextColor="#bdc3c7"
+              />
+            </View>
+
+            {/* ECI SUMMARY DATA SECTION */}
+            <View style={[styles.tableSubHeader, { backgroundColor: '#e16e2b', marginTop: 20 }]}>
+              <Text style={styles.tableSubHeaderText}>ECI SUMMARY DATA</Text>
+            </View>
+
+            <View style={styles.formGroup}>
+              <Text style={styles.formLabel}>Election Year</Text>
+              <TextInput
+                style={styles.formInput}
+                value={addConstituencyData.election_year}
+                onChangeText={(text) => setAddConstituencyData({
+                  ...addConstituencyData,
+                  election_year: text
+                })}
+                placeholder="e.g., 2024"
+                placeholderTextColor="#bdc3c7"
+                keyboardType="numeric"
+              />
+            </View>
+
+            <View style={styles.formGroup}>
+              <Text style={styles.formLabel}>Election Header</Text>
+              <TextInput
+                style={styles.formInput}
+                value={addConstituencyData.electon_header}
+                onChangeText={(text) => setAddConstituencyData({
+                  ...addConstituencyData,
+                  electon_header: text
+                })}
+                placeholder="e.g., 18th Lok Sabha General Election"
+                placeholderTextColor="#bdc3c7"
+              />
+            </View>
+
+            <View style={styles.formGroup}>
+              <Text style={styles.formLabel}>Total Voters</Text>
+              <TextInput
+                style={styles.formInput}
+                value={addConstituencyData.total_no_voters_data}
+                onChangeText={(text) => setAddConstituencyData({
+                  ...addConstituencyData,
+                  total_no_voters_data: text
+                })}
+                placeholder="e.g., 25000"
+                placeholderTextColor="#bdc3c7"
+                keyboardType="numeric"
+              />
+            </View>
+
+            <View style={styles.formGroup}>
+              <Text style={styles.formLabel}>Voter Turnout Ratio</Text>
+              <TextInput
+                style={styles.formInput}
+                value={addConstituencyData.voter_trunout_ratio_data}
+                onChangeText={(text) => setAddConstituencyData({
+                  ...addConstituencyData,
+                  voter_trunout_ratio_data: text
+                })}
+                placeholder="e.g., 72%"
+                placeholderTextColor="#bdc3c7"
+              />
+            </View>
+
+            <View style={styles.formGroup}>
+              <Text style={styles.formLabel}>Polling Station Count</Text>
+              <TextInput
+                style={styles.formInput}
+                value={addConstituencyData.polling_station_count}
+                onChangeText={(text) => setAddConstituencyData({
+                  ...addConstituencyData,
+                  polling_station_count: text
+                })}
+                placeholder="e.g., 1234"
+                placeholderTextColor="#bdc3c7"
+                keyboardType="numeric"
+              />
+            </View>
+
+            <View style={styles.formGroup}>
+              <Text style={styles.formLabel}>Avg Electors per PS</Text>
+              <TextInput
+                style={styles.formInput}
+                value={addConstituencyData.avg_no_electors_per_ps_data}
+                onChangeText={(text) => setAddConstituencyData({
+                  ...addConstituencyData,
+                  avg_no_electors_per_ps_data: text
+                })}
+                placeholder="e.g., 21"
+                placeholderTextColor="#bdc3c7"
+                keyboardType="numeric"
+              />
+            </View>
+
+            {/* ELECTORS BREAKDOWN SECTION */}
+            <View style={[styles.tableSubHeader, { backgroundColor: '#e16e2b', marginTop: 20 }]}>
+              <Text style={styles.tableSubHeaderText}>ELECTORS BREAKDOWN</Text>
+            </View>
+
+            {/* General Electors */}
+            <Text style={[styles.formLabel, { marginTop: 10, fontWeight: 'bold' }]}>
+              General Electors
+            </Text>
+            <View style={styles.formGroup}>
+              <Text style={styles.formLabel}>Male</Text>
+              <TextInput
+                style={styles.formInput}
+                value={addConstituencyData.electors_general_male_data}
+                onChangeText={(text) => setAddConstituencyData({
+                  ...addConstituencyData,
+                  electors_general_male_data: text
+                })}
+                placeholder="e.g., 12345"
+                placeholderTextColor="#bdc3c7"
+                keyboardType="numeric"
+              />
+            </View>
+
+            <View style={styles.formGroup}>
+              <Text style={styles.formLabel}>Female</Text>
+              <TextInput
+                style={styles.formInput}
+                value={addConstituencyData.electors_general_female_data}
+                onChangeText={(text) => setAddConstituencyData({
+                  ...addConstituencyData,
+                  electors_general_female_data: text
+                })}
+                placeholder="e.g., 12345"
+                placeholderTextColor="#bdc3c7"
+                keyboardType="numeric"
+              />
+            </View>
+
+            <View style={styles.formGroup}>
+              <Text style={styles.formLabel}>Third Gender</Text>
+              <TextInput
+                style={styles.formInput}
+                value={addConstituencyData.electors_general_tg_data}
+                onChangeText={(text) => setAddConstituencyData({
+                  ...addConstituencyData,
+                  electors_general_tg_data: text
+                })}
+                placeholder="e.g., 123"
+                placeholderTextColor="#bdc3c7"
+                keyboardType="numeric"
+              />
+            </View>
+
+            <View style={styles.formGroup}>
+              <Text style={styles.formLabel}>Total</Text>
+              <TextInput
+                style={styles.formInput}
+                value={addConstituencyData.electors_general_total_data}
+                onChangeText={(text) => setAddConstituencyData({
+                  ...addConstituencyData,
+                  electors_general_total_data: text
+                })}
+                placeholder="e.g., 24713"
+                placeholderTextColor="#bdc3c7"
+                keyboardType="numeric"
+              />
+            </View>
+
+            {/* Overseas Electors */}
+            <Text style={[styles.formLabel, { marginTop: 10, fontWeight: 'bold' }]}>
+              Overseas Electors
+            </Text>
+            <View style={styles.formGroup}>
+              <Text style={styles.formLabel}>Male</Text>
+              <TextInput
+                style={styles.formInput}
+                value={addConstituencyData.electors_overseas_male_data}
+                onChangeText={(text) => setAddConstituencyData({
+                  ...addConstituencyData,
+                  electors_overseas_male_data: text
+                })}
+                placeholder="e.g., 100"
+                placeholderTextColor="#bdc3c7"
+                keyboardType="numeric"
+              />
+            </View>
+
+            <View style={styles.formGroup}>
+              <Text style={styles.formLabel}>Female</Text>
+              <TextInput
+                style={styles.formInput}
+                value={addConstituencyData.electors_overseas_female_data}
+                onChangeText={(text) => setAddConstituencyData({
+                  ...addConstituencyData,
+                  electors_overseas_female_data: text
+                })}
+                placeholder="e.g., 100"
+                placeholderTextColor="#bdc3c7"
+                keyboardType="numeric"
+              />
+            </View>
+
+            <View style={styles.formGroup}>
+              <Text style={styles.formLabel}>Third Gender</Text>
+              <TextInput
+                style={styles.formInput}
+                value={addConstituencyData.electors_overseas_tg_data}
+                onChangeText={(text) => setAddConstituencyData({
+                  ...addConstituencyData,
+                  electors_overseas_tg_data: text
+                })}
+                placeholder="e.g., 5"
+                placeholderTextColor="#bdc3c7"
+                keyboardType="numeric"
+              />
+            </View>
+
+            <View style={styles.formGroup}>
+              <Text style={styles.formLabel}>Total</Text>
+              <TextInput
+                style={styles.formInput}
+                value={addConstituencyData.electors_overseas_total_data}
+                onChangeText={(text) => setAddConstituencyData({
+                  ...addConstituencyData,
+                  electors_overseas_total_data: text
+                })}
+                placeholder="e.g., 205"
+                placeholderTextColor="#bdc3c7"
+                keyboardType="numeric"
+              />
+            </View>
+
+            {/* Service Electors */}
+            <Text style={[styles.formLabel, { marginTop: 10, fontWeight: 'bold' }]}>
+              Service Electors
+            </Text>
+            <View style={styles.formGroup}>
+              <Text style={styles.formLabel}>Male</Text>
+              <TextInput
+                style={styles.formInput}
+                value={addConstituencyData.electors_service_male_data}
+                onChangeText={(text) => setAddConstituencyData({
+                  ...addConstituencyData,
+                  electors_service_male_data: text
+                })}
+                placeholder="e.g., 500"
+                placeholderTextColor="#bdc3c7"
+                keyboardType="numeric"
+              />
+            </View>
+
+            <View style={styles.formGroup}>
+              <Text style={styles.formLabel}>Female</Text>
+              <TextInput
+                style={styles.formInput}
+                value={addConstituencyData.electors_service_female_data}
+                onChangeText={(text) => setAddConstituencyData({
+                  ...addConstituencyData,
+                  electors_service_female_data: text
+                })}
+                placeholder="e.g., 400"
+                placeholderTextColor="#bdc3c7"
+                keyboardType="numeric"
+              />
+            </View>
+
+            <View style={styles.formGroup}>
+              <Text style={styles.formLabel}>Third Gender</Text>
+              <TextInput
+                style={styles.formInput}
+                value={addConstituencyData.electors_service_tg_data}
+                onChangeText={(text) => setAddConstituencyData({
+                  ...addConstituencyData,
+                  electors_service_tg_data: text
+                })}
+                placeholder="e.g., 10"
+                placeholderTextColor="#bdc3c7"
+                keyboardType="numeric"
+              />
+            </View>
+
+            <View style={styles.formGroup}>
+              <Text style={styles.formLabel}>Total</Text>
+              <TextInput
+                style={styles.formInput}
+                value={addConstituencyData.electors_service_total_data}
+                onChangeText={(text) => setAddConstituencyData({
+                  ...addConstituencyData,
+                  electors_service_total_data: text
+                })}
+                placeholder="e.g., 910"
+                placeholderTextColor="#bdc3c7"
+                keyboardType="numeric"
+              />
+            </View>
+
+            {/* Grand Total Electors */}
+            <Text style={[styles.formLabel, { marginTop: 10, fontWeight: 'bold' }]}>
+              Grand Total
+            </Text>
+            <View style={styles.formGroup}>
+              <Text style={styles.formLabel}>Total Male</Text>
+              <TextInput
+                style={styles.formInput}
+                value={addConstituencyData.electors_total_male_data}
+                onChangeText={(text) => setAddConstituencyData({
+                  ...addConstituencyData,
+                  electors_total_male_data: text
+                })}
+                placeholder="e.g., 13000"
+                placeholderTextColor="#bdc3c7"
+                keyboardType="numeric"
+              />
+            </View>
+
+            <View style={styles.formGroup}>
+              <Text style={styles.formLabel}>Total Female</Text>
+              <TextInput
+                style={styles.formInput}
+                value={addConstituencyData.electors_total_female_data}
+                onChangeText={(text) => setAddConstituencyData({
+                  ...addConstituencyData,
+                  electors_total_female_data: text
+                })}
+                placeholder="e.g., 12800"
+                placeholderTextColor="#bdc3c7"
+                keyboardType="numeric"
+              />
+            </View>
+
+            <View style={styles.formGroup}>
+              <Text style={styles.formLabel}>Total Third Gender</Text>
+              <TextInput
+                style={styles.formInput}
+                value={addConstituencyData.electors_total_tg_data}
+                onChangeText={(text) => setAddConstituencyData({
+                  ...addConstituencyData,
+                  electors_total_tg_data: text
+                })}
+                placeholder="e.g., 138"
+                placeholderTextColor="#bdc3c7"
+                keyboardType="numeric"
+              />
+            </View>
+
+            <View style={styles.formGroup}>
+              <Text style={styles.formLabel}>Grand Total Electors</Text>
+              <TextInput
+                style={styles.formInput}
+                value={addConstituencyData.electors_grand_total_data}
+                onChangeText={(text) => setAddConstituencyData({
+                  ...addConstituencyData,
+                  electors_grand_total_data: text
+                })}
+                placeholder="e.g., 25938"
+                placeholderTextColor="#bdc3c7"
+                keyboardType="numeric"
+              />
+            </View>
+
+            {/* Info Text */}
+            <View style={styles.noDataContainer}>
+              <Text style={styles.noDataText}>
+                * Constituency Name, Number, and State are required. All other fields are optional.
+              </Text>
+            </View>
+          </ScrollView>
+
+          {/* Modal Footer */}
+          <View style={styles.modalFooter}>
+            <TouchableOpacity
+              style={[styles.modalButton, styles.cancelButton]}
+              onPress={() => setAddConstituencyModalVisible(false)}
+              disabled={addConstituencyLoading}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.cancelButtonText}>Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.modalButton, styles.saveButton, { backgroundColor: '#e16e2b' }]}
+              onPress={handleCreateConstituencyProfile}
+              disabled={addConstituencyLoading}
+              activeOpacity={0.7}
+            >
+              {addConstituencyLoading ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Text style={styles.saveButtonText}>Create Profile</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+};
  return (
   <ScrollView
     style={styles.container}
@@ -4135,6 +5026,7 @@ const renderACMediaGallery = () => {
       {renderAssemblyEditModal()}
       {renderDeveloperInputModal()}
       {renderAssemblyDropdownModal()}
+       {renderAddConstituencyModal()} 
     </ScrollView>
   );
 };

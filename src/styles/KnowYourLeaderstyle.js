@@ -1477,6 +1477,292 @@ saveButtonText: {
   fontSize: 16,
   fontWeight: '600',
 },
+avatarEditButton: {
+  position: 'absolute',
+  bottom: 2,
+  right: 2,
+  backgroundColor: '#e16e2b',
+  width: 28,
+  height: 28,
+  borderRadius: 14,
+  justifyContent: 'center',
+  alignItems: 'center',
+  borderWidth: 2,
+  borderColor: '#fff',
+  elevation: 3,
+  shadowColor: '#000',
+  shadowOffset: { width: 0, height: 2 },
+  shadowOpacity: 0.25,
+  shadowRadius: 3.84,
+},
+// ===== PROFILE IMAGE MODAL STYLES =====
+profileImageModalOverlay: {
+  flex: 1,
+  backgroundColor: 'rgba(0, 0, 0, 0.6)',
+  justifyContent: 'center',
+  alignItems: 'center',
+  padding: 20,
+},
+
+profileImageModalCard: {
+  width: '100%',
+  maxWidth: 400,
+  backgroundColor: '#ffffff',
+  borderRadius: 20,
+  overflow: 'hidden',
+  elevation: 10,
+  shadowColor: '#000',
+  shadowOffset: { width: 0, height: 5 },
+  shadowOpacity: 0.3,
+  shadowRadius: 15,
+},
+
+profileImageModalHeader: {
+  flexDirection: 'row',
+  justifyContent: 'space-between',
+  alignItems: 'center',
+  padding: 20,
+  backgroundColor: '#f8f9fa',
+  borderBottomWidth: 1,
+  borderBottomColor: '#e9ecef',
+},
+
+profileImageHeaderContent: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  flex: 1,
+},
+
+profileImageIconContainer: {
+  width: 45,
+  height: 45,
+  borderRadius: 22.5,
+  backgroundColor: '#fff5f0',
+  justifyContent: 'center',
+  alignItems: 'center',
+  marginRight: 12,
+},
+
+profileImageTitleContainer: {
+  flex: 1,
+},
+
+profileImageModalTitle: {
+  fontSize: 18,
+  fontWeight: 'bold',
+  color: '#2c3e50',
+  marginBottom: 2,
+},
+
+profileImageModalSubtitle: {
+  fontSize: 12,
+  color: '#7f8c8d',
+},
+
+profileImageCloseButton: {
+  width: 36,
+  height: 36,
+  borderRadius: 18,
+  backgroundColor: '#fff',
+  justifyContent: 'center',
+  alignItems: 'center',
+  borderWidth: 1,
+  borderColor: '#e9ecef',
+},
+
+profileImageModalBody: {
+  flexDirection: 'row',
+  justifyContent: 'space-between',
+  alignItems: 'center',
+  padding: 25,
+  gap: 15,
+},
+
+profileImageSection: {
+  flex: 1,
+  alignItems: 'center',
+},
+
+profileImageSectionLabel: {
+  fontSize: 13,
+  fontWeight: '600',
+  color: '#495057',
+  marginBottom: 12,
+  textTransform: 'uppercase',
+  letterSpacing: 0.5,
+},
+
+profileImagePreviewContainer: {
+  width: 120,
+  height: 120,
+  borderRadius: 60,
+  overflow: 'hidden',
+  borderWidth: 3,
+  borderColor: '#e9ecef',
+  position: 'relative',
+  elevation: 3,
+  shadowColor: '#000',
+  shadowOffset: { width: 0, height: 2 },
+  shadowOpacity: 0.1,
+  shadowRadius: 4,
+},
+
+profileImagePreview: {
+  width: '100%',
+  height: '100%',
+},
+
+profileImageBadge: {
+  position: 'absolute',
+  bottom: 5,
+  right: 5,
+  backgroundColor: '#fff',
+  width: 24,
+  height: 24,
+  borderRadius: 12,
+  justifyContent: 'center',
+  alignItems: 'center',
+  borderWidth: 2,
+  borderColor: '#27ae60',
+},
+
+profileImageNewBadge: {
+  position: 'absolute',
+  top: 5,
+  right: 5,
+  backgroundColor: '#e16e2b',
+  paddingHorizontal: 8,
+  paddingVertical: 3,
+  borderRadius: 10,
+},
+
+profileImageNewBadgeText: {
+  fontSize: 10,
+  fontWeight: 'bold',
+  color: '#fff',
+  letterSpacing: 0.5,
+},
+
+profileImagePlaceholder: {
+  width: '100%',
+  height: '100%',
+  backgroundColor: '#f8f9fa',
+  justifyContent: 'center',
+  alignItems: 'center',
+  borderWidth: 2,
+  borderStyle: 'dashed',
+  borderColor: '#e16e2b',
+  borderRadius: 60,
+},
+
+profileImagePlaceholderText: {
+  fontSize: 11,
+  color: '#e16e2b',
+  fontWeight: '600',
+  marginTop: 6,
+},
+
+profileImageArrowContainer: {
+  justifyContent: 'center',
+  alignItems: 'center',
+},
+
+profileImageInfoBox: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  backgroundColor: '#e3f2fd',
+  marginHorizontal: 20,
+  padding: 12,
+  borderRadius: 10,
+  marginBottom: 15,
+  gap: 8,
+},
+
+profileImageInfoText: {
+  fontSize: 12,
+  color: '#1976d2',
+  flex: 1,
+  fontWeight: '500',
+},
+
+profileImageTips: {
+  backgroundColor: '#fff5f0',
+  marginHorizontal: 20,
+  padding: 15,
+  borderRadius: 10,
+  borderLeftWidth: 3,
+  borderLeftColor: '#e16e2b',
+  marginBottom: 20,
+},
+
+profileImageTipsTitle: {
+  fontSize: 13,
+  fontWeight: 'bold',
+  color: '#2c3e50',
+  marginBottom: 8,
+},
+
+profileImageTipItem: {
+  fontSize: 12,
+  color: '#495057',
+  marginBottom: 4,
+  lineHeight: 18,
+},
+
+profileImageModalFooter: {
+  flexDirection: 'row',
+  padding: 20,
+  backgroundColor: '#f8f9fa',
+  borderTopWidth: 1,
+  borderTopColor: '#e9ecef',
+  gap: 12,
+},
+
+profileImageCancelButton: {
+  flex: 1,
+  flexDirection: 'row',
+  alignItems: 'center',
+  justifyContent: 'center',
+  paddingVertical: 14,
+  borderRadius: 12,
+  backgroundColor: '#fff',
+  borderWidth: 1.5,
+  borderColor: '#dee2e6',
+  gap: 6,
+},
+
+profileImageCancelButtonText: {
+  fontSize: 15,
+  fontWeight: '600',
+  color: '#7f8c8d',
+},
+
+profileImageSaveButton: {
+  flex: 1.5,
+  flexDirection: 'row',
+  alignItems: 'center',
+  justifyContent: 'center',
+  paddingVertical: 14,
+  borderRadius: 12,
+  backgroundColor: '#e16e2b',
+  gap: 8,
+  elevation: 3,
+  shadowColor: '#e16e2b',
+  shadowOffset: { width: 0, height: 2 },
+  shadowOpacity: 0.3,
+  shadowRadius: 4,
+},
+
+profileImageSaveButtonDisabled: {
+  backgroundColor: '#bdc3c7',
+  elevation: 0,
+},
+
+profileImageSaveButtonText: {
+  fontSize: 15,
+  fontWeight: 'bold',
+  color: '#fff',
+},
 });
 
 export default styles;

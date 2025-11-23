@@ -29,7 +29,7 @@ const tabs = ['Press Meets', 'Past Events', 'Facebook', 'X', 'Instagram', 'Video
 const MEDIA_TYPE_MAP = {
   'Press Meets': 'PM',
   'Past Events': 'PE',
-  'Video': 'video',
+ 'Video': 'VE', 
   'Latest News': 'latestnews'
 };
 
@@ -524,34 +524,50 @@ useEffect(() => {
     setImageError(false);
 
     try {
-      // ✅ Normalize the media URL
+      // ✅ Use the same logic as UpcomingEventsScreen
       let mediaUrl = item.media_file;
       
-      // Remove port from ngrok URLs
-      if (mediaUrl.includes('ngrok-free.app:')) {
-        mediaUrl = mediaUrl.replace(/:(\d+)\//, '/');
-        console.log('🔧 Fixed ngrok URL (removed port):', mediaUrl);
-      }
-      
-      // Replace localhost with ngrok base URL
-      if (mediaUrl.includes('localhost:5000') || mediaUrl.includes('localhost:')) {
+      // If it's already a full URL, normalize it
+      if (mediaUrl.startsWith('http://') || mediaUrl.startsWith('https://')) {
+        // Remove port from ngrok URLs
+        if (mediaUrl.includes('ngrok-free.app:')) {
+          mediaUrl = mediaUrl.replace(/:(\d+)\//, '/');
+          console.log('🔧 Fixed ngrok URL (removed port):', mediaUrl);
+        }
+        
+        // Replace localhost with ngrok
+        if (mediaUrl.includes('localhost:5000') || mediaUrl.includes('localhost:')) {
+          const baseUrl = await ConfigService.getBaseUrl();
+          mediaUrl = mediaUrl.replace(/http:\/\/localhost:\d+/, baseUrl);
+          console.log('🔧 Replaced localhost with ngrok:', mediaUrl);
+        }
+      } else {
+        // ✅ For relative paths, construct full URL properly
         const baseUrl = await ConfigService.getBaseUrl();
-        mediaUrl = mediaUrl.replace(/http:\/\/localhost:\d+/, baseUrl);
-        console.log('🔧 Replaced localhost with ngrok:', mediaUrl);
+        const cleanMediaFile = mediaUrl.replace(/^[\\\/]+/, '');
+        const encodedMediaFile = encodeURIComponent(cleanMediaFile);
+        const encodedEmail = encodeURIComponent(userEmail);
+        
+        mediaUrl = `${baseUrl}/api/mediacorner/asset/?leader_regd_mobile_no=${regdMobileNo}&user_email_id=${encodedEmail}&media_file=${encodedMediaFile}`;
       }
 
+      console.log('🔑 Fetching image from:', mediaUrl);
+      
       // Get authentication credentials
       const appKey = await EncryptedStorage.getItem('APP_KEY');
       const accessToken = await EncryptedStorage.getItem('accessToken');
-
-      console.log('🔑 Fetching image from:', mediaUrl);
+      
+      console.log('🔐 Has credentials:', {
+        hasAppKey: !!appKey,
+        hasAccessToken: !!accessToken
+      });
       
       // ✅ Fetch image with authentication headers including ngrok header
       const response = await fetch(mediaUrl, {
         method: 'GET',
         headers: {
-          'x-app-key': appKey,
-          'Authorization': `Bearer ${accessToken}`,
+          'x-app-key': appKey || '',
+          'Authorization': `Bearer ${accessToken || ''}`,
           'ngrok-skip-browser-warning': 'true', // ✅ Critical for ngrok
           'Accept': 'image/*',
         },
@@ -593,7 +609,7 @@ useEffect(() => {
 
     } catch (error) {
       console.error('❌ Error loading image:', error);
-      console.error('❌ Details:', error.message);
+      console.error('❌ Error message:', error.message);
       if (mounted) {
         setImageError(true);
       }
@@ -754,46 +770,65 @@ const VideoItem = React.memo(({
   onDelete 
 }) => {
   const [videoUri, setVideoUri] = useState(null);
-  const [videoLoading, setVideoLoading] = useState(false);
   const [menuVisible, setMenuVisible] = useState(false);
   const [menuPosition, setMenuPosition] = useState({ x: 0, y: 0 });
 
- useEffect(() => {
-  let mounted = true;
-  
-  const loadAuthenticatedVideo = async () => {
-    if (!video.media_file) return;
+  useEffect(() => {
+    let mounted = true;
     
-    // If it's already a full URL, use it directly
-    if (video.media_file.startsWith('http://') || video.media_file.startsWith('https://')) {
-      if (mounted) setVideoUri(video.media_file);
-      return;
-    }
-
-    setVideoLoading(true);
-    
-    try {
-      // Use the same helper method
-      const uri = await ConfigService.getMediaFileUrl(
-        video.media_file,
-        regdMobileNo,
-        userEmail
-      );
+    const loadVideo = async () => {
+      if (video.media_file_url) {
+        console.log('🎥 Using media_file_url from API:', video.media_file_url);
+        
+        let videoUrl = video.media_file_url;
+        
+        if (videoUrl.includes('localhost:5000') || videoUrl.includes('localhost:')) {
+          const baseUrl = await ConfigService.getBaseUrl();
+          videoUrl = videoUrl.replace(/http:\/\/localhost:\d+/, baseUrl);
+          console.log('🔧 Fixed localhost URL:', videoUrl);
+        }
+        
+        if (mounted) {
+          setVideoUri(videoUrl);
+        }
+        return;
+      }
       
-      if (mounted) setVideoUri(uri);
-    } catch (error) {
-      console.error('Error loading video:', error);
-    } finally {
-      if (mounted) setVideoLoading(false);
-    }
-  };
-  
-  loadAuthenticatedVideo();
-  
-  return () => {
-    mounted = false;
-  };
-}, [video.media_file, regdMobileNo, userEmail]);
+      if (video.media_file) {
+        console.log('⚠️ No media_file_url, using media_file:', video.media_file);
+        
+        if (video.media_file.startsWith('http://') || video.media_file.startsWith('https://')) {
+          let videoUrl = video.media_file;
+          
+          if (videoUrl.includes('localhost:5000') || videoUrl.includes('localhost:')) {
+            const baseUrl = await ConfigService.getBaseUrl();
+            videoUrl = videoUrl.replace(/http:\/\/localhost:\d+/, baseUrl);
+          }
+          
+          if (mounted) {
+            setVideoUri(videoUrl);
+          }
+          return;
+        }
+        
+        const baseUrl = await ConfigService.getBaseUrl();
+        const cleanFile = video.media_file.replace(/^[\\\/]+/, '');
+        const videoUrl = `${baseUrl}/media/${cleanFile}`;
+        
+        console.log('🔧 Constructed media URL:', videoUrl);
+        
+        if (mounted) {
+          setVideoUri(videoUrl);
+        }
+      }
+    };
+    
+    loadVideo();
+    
+    return () => {
+      mounted = false;
+    };
+  }, [video.media_file_url, video.media_file]);
 
   const handleMenuPress = (event) => {
     const { pageX, pageY } = event.nativeEvent;
@@ -822,6 +857,27 @@ const VideoItem = React.memo(({
     );
   };
 
+  // ✅ Create HTML for video with custom controls
+  const videoHtml = videoUri ? `
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <style>
+          * { margin: 0; padding: 0; }
+          body { background: #000; display: flex; align-items: center; justify-content: center; height: 100vh; }
+          video { width: 100%; height: 100%; object-fit: contain; }
+        </style>
+      </head>
+      <body>
+        <video controls playsinline>
+          <source src="${videoUri}" type="video/mp4">
+          Your browser does not support the video tag.
+        </video>
+      </body>
+    </html>
+  ` : '';
+
   return (
     <View style={styles.videoItem}>
       <View style={styles.postHeader}>
@@ -840,7 +896,6 @@ const VideoItem = React.memo(({
           )}
         </View>
         
-        {/* ✅ Only show for admin */}
         {isAdmin && (
           <TouchableOpacity 
             style={styles.actionButton}
@@ -852,7 +907,6 @@ const VideoItem = React.memo(({
         )}
       </View>
       
-      {/* ✅ Only show menu for admin */}
       {isAdmin && (
         <ThreeDotMenu
           visible={menuVisible}
@@ -862,19 +916,28 @@ const VideoItem = React.memo(({
           onDismiss={() => setMenuVisible(false)}
         />
       )}
-      {videoLoading && (
-        <View style={[styles.videoPlayer, styles.videoLoadingContainer]}>
-          <ActivityIndicator size="large" color="#f56c3aff" />
-        </View>
-      )}
-      
-      {!videoLoading && videoUri && (
-        <Video
-          source={videoUri}
+
+      {videoUri ? (
+        <WebView
+          source={{ html: videoHtml }}
           style={styles.videoPlayer}
-          controls
-          resizeMode="contain"
+          allowsInlineMediaPlayback
+          mediaPlaybackRequiresUserAction={false}
+          javaScriptEnabled
+          domStorageEnabled
+          startInLoadingState
+          renderLoading={() => (
+            <View style={[styles.videoPlayer, styles.videoLoadingContainer]}>
+              <ActivityIndicator size="large" color="#f56c3aff" />
+              <Text style={styles.loadingText}>Loading video...</Text>
+            </View>
+          )}
         />
+      ) : (
+        <View style={[styles.videoPlayer, styles.videoLoadingContainer]}>
+          <Text style={styles.imageErrorIcon}>🎥</Text>
+          <Text style={styles.imageErrorText}>Video not available</Text>
+        </View>
       )}
       
       {video.media_narration && (
@@ -1057,6 +1120,9 @@ const checkUserRoleAndPermissions = async () => {
 
 
  const fetchMediaData = async (mediaType) => {
+  console.log('🎬 === FETCHING MEDIA DATA ===');
+  console.log('📋 Media Type:', mediaType);
+  
   setLoading(true);
   setError(null);
   
@@ -1064,9 +1130,11 @@ const checkUserRoleAndPermissions = async () => {
     const baseUrl = await ConfigService.getBaseUrl();
     const apiUrl = `${baseUrl}/api/mediacorner/?leader_regd_mobile_no=${regdMobileNo}&user_email_id=${encodeURIComponent(userEmail)}&media_type=${mediaType}`;
     
+    console.log('🔗 API URL:', apiUrl);
+    
     const result = await ApiService.authGet(apiUrl);
 
-    console.log('📦 FULL API RESPONSE:', JSON.stringify(result, null, 2)); // Add this line
+    console.log('📦 FULL API RESPONSE:', JSON.stringify(result, null, 2));
 
     if (result.success && result.data) {
       let items = [];
@@ -1079,14 +1147,27 @@ const checkUserRoleAndPermissions = async () => {
         items = result.data.items;
       }
 
-      console.log('📊 Processed items:', items); // Add this line
+      // ✅ CHECK: Log each item to see if media_file_url exists
+      console.log('📊 Items count:', items.length);
+      items.forEach((item, index) => {
+        console.log(`📹 Video ${index + 1}:`, {
+          id: item._id,
+          header: item.media_header,
+          has_media_file_url: !!item.media_file_url,
+          media_file_url: item.media_file_url,
+          has_media_file: !!item.media_file,
+          media_file: item.media_file
+        });
+      });
+
       setMediaData(items);
     } else {
+      console.log('⚠️ No data in response');
       setMediaData([]);
     }
 
   } catch (err) {
-    console.error('Error fetching media data:', err);
+    console.error('❌ Error fetching media data:', err);
     setError(err.message || 'Failed to load media content');
     Alert.alert('Error', 'Failed to load media content. Please try again.');
   } finally {
@@ -1228,64 +1309,25 @@ const handleAddSuccess = () => {
       );
     }
 
-    if (activeTab === 'Video') {
-      if (loading) {
-        return (
+   if (activeTab === 'Video') {
+  return (
     <>
-      <ScrollView contentContainerStyle={styles.videoListContainer}>
-        {mediaData.length === 0 ? (
-          <View style={styles.emptyContainer}>
-            <Text style={styles.emptyText}>No videos available</Text>
-          </View>
-        ) : (
-          mediaData.map((video, index) => (
-            <VideoItem
-              key={video._id || index}
-              video={video}
-              regdMobileNo={regdMobileNo}
-              userEmail={userEmail}
-              isAdmin={isAdmin}  
-              onEdit={handleEdit}
-              onDelete={handleDelete}
-            />
-          ))
-        )}
-      </ScrollView>
-
-      {/* Add FAB for admin */}
-      <AddMediaFAB 
-        visible={isAdmin}
-        onPress={handleAddNew}
-      />
-
-      {/* Add Modal for Video */}
-      <AddMediaModal
-        visible={addModalVisible}
-        mediaType="video"
-        regdMobileNo={regdMobileNo}
-        userEmail={userEmail}
-        onClose={() => setAddModalVisible(false)}
-        onSave={handleAddSuccess}
-      />
-    </>
-  );
-      }
-
-      if (error) {
-        return (
-          <View style={styles.errorContainer}>
-            <Text style={styles.errorText}>{error}</Text>
-            <TouchableOpacity 
-              style={styles.retryButton}
-              onPress={() => fetchMediaData('video')}
-            >
-              <Text style={styles.retryText}>Retry</Text>
-            </TouchableOpacity>
-          </View>
-        );
-      }
-
-      return (
+      {loading ? (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#f56c3aff" />
+          <Text style={styles.loadingText}>Loading...</Text>
+        </View>
+      ) : error ? (
+        <View style={styles.errorContainer}>
+          <Text style={styles.errorText}>{error}</Text>
+          <TouchableOpacity 
+            style={styles.retryButton}
+            onPress={() => fetchMediaData('VE')}
+          >
+            <Text style={styles.retryText}>Retry</Text>
+          </TouchableOpacity>
+        </View>
+      ) : (
         <ScrollView contentContainerStyle={styles.videoListContainer}>
           {mediaData.length === 0 ? (
             <View style={styles.emptyContainer}>
@@ -1305,8 +1347,38 @@ const handleAddSuccess = () => {
             ))
           )}
         </ScrollView>
-      );
-    }
+      )}
+
+      {/* FAB - Always rendered for admin */}
+      <AddMediaFAB 
+        visible={isAdmin}
+        onPress={handleAddNew}
+      />
+
+      {/* Edit Modal */}
+      <EditMediaModal
+        visible={editModalVisible}
+        item={selectedItem}
+        mediaType="VE"
+        onClose={() => {
+          setEditModalVisible(false);
+          setSelectedItem(null);
+        }}
+        onSave={handleSave}
+      />
+
+      {/* Add Modal for Video */}
+      <AddMediaModal
+        visible={addModalVisible}
+        mediaType="VE"
+        regdMobileNo={regdMobileNo}
+        userEmail={userEmail}
+        onClose={() => setAddModalVisible(false)}
+        onSave={handleAddSuccess}
+      />
+    </>
+  );
+}
 
    if (activeTab === 'Press Meets' || activeTab === 'Past Events') {
   return (

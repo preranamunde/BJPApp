@@ -14,7 +14,7 @@ import {
   ActivityIndicator,
   Dimensions,
   TextInput,
-
+Button,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import EncryptedStorage from 'react-native-encrypted-storage';
@@ -25,6 +25,8 @@ import NotificationIcon from '../components/NotificationIcon';
 import { languageData } from '../components/languages';
 import { getCurrentUserRole,checkIfCurrentUserIsAdmin } from '../../App';
 import { launchImageLibrary } from 'react-native-image-picker';
+import messaging from '@react-native-firebase/messaging';
+import crashlytics from '@react-native-firebase/crashlytics';
 
 const { width } = Dimensions.get('window');
 
@@ -144,6 +146,8 @@ const EditHomeMediaModal = ({ visible, item, onClose, onSave }) => {
               <Text style={styles.closeButton}>✕</Text>
             </TouchableOpacity>
           </View>
+
+       
 
           <ScrollView style={styles.modalContent}>
             <Text style={styles.label}>Image</Text>
@@ -644,7 +648,7 @@ const [isAdmin, setIsAdmin] = useState(false);
   // ADD THIS LINE with your other state declarations:
 const [addMediaModalVisible, setAddMediaModalVisible] = useState(false);
 // Add with other useState declarations
-const [ownerName, setOwnerName] = useState('Leader App');
+const [clientAppName, setClientAppName] = useState('Leader App');
 
 
   // ✅ ADD THIS ADMIN CHECK FUNCTION
@@ -683,6 +687,44 @@ const checkAdminRole = async () => {
   useEffect(() => {
     initializeHomeMedia();
   }, []);
+
+  useEffect(() => {
+  const showFCMToken = async () => {
+    try {
+      // Get FCM token
+      const fcmToken = await messaging().getToken();
+      
+      if (fcmToken) {
+        console.log('🔑 FCM Token:', fcmToken);
+        
+        // Show in Alert Dialog
+        Alert.alert(
+          '🔔 FCM Token Ready',
+          `Your device token:\n\n${fcmToken}\n\nCopy this token to send notifications from Firebase Console.`,
+          [
+            { 
+              text: 'Copy Token', 
+              onPress: () => {
+                // You can use Clipboard API here if needed
+                console.log('Token copied:', fcmToken);
+                Alert.alert('Copied!', 'Token logged in console');
+              }
+            },
+            { text: 'OK' }
+          ]
+        );
+      }
+    } catch (error) {
+      console.error('❌ Error getting FCM token:', error);
+      Alert.alert('Error', 'Could not get FCM token: ' + error.message);
+    }
+  };
+
+  // Show token after 3 seconds (when app is ready)
+  setTimeout(() => {
+    showFCMToken();
+  }, 3000);
+}, []);
 
   const getMobileNumberFromStorage = async () => {
     try {
@@ -762,14 +804,14 @@ const initializeHomeMedia = async () => {
     const email = currentUserInfo.loggedin_email || 'default@email.com';
     setUserEmail(email);
     
-    // ✅ ADD THIS BLOCK - Get and set owner name
-    const fetchedOwnerName = currentUserInfo.owner_name || '';
-    if (fetchedOwnerName && fetchedOwnerName.trim() !== '') {
-      setOwnerName(fetchedOwnerName);
-      console.log('✅ Owner name loaded:', fetchedOwnerName);
+    // ✅ REPLACE owner_name with client_app_name
+    const fetchedAppName = currentUserInfo.client_app_name || '';
+    if (fetchedAppName && fetchedAppName.trim() !== '') {
+      setClientAppName(fetchedAppName);
+      console.log('✅ Client app name loaded:', fetchedAppName);
     } else {
-      setOwnerName('Leader App');
-      console.log('⚠️ No owner name found, using default');
+      setClientAppName('Leader App');
+      console.log('⚠️ No client app name found, using default');
     }
     
     const homeMedia = await fetchHomeMedia(mobileNo);
@@ -782,7 +824,7 @@ const initializeHomeMedia = async () => {
   } catch (error) {
     console.error('Error initializing home media:', error);
     setHomeMediaData([]);
-    setOwnerName('Leader App'); // ✅ Fallback on error
+    setClientAppName('Leader App'); // ✅ Fallback on error
   } finally {
     setHomeMediaLoading(false);
   }
@@ -1249,6 +1291,11 @@ const renderNewsSection = () => {
     </View>
   );
 };
+// Add this button somewhere
+<Button
+  title="Test Crash"
+  onPress={() => crashlytics().crash()}
+/>
 
   return (
     <SafeAreaView style={styles.container}>
@@ -1258,7 +1305,7 @@ const renderNewsSection = () => {
           onPress={() => navigation.openDrawer()}>
           <Icon name="menu" size={35} color="#fff" />
         </TouchableOpacity>
-        <Text style={[styles.headerTitle, { fontSize: 19 }]}>{ownerName}</Text>
+        <Text style={[styles.headerTitle, { fontSize: 19 }]}>{clientAppName}</Text>
 
         <View style={styles.rightHeaderSection}>
           <TouchableOpacity
@@ -1287,8 +1334,8 @@ const renderNewsSection = () => {
        <View style={styles.welcomeSection}>
   
   <Text style={[styles.welcomeSubtitle, { fontSize: fontSize+8 }]}>
-    Welcome to {ownerName} App
-  </Text>
+  Welcome to {clientAppName} App
+</Text>
   <Text style={[styles.welcomeDescription, { fontSize: fontSize - 2 }]}>
     {lang.stayConnected}
   </Text>
@@ -1312,6 +1359,54 @@ const renderNewsSection = () => {
 
         {renderHomeMediaGallery()}
         {renderNewsSection()}
+{__DEV__ && (
+          <View style={styles.testCrashSection}>
+            <Text style={styles.testCrashTitle}>🔧 Developer Testing</Text>
+            <TouchableOpacity
+              style={styles.testCrashButton}
+              onPress={() => {
+                Alert.alert(
+                  '⚠️ Test Crash',
+                  'This will FORCE CRASH the app to test Firebase Crashlytics.\n\nThe crash will appear in Firebase Console within 5 minutes.\n\nContinue?',
+                  [
+                    { text: 'Cancel', style: 'cancel' },
+                    {
+                      text: 'CRASH NOW',
+                      style: 'destructive',
+                      onPress: () => {
+                        // Log crash details
+                        console.log('🔥 === FORCING CRASH FOR FIREBASE TEST ===');
+                        crashlytics().log('User manually triggered test crash');
+                        crashlytics().setAttribute('test_crash', 'true');
+                        crashlytics().setAttribute('screen', 'HomeScreen');
+                        
+                        // Force immediate crash
+                        setTimeout(() => {
+                          throw new Error('Manual Test Crash - Firebase Crashlytics Verification');
+                        }, 100);
+                      }
+                    }
+                  ]
+                );
+              }}
+              activeOpacity={0.8}
+            >
+              <Icon name="bug-report" size={24} color="#fff" />
+              <Text style={styles.testCrashButtonText}>
+                TEST FIREBASE CRASH
+              </Text>
+            </TouchableOpacity>
+            
+            <Text style={styles.testCrashDescription}>
+              After crash, check Firebase Console {'\n'}
+              (Crashlytics section) in 3-5 minutes
+            </Text>
+          </View>
+        )}
+
+
+
+    
       </ScrollView>
 
       <TouchableOpacity
@@ -1709,6 +1804,52 @@ homeMediaAddText: {
     opacity: 0.85,
     marginTop: 4,
     lineHeight: 20
+  },
+  
+  // Test Crash Section Styles
+  testCrashSection: {
+    margin: 20,
+    marginBottom: 100,
+    padding: 20,
+    backgroundColor: '#fff3cd',
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: '#ffc107',
+    borderStyle: 'dashed',
+  },
+  testCrashTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#856404',
+    marginBottom: 15,
+    textAlign: 'center',
+  },
+  testCrashButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#dc3545',
+    padding: 16,
+    borderRadius: 10,
+    marginBottom: 12,
+    elevation: 3,
+    shadowColor: '#dc3545',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+  },
+  testCrashButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '700',
+    marginLeft: 10,
+  },
+  testCrashDescription: {
+    fontSize: 13,
+    color: '#856404',
+    textAlign: 'center',
+    fontStyle: 'italic',
+    lineHeight: 18,
   },
 });
 

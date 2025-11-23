@@ -215,6 +215,51 @@ const [selectedKYLItem, setSelectedKYLItem] = useState(null);
 
 const [addKYLModalVisible, setAddKYLModalVisible] = useState(false);
 const [addKYLLoading, setAddKYLLoading] = useState(false);
+const [addPersonalModalVisible, setAddPersonalModalVisible] = useState(false);
+const [addPersonalData, setAddPersonalData] = useState({
+  birth_place: '',
+  dob: '',
+  father_name: '',
+  mother_name: '',
+  profession: ''
+});
+const [addPersonalLoading, setAddPersonalLoading] = useState(false);
+// Add these states with your other state declarations
+const [addPermanentAddressModalVisible, setAddPermanentAddressModalVisible] = useState(false);
+const [addPermanentAddressData, setAddPermanentAddressData] = useState({
+  address1: '',
+  address2: '',
+  address3: '',
+  pincode: '',
+  state: '',
+  isd_code: '',
+  std_code: '',
+  tel_number1: '',
+  mobile_number1: '',
+  tel_number2: '',
+  mobile_number2: ''
+});
+const [addPermanentAddressLoading, setAddPermanentAddressLoading] = useState(false);
+
+const [addPresentAddressModalVisible, setAddPresentAddressModalVisible] = useState(false);
+const [addPresentAddressData, setAddPresentAddressData] = useState({
+  address1: '',
+  address2: '',
+  address3: '',
+  pincode: '',
+  state: '',
+  isd_code: '',
+  std_code: '',
+  tel_number1: '',
+  mobile_number1: '',
+  tel_number2: '',
+  mobile_number2: ''
+});
+const [addPresentAddressLoading, setAddPresentAddressLoading] = useState(false);
+// Add Profile Image Edit States
+const [editProfileImageModalVisible, setEditProfileImageModalVisible] = useState(false);
+const [selectedProfileImage, setSelectedProfileImage] = useState(null);
+const [profileImageLoading, setProfileImageLoading] = useState(false);
   useEffect(() => {
     initializeApp();
   }, []);
@@ -421,6 +466,74 @@ const handleKYLAdd = async (selectedImage) => {
   } catch (error) {
     console.error('❌ Error adding KYL media:', error);
     Alert.alert('Error', error.message || 'Failed to add KYL media');
+  }
+};
+
+// Handle Profile Image Update
+const handleUpdateProfileImage = async (selectedImage) => {
+  try {
+    if (!selectedImage) {
+      Alert.alert('Validation Error', 'Please select an image');
+      return;
+    }
+
+    setProfileImageLoading(true);
+
+    const baseUrl = await ConfigService.getBaseUrl();
+    const apiUrl = `${baseUrl}/api/leaderimage/`;
+    
+    const currentUserInfo = await getCurrentUserRole();
+    const userEmailId = currentUserInfo.loggedin_email || '';
+
+    console.log('📤 Updating leader profile image:', {
+      mobile: memberId,
+      email: userEmailId,
+      fileName: selectedImage.fileName
+    });
+
+    // Create FormData
+    const formData = new FormData();
+    formData.append('leader_regd_mobile_no', memberId);
+    formData.append('user_email_id', userEmailId);
+
+    // Append the selected image file
+    const fileUri = selectedImage.uri;
+    const fileName = selectedImage.fileName || fileUri.split('/').pop();
+    const fileType = selectedImage.type || 'image/jpeg';
+
+    formData.append('leader_image', {
+      uri: fileUri,
+      name: fileName,
+      type: fileType,
+    });
+
+    console.log('📤 Sending PUT request to:', apiUrl);
+
+    // Use authPut with multipart/form-data
+    const result = await ApiService.authPut(apiUrl, formData, {}, true);
+
+    console.log('📥 PUT Response:', result);
+
+    if (result.success) {
+      Alert.alert('✅ Success', 'Profile image updated successfully', [
+        {
+          text: 'OK',
+          onPress: () => {
+            setEditProfileImageModalVisible(false);
+            setSelectedProfileImage(null);
+            // Refresh the data to show new image
+            loadInitialData(memberId);
+          }
+        }
+      ]);
+    } else {
+      throw new Error(result.message || 'Update failed');
+    }
+  } catch (error) {
+    console.error('❌ Error updating profile image:', error);
+    Alert.alert('Error', error.message || 'Failed to update profile image');
+  } finally {
+    setProfileImageLoading(false);
   }
 };
   // Show current user status
@@ -813,7 +926,7 @@ const fetchKYLMedia = async (memberIdentifier) => {
   }
 };
 
-  const submitEducationEntry = async () => {
+const submitEducationEntry = async () => {
   try {
     // Validate form data
     if (!addEducationData.degree.trim()) {
@@ -846,30 +959,63 @@ const fetchKYLMedia = async (memberIdentifier) => {
     // Get base URL
     const baseUrl = await ConfigService.getBaseUrl();
 
-    // Prepare request payload matching your Postman request
-    const requestPayload = {
-      leader_regd_mobile_no: userInfo.regdMobileNo,
-      user_email_id: userInfo.userEmailId,
-      edu_qual: {
-        degree: addEducationData.degree.trim(),
-        college: addEducationData.college.trim(),
-        university: addEducationData.university.trim(),
-        place: addEducationData.place.trim()
-      }
-    };
+    // ✅ CHECK: Is this the FIRST education entry or additional entry?
+    const isFirstEntry = !educationData || !Array.isArray(educationData) || educationData.length === 0;
 
-    console.log('📤 Submitting education entry:', requestPayload);
+    let endpoint;
+    let requestPayload;
 
-    // Use authPost since education endpoint requires authentication
-    const result = await ApiService.authPost(
-      `${baseUrl}/api/edudata/entry`,
-      requestPayload
-    );
+    if (isFirstEntry) {
+      // ✅ FIRST ENTRY: Use POST /api/edudata (POST Create Education)
+      console.log('📤 Creating FIRST education entry (POST /api/edudata)');
+      
+      endpoint = `${baseUrl}/api/edudata`;
+      
+      requestPayload = {
+        leader_regd_mobile_no: userInfo.regdMobileNo,
+        user_email_id: userInfo.userEmailId,
+        leader_edu_data: {
+          regd_mobile_no: userInfo.regdMobileNo,
+          edu_qual: [
+            {
+              degree: addEducationData.degree.trim(),
+              college: addEducationData.college.trim(),
+              university: addEducationData.university.trim(),
+              place: addEducationData.place.trim()
+            }
+          ]
+        }
+      };
+    } else {
+      // ✅ ADDITIONAL ENTRY: Use POST /api/edudata/entry (Add Education Entry)
+      console.log('📤 Adding ADDITIONAL education entry (POST /api/edudata/entry)');
+      
+      endpoint = `${baseUrl}/api/edudata/entry`;
+      
+      requestPayload = {
+        leader_regd_mobile_no: userInfo.regdMobileNo,
+        user_email_id: userInfo.userEmailId,
+        edu_qual: {
+          degree: addEducationData.degree.trim(),
+          college: addEducationData.college.trim(),
+          university: addEducationData.university.trim(),
+          place: addEducationData.place.trim()
+        }
+      };
+    }
+
+    console.log('📤 Submitting to endpoint:', endpoint);
+    console.log('📤 Request payload:', requestPayload);
+
+    // Use authPost for both cases
+    const result = await ApiService.authPost(endpoint, requestPayload);
 
     if (result.success) {
       Alert.alert(
         'Success', 
-        'Education entry added successfully!',
+        isFirstEntry 
+          ? 'First education entry created successfully!' 
+          : 'Education entry added successfully!',
         [
           {
             text: 'OK',
@@ -1334,22 +1480,23 @@ const updateMemberCoordinates = async (memberIdentifier, data) => {
     console.log('Updating member coordinates as admin...');
     const baseUrl = await ConfigService.getBaseUrl();
     
-    // Get current user info for email parameter
     const currentUserInfo = await getCurrentUserRole();
     const userEmailId = currentUserInfo.loggedin_email || '';
     
     const endpoint = `${baseUrl}/api/coordinates/`;
     
+    // ✅ ADD THIS: Remove image fields from data before sending
+    const cleanedData = { ...data };
+    delete cleanedData.leader_photo;
+    delete cleanedData.profile_image;
+    delete cleanedData.member_photo;
+    
     const requestBody = {
       leader_regd_mobile_no: memberIdentifier,
       user_email_id: userEmailId,
-      leader_coordinates: {
-        ...data
-        // Remove regd_mobile_no from data as it's already in the root level
-      }
+      leader_coordinates: cleanedData  // ✅ Use cleanedData instead of data
     };
     
-    // Use authPut to include Authorization + x-app-key headers
     const result = await ApiService.authPut(endpoint, requestBody);
     
     console.log('Member coordinates update result:', result.success);
@@ -1617,7 +1764,7 @@ const deletePersonalDetails = async (memberIdentifier) => {
   }
 };
 
- const updatePermanentAddress = async (memberIdentifier, data) => {
+const updatePermanentAddress = async (memberIdentifier, data) => {
   try {
     console.log('Updating permanent address as admin...');
     const baseUrl = await ConfigService.getBaseUrl();
@@ -1628,30 +1775,50 @@ const deletePersonalDetails = async (memberIdentifier) => {
     
     const endpoint = `${baseUrl}/api/permaddress/`;
     
-    // Request body structure from Postman
+    // ✅ FIX: leader_regd_mobile_no should be at ROOT, not inside perm_address
     const requestBody = {
+      leader_regd_mobile_no: memberIdentifier,  // ✅ ROOT LEVEL
       user_email_id: userEmailId,
       perm_address: {
-        regd_mobile_no: memberIdentifier,
-        ...data
+        ...data  // ❌ Don't add regd_mobile_no here
+        // Remove the line that adds regd_mobile_no inside perm_address
       }
     };
+    
+    console.log('📤 Sending permanent address update:', requestBody);
+    console.log('📱 Mobile number being sent:', memberIdentifier);
     
     // Use authPut to include Authorization + x-app-key headers
     const result = await ApiService.authPut(endpoint, requestBody);
     
-    console.log('Permanent address update result:', result.success);
-    return {
-      success: result.success,
-      data: result.success ? result.data : null,
-      error: result.success ? null : result.error || result.message
-    };
+    console.log('📥 Permanent address API response:', result);
+    
+    // Check for success in multiple ways
+    const isSuccess = result.success || 
+                     (result.message && result.message.toLowerCase().includes('success')) ||
+                     (result.message && result.message.toLowerCase().includes('updated'));
+    
+    if (isSuccess) {
+      console.log('✅ Permanent address update successful');
+      return {
+        success: true,
+        data: result.data || result,
+        error: null
+      };
+    } else {
+      throw new Error(result.message || result.error || 'Update failed');
+    }
   } catch (error) {
-    console.error('API Error (update permanent address):', error);
-    return { success: false, error: error.message };
+    console.error('❌ API Error (update permanent address):', error);
+    const errorMessage = error.message || 
+                        (error.error && error.error.message) || 
+                        JSON.stringify(error);
+    return { 
+      success: false, 
+      error: errorMessage 
+    };
   }
 };
-
 const deletePermanentAddress = async (memberIdentifier) => {
   try {
     console.log('Deleting permanent address as admin...');
@@ -1689,7 +1856,7 @@ const deletePermanentAddress = async (memberIdentifier) => {
   }
 };
 
- const updatePresentAddress = async (memberIdentifier, data) => {
+const updatePresentAddress = async (memberIdentifier, data) => {
   try {
     console.log('Updating present address as admin...');
     const baseUrl = await ConfigService.getBaseUrl();
@@ -1700,27 +1867,47 @@ const deletePermanentAddress = async (memberIdentifier) => {
     
     const endpoint = `${baseUrl}/api/preaddress/`;
     
-    // Request body structure from Postman
+    // ✅ FIX: leader_regd_mobile_no should be at ROOT, not inside present_address
     const requestBody = {
+      leader_regd_mobile_no: memberIdentifier,  // ✅ ROOT LEVEL
       user_email_id: userEmailId,
       present_address: {
-        regd_mobile_no: memberIdentifier,
-        ...data
+        ...data  // ❌ Don't add regd_mobile_no here
       }
     };
+    
+    console.log('📤 Sending present address update:', requestBody);
+    console.log('📱 Mobile number being sent:', memberIdentifier);
     
     // Use authPut to include Authorization + x-app-key headers
     const result = await ApiService.authPut(endpoint, requestBody);
     
-    console.log('Present address update result:', result.success);
-    return {
-      success: result.success,
-      data: result.success ? result.data : null,
-      error: result.success ? null : result.error || result.message
-    };
+    console.log('📥 Present address API response:', result);
+    
+    // Check for success in multiple ways
+    const isSuccess = result.success || 
+                     (result.message && result.message.toLowerCase().includes('success')) ||
+                     (result.message && result.message.toLowerCase().includes('updated'));
+    
+    if (isSuccess) {
+      console.log('✅ Present address update successful');
+      return {
+        success: true,
+        data: result.data || result,
+        error: null
+      };
+    } else {
+      throw new Error(result.message || result.error || 'Update failed');
+    }
   } catch (error) {
-    console.error('API Error (update present address):', error);
-    return { success: false, error: error.message };
+    console.error('❌ API Error (update present address):', error);
+    const errorMessage = error.message || 
+                        (error.error && error.error.message) || 
+                        JSON.stringify(error);
+    return { 
+      success: false, 
+      error: errorMessage 
+    };
   }
 };
 
@@ -1984,7 +2171,7 @@ const deletePresentAddress = async (memberIdentifier) => {
   };
 
   // Enhanced renderEditForm with comprehensive field filtering
- const renderEditForm = () => {
+const renderEditForm = () => {
   const renderInput = (key, value, placeholder) => (
     <View key={key} style={styles.editInputContainer}>
       <Text style={styles.editInputLabel}>
@@ -1992,7 +2179,7 @@ const deletePresentAddress = async (memberIdentifier) => {
       </Text>
       <TextInput
         style={styles.editInput}
-        value={String(value || '')} // Ensure value is always a string
+        value={String(value || '')} 
         onChangeText={(text) => setEditData({...editData, [key]: text})}
         placeholder={placeholder}
         multiline={key.includes('address') || key.includes('details') || key.includes('desc')}
@@ -2021,14 +2208,16 @@ const deletePresentAddress = async (memberIdentifier) => {
       </View>
     );
   }
-  // Comprehensive field filtering - exclude system fields and non-editable fields
-  const excludedFields = [
+  
+  // ✅ UPDATE THIS SECTION - Add leader_photo and profile_image to excluded fields
+ const excludedFields = [
     'id', '_id', 'created_at', 'updated_at', 'createdAt', 'updatedAt',
     '__v', 'version', 'regd_mobile_no', 'regdMobileNo', 'regd_mobile_number',
     'registered_mobile_no', 'registered_mobile_number', 'reg_mobile_no',
     'reg_mobile_number', 'member_id', 'user_id', 'created_by', 'updated_by',
     'modified_at', 'modified_by', 'created_date', 'updated_date',
-    'timestamp', 'last_modified', 'edu_qual' // Exclude nested arrays
+    'timestamp', 'last_modified', 'edu_qual',
+    'leader_photo', 'profile_image', 'member_photo'  // ✅ ADD THESE
   ];
 
   // Get filterable fields
@@ -2940,106 +3129,86 @@ const renderTimelineEditModal = () => {
   }
 
   const renderModernHeader = () => {
-    const profileImageUrl = memberData?.profile_image || 'https://tse2.mm.bing.net/th/id/OIP.7nJJBy9zWC6D4pVeQDTEqAHaHX?pid=Api&P=0&h=180';
-    
-    return (
-      <View style={styles.modernHeader}>
-        {/* Background Pattern */}
-        <View style={styles.headerPattern}>
-          <View style={[styles.patternCircle, { top: -20, right: -30 }]} />
-          <View style={[styles.patternCircle, { bottom: -40, left: -20 }]} />
-        </View>
-        
-        {/* Header Content */}
-        <View style={styles.headerContent}>
-          <View style={styles.profileRow}>
-            <View style={styles.avatarContainer}>
-              <Image
-                source={{ uri: profileImageUrl }}
-                style={styles.avatarImage}
-                onError={() => console.log('Failed to load profile image')}
-              />
-              <View style={styles.onlineIndicator} />
-            </View>
+  const profileImageUrl = memberData?.profile_image || 'https://tse2.mm.bing.net/th/id/OIP.7nJJBy9zWC6D4pVeQDTEqAHaHX?pid=Api&P=0&h=180';
+  
+  return (
+    <View style={styles.modernHeader}>
+      {/* Background Pattern */}
+      <View style={styles.headerPattern}>
+        <View style={[styles.patternCircle, { top: -20, right: -30 }]} />
+        <View style={[styles.patternCircle, { bottom: -40, left: -20 }]} />
+      </View>
+      
+      {/* Header Content */}
+      <View style={styles.headerContent}>
+        <View style={styles.profileRow}>
+          <View style={styles.avatarContainer}>
+            <Image
+              source={{ uri: profileImageUrl }}
+              style={styles.avatarImage}
+              onError={() => console.log('Failed to load profile image')}
+            />
             
-            <View style={styles.basicInfo}>
-<View style={styles.nameRow}>
-  <TouchableOpacity
-    style={styles.nameContainer}
-    onPress={handleLeaderNamePress}
-    activeOpacity={0.8}
-  >
-    <Text style={styles.leaderName}>
-      {memberData ? 
-        `${memberData.title || ''} ${memberData.member_name || ''}`.trim() : 
-        'Loading...'
-      }
-    </Text>
-  </TouchableOpacity>
-  <View style={styles.headerButtonsContainer}>
-    {renderActionDropdown('coordinates', memberData)}
-  </View>
-</View>
-              <Text style={styles.designation}>Member of Parliament</Text>
-              <View style={styles.locationRow}>
-                <Text style={styles.locationText}>
+            {/* ✅ ADD EDIT ICON BUTTON */}
+            {isAdmin && (
+              <TouchableOpacity 
+                style={styles.avatarEditButton}
+                onPress={() => setEditProfileImageModalVisible(true)}
+                activeOpacity={0.7}
+              >
+                <Icon name="edit" size={14} color="#fff" />
+              </TouchableOpacity>
+            )}
+            
+            {/* Online Indicator - keep if needed */}
+          
+          </View>
+          
+          {/* Rest of your existing header code... */}
+          <View style={styles.basicInfo}>
+            <View style={styles.nameRow}>
+              <TouchableOpacity
+                style={styles.nameContainer}
+                onPress={handleLeaderNamePress}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.leaderName}>
                   {memberData ? 
-                    `${memberData.constituency || ''}, ${memberData.state || ''}`.replace(', ,', ',').trim() : 
+                    `${memberData.title || ''} ${memberData.member_name || ''}`.trim() : 
                     'Loading...'
                   }
                 </Text>
+              </TouchableOpacity>
+              <View style={styles.headerButtonsContainer}>
+                {renderActionDropdown('coordinates', memberData)}
               </View>
             </View>
-          </View>
-          
-          {memberData?.party && (
-            <View style={styles.partyContainer}>
-              <Text style={styles.partyName}>{memberData.party}</Text>
+            <Text style={styles.designation}>Member of Parliament</Text>
+            <View style={styles.locationRow}>
+              <Text style={styles.locationText}>
+                {memberData ? 
+                  `${memberData.constituency || ''}, ${memberData.state || ''}`.replace(', ,', ',').trim() : 
+                  'Loading...'
+                }
+              </Text>
             </View>
-          )}
+          </View>
         </View>
         
-        {/* Quick Actions Row */}
-        <View style={styles.quickActionsRow}>
-          {memberData?.email_id && (
-            <TouchableOpacity 
-              style={styles.quickAction}
-              onPress={() => openLink(`mailto:${memberData.email_id}`)}
-            >
-              <Text style={styles.quickActionIcon}>✉️</Text>
-            </TouchableOpacity>
-          )}
-          
-          {addressData?.present?.mobile_number1 && (
-            <TouchableOpacity 
-              style={styles.quickAction}
-              onPress={() => openLink(`tel:${addressData.present.isd_code}${addressData.present.mobile_number1}`)}
-            >
-              <Text style={styles.quickActionIcon}>📞</Text>
-            </TouchableOpacity>
-          )}
-          
-          {addressData?.present?.mobile_number1 && (
-            <TouchableOpacity 
-              style={styles.quickAction}
-              onPress={() => openLink(`https://wa.me/${addressData.present.isd_code.replace('+', '')}${addressData.present.mobile_number1}`)}
-            >
-              <Text style={styles.quickActionIcon}>💬</Text>
-            </TouchableOpacity>
-          )}
-          
-          {memberData?.digital_sansad_url && (
-            <TouchableOpacity 
-              style={styles.quickAction}
-              onPress={() => openLink(memberData.digital_sansad_url)}
-            >
-              <Text style={styles.quickActionIcon}>🏛️</Text>
-            </TouchableOpacity>
-          )}
-        </View>
+        {memberData?.party && (
+          <View style={styles.partyContainer}>
+            <Text style={styles.partyName}>{memberData.party}</Text>
+          </View>
+        )}
       </View>
-    );
-  };
+      
+      {/* Quick Actions Row */}
+      <View style={styles.quickActionsRow}>
+        {/* ... existing quick actions code ... */}
+      </View>
+    </View>
+  );
+};
 
   const renderSegmentedControl = () => (
     <View style={styles.segmentedContainer}>
@@ -3097,9 +3266,29 @@ const renderInfoCard = (title, icon, children, backgroundColor = '#ffffff', edit
 );
 
 
- const renderPersonalInfo = () => {
-  if (!personalData) return null;
+const renderPersonalInfo = () => {
+  // If no personal data exists, show "Add Personal Information" button
+  if (!personalData) {
+    return renderInfoCard('Personal Information', '👤',
+      <View style={styles.emptyState}>
+        <Text style={styles.emptyStateIcon}>👤</Text>
+        <Text style={styles.emptyStateText}>No personal data available</Text>
+        
+        {isAdmin && (
+          <TouchableOpacity
+            style={styles.addEducationButton}
+            onPress={() => setAddPersonalModalVisible(true)}
+          >
+            <Text style={styles.addEducationIcon}>+</Text>
+            <Text style={styles.addEducationText}>Add Personal Information</Text>
+          </TouchableOpacity>
+        )}
+      </View>,
+      '#ffffff'
+    );
+  }
 
+  // If personal data exists, show it with edit/delete options
   return renderInfoCard('Personal Information', '👤',
     <View style={styles.infoRows}>
       {personalData.birth_place && (
@@ -3134,9 +3323,365 @@ const renderInfoCard = (title, icon, children, backgroundColor = '#ffffff', edit
       )}
     </View>,
     '#ffffff',
-    'personal',    // editType
-    personalData   // editData
+    'personal',
+    personalData
   );
+};
+const submitPersonalEntry = async () => {
+  try {
+    // Validate form data - at least one field should be filled
+    if (!addPersonalData.birth_place.trim() && 
+        !addPersonalData.dob.trim() && 
+        !addPersonalData.father_name.trim() && 
+        !addPersonalData.mother_name.trim() && 
+        !addPersonalData.profession.trim()) {
+      Alert.alert('Validation Error', 'Please fill at least one field');
+      return;
+    }
+
+    setAddPersonalLoading(true);
+
+    // Get user information
+    const currentUserInfo = await getCurrentUserRole();
+    const userEmailId = currentUserInfo.loggedin_email || '';
+    
+    if (!memberId) {
+      Alert.alert('Error', 'Member ID not available. Please try refreshing the screen.');
+      return;
+    }
+
+    // Get base URL
+    const baseUrl = await ConfigService.getBaseUrl();
+
+    // Prepare request payload matching your Postman request
+    const requestPayload = {
+      leader_regd_mobile_no: memberId,
+      user_email_id: userEmailId,
+      birth_place: addPersonalData.birth_place.trim() || '',
+      dob: addPersonalData.dob.trim() || '',
+      father_name: addPersonalData.father_name.trim() || '',
+      mother_name: addPersonalData.mother_name.trim() || '',
+      profession: addPersonalData.profession.trim() || ''
+    };
+
+    console.log('📤 Submitting personal information:', requestPayload);
+    console.log('📱 Using member ID:', memberId);
+    console.log('📧 Using email:', userEmailId);
+
+    // Get tokens to verify they exist
+    const accessToken = await EncryptedStorage.getItem('accessToken');
+    const appKey = await EncryptedStorage.getItem('APP_KEY');
+    
+    console.log('🔑 Access Token exists:', !!accessToken);
+    console.log('🔑 App Key exists:', !!appKey);
+
+    // Use authPost - this automatically includes Authorization and x-app-key headers
+    const result = await ApiService.authPost(
+      `${baseUrl}/api/personaldetails/`,
+      requestPayload
+    );
+
+    console.log('📥 API Response:', result);
+
+    if (result.success) {
+      Alert.alert(
+        'Success', 
+        'Personal information added successfully!',
+        [
+          {
+            text: 'OK',
+            onPress: () => {
+              // Reset form
+              setAddPersonalData({
+                birth_place: '',
+                dob: '',
+                father_name: '',
+                mother_name: '',
+                profession: ''
+              });
+              
+              // Close modal
+              setAddPersonalModalVisible(false);
+              
+              // Refresh personal data
+              if (memberId) {
+                loadInitialData(memberId);
+              }
+            }
+          }
+        ]
+      );
+    } else {
+      throw new Error(result.message || result.error || 'Failed to add personal information');
+    }
+
+  } catch (error) {
+    console.error('❌ Error submitting personal information:', error);
+    
+    // More detailed error handling
+    let errorMessage = 'Failed to add personal information';
+    
+    if (error.message) {
+      if (error.message.includes('network')) {
+        errorMessage = 'Network error. Please check your internet connection.';
+      } else if (error.message.includes('401') || error.message.includes('unauthorized')) {
+        errorMessage = 'Authentication failed. Please log in again.';
+      } else if (error.message.includes('403') || error.message.includes('forbidden')) {
+        errorMessage = 'You do not have permission to perform this action.';
+      } else {
+        errorMessage = error.message;
+      }
+    }
+    
+    Alert.alert('Error', errorMessage);
+  } finally {
+    setAddPersonalLoading(false);
+  }
+};
+
+// Submit Permanent Address
+// Submit Permanent Address
+// Submit Permanent Address - FIXED VERSION
+// Submit Permanent Address - CORRECTED VERSION
+const submitPermanentAddressEntry = async () => {
+  try {
+    // Validate - at least address1 should be filled
+    if (!addPermanentAddressData.address1.trim()) {
+      Alert.alert('Validation Error', 'Please enter at least Address Line 1');
+      return;
+    }
+
+    setAddPermanentAddressLoading(true);
+
+    // Get user information
+    const currentUserInfo = await getCurrentUserRole();
+    const userEmailId = currentUserInfo.loggedin_email || '';
+    
+    if (!memberId) {
+      Alert.alert('Error', 'Member ID not available. Please try refreshing the screen.');
+      return;
+    }
+
+    // Get base URL
+    const baseUrl = await ConfigService.getBaseUrl();
+
+    // ✅ CORRECTED: Use 'jwt_token' key (matches AuthService)
+    let accessToken = await AsyncStorage.getItem('jwt_token');
+    let appKey = await EncryptedStorage.getItem('APP_KEY');
+    
+    console.log('🔍 Token check:', {
+      hasAccessToken: !!accessToken,
+      hasAppKey: !!appKey,
+      tokenLength: accessToken?.length || 0
+    });
+
+    if (!accessToken || !appKey) {
+      console.error('❌ Missing credentials:', {
+        hasAccessToken: !!accessToken,
+        hasAppKey: !!appKey
+      });
+      Alert.alert('Authentication Error', 'Missing authentication credentials. Please log in again.');
+      return;
+    }
+
+    console.log('✅ Authentication OK');
+    console.log('📧 User Email:', userEmailId);
+    console.log('📱 Member ID:', memberId);
+
+    // Prepare request payload matching Postman structure
+    const requestPayload = {
+      user_email_id: userEmailId,
+      perm_address: {
+        regd_mobile_no: memberId,
+        address1: addPermanentAddressData.address1.trim(),
+        address2: addPermanentAddressData.address2.trim() || '',
+        address3: addPermanentAddressData.address3.trim() || '',
+        pincode: addPermanentAddressData.pincode.trim() || '',
+        state: addPermanentAddressData.state.trim() || '',
+        isd_code: addPermanentAddressData.isd_code.trim() || '+91',
+        std_code: addPermanentAddressData.std_code.trim() || '',
+        tel_number1: addPermanentAddressData.tel_number1.trim() || '',
+        mobile_number1: addPermanentAddressData.mobile_number1.trim() || '',
+        tel_number2: addPermanentAddressData.tel_number2.trim() || '',
+        mobile_number2: addPermanentAddressData.mobile_number2.trim() || ''
+      }
+    };
+
+    console.log('📤 Submitting permanent address');
+
+    // Use authPost which includes Authorization + x-app-key headers
+    const result = await ApiService.authPost(
+      `${baseUrl}/api/permaddress/`,
+      requestPayload
+    );
+
+    console.log('📥 API Response:', result.success);
+
+    if (result.success) {
+      Alert.alert(
+        'Success', 
+        'Permanent address added successfully!',
+        [
+          {
+            text: 'OK',
+            onPress: () => {
+              // Reset form
+              setAddPermanentAddressData({
+                address1: '',
+                address2: '',
+                address3: '',
+                pincode: '',
+                state: '',
+                isd_code: '',
+                std_code: '',
+                tel_number1: '',
+                mobile_number1: '',
+                tel_number2: '',
+                mobile_number2: ''
+              });
+              
+              // Close modal
+              setAddPermanentAddressModalVisible(false);
+              
+              // Refresh data
+              if (memberId) {
+                loadInitialData(memberId);
+              }
+            }
+          }
+        ]
+      );
+    } else {
+      throw new Error(result.message || result.error || 'Failed to add permanent address');
+    }
+
+  } catch (error) {
+    console.error('❌ Error submitting permanent address:', error);
+    Alert.alert('Error', `Failed to add permanent address: ${error.message}`);
+  } finally {
+    setAddPermanentAddressLoading(false);
+  }
+};
+
+// Submit Present Address - CORRECTED VERSION
+const submitPresentAddressEntry = async () => {
+  try {
+    // Validate - at least address1 should be filled
+    if (!addPresentAddressData.address1.trim()) {
+      Alert.alert('Validation Error', 'Please enter at least Address Line 1');
+      return;
+    }
+
+    setAddPresentAddressLoading(true);
+
+    // Get user information
+    const currentUserInfo = await getCurrentUserRole();
+    const userEmailId = currentUserInfo.loggedin_email || '';
+    
+    if (!memberId) {
+      Alert.alert('Error', 'Member ID not available. Please try refreshing the screen.');
+      return;
+    }
+
+    // Get base URL
+    const baseUrl = await ConfigService.getBaseUrl();
+
+    // ✅ CORRECTED: Use 'jwt_token' key (matches AuthService)
+    let accessToken = await AsyncStorage.getItem('jwt_token');
+    let appKey = await EncryptedStorage.getItem('APP_KEY');
+    
+    console.log('🔍 Token check:', {
+      hasAccessToken: !!accessToken,
+      hasAppKey: !!appKey,
+      tokenLength: accessToken?.length || 0
+    });
+
+    if (!accessToken || !appKey) {
+      console.error('❌ Missing credentials:', {
+        hasAccessToken: !!accessToken,
+        hasAppKey: !!appKey
+      });
+      Alert.alert('Authentication Error', 'Missing authentication credentials. Please log in again.');
+      return;
+    }
+
+    console.log('✅ Authentication OK');
+    console.log('📧 User Email:', userEmailId);
+    console.log('📱 Member ID:', memberId);
+
+    // Prepare request payload matching Postman structure
+    const requestPayload = {
+      user_email_id: userEmailId,
+      present_address: {
+        regd_mobile_no: memberId,
+        address1: addPresentAddressData.address1.trim(),
+        address2: addPresentAddressData.address2.trim() || '',
+        address3: addPresentAddressData.address3.trim() || '',
+        pincode: addPresentAddressData.pincode.trim() || '',
+        state: addPresentAddressData.state.trim() || '',
+        isd_code: addPresentAddressData.isd_code.trim() || '+91',
+        std_code: addPresentAddressData.std_code.trim() || '',
+        tel_number1: addPresentAddressData.tel_number1.trim() || '',
+        mobile_number1: addPresentAddressData.mobile_number1.trim() || '',
+        tel_number2: addPresentAddressData.tel_number2.trim() || '',
+        mobile_number2: addPresentAddressData.mobile_number2.trim() || ''
+      }
+    };
+
+    console.log('📤 Submitting present address');
+
+    // Use authPost which includes Authorization + x-app-key headers
+    const result = await ApiService.authPost(
+      `${baseUrl}/api/preaddress/`,
+      requestPayload
+    );
+
+    console.log('📥 API Response:', result.success);
+
+    if (result.success) {
+      Alert.alert(
+        'Success', 
+        'Present address added successfully!',
+        [
+          {
+            text: 'OK',
+            onPress: () => {
+              // Reset form
+              setAddPresentAddressData({
+                address1: '',
+                address2: '',
+                address3: '',
+                pincode: '',
+                state: '',
+                isd_code: '',
+                std_code: '',
+                tel_number1: '',
+                mobile_number1: '',
+                tel_number2: '',
+                mobile_number2: ''
+              });
+              
+              // Close modal
+              setAddPresentAddressModalVisible(false);
+              
+              // Refresh data
+              if (memberId) {
+                loadInitialData(memberId);
+              }
+            }
+          }
+        ]
+      );
+    } else {
+      throw new Error(result.message || result.error || 'Failed to add present address');
+    }
+
+  } catch (error) {
+    console.error('❌ Error submitting present address:', error);
+    Alert.alert('Error', `Failed to add present address: ${error.message}`);
+  } finally {
+    setAddPresentAddressLoading(false);
+  }
 };
 
 const renderEducationInfo = () => {
@@ -3188,93 +3733,133 @@ const renderEducationInfo = () => {
 };
 
 
- const renderContactInfo = () => {
+const renderContactInfo = () => {
   if (!addressData) return null;
 
   return (
     <>
       {/* Permanent Address */}
-      {addressData.permanent && renderInfoCard('Permanent Address', '🏠',
-        <View style={styles.contactSection}>
-          <Text style={styles.addressLine}>
-            {[
-              addressData.permanent.address1,
-              addressData.permanent.address2,
-              addressData.permanent.address3
-            ].filter(Boolean).join(', ')}
-          </Text>
-          <Text style={styles.addressLine}>
-            {addressData.permanent.state} - {addressData.permanent.pincode}
-          </Text>
-          
-          <View style={styles.contactButtons}>
-            {addressData.permanent.tel_number1 && (
-              <TouchableOpacity 
-                style={styles.contactBtn}
-                onPress={() => openLink(`tel:${formatPhoneNumber(
-                  addressData.permanent.isd_code,
-                  addressData.permanent.std_code,
-                  addressData.permanent.tel_number1
-                )}`)}
+      {addressData.permanent ? (
+        renderInfoCard('Permanent Address', '🏠',
+          <View style={styles.contactSection}>
+            <Text style={styles.addressLine}>
+              {[
+                addressData.permanent.address1,
+                addressData.permanent.address2,
+                addressData.permanent.address3
+              ].filter(Boolean).join(', ')}
+            </Text>
+            <Text style={styles.addressLine}>
+              {addressData.permanent.state} - {addressData.permanent.pincode}
+            </Text>
+            
+            <View style={styles.contactButtons}>
+              {addressData.permanent.tel_number1 && (
+                <TouchableOpacity 
+                  style={styles.contactBtn}
+                  onPress={() => openLink(`tel:${formatPhoneNumber(
+                    addressData.permanent.isd_code,
+                    addressData.permanent.std_code,
+                    addressData.permanent.tel_number1
+                  )}`)}
+                >
+                  <Text style={styles.contactBtnText}>Call Landline</Text>
+                </TouchableOpacity>
+              )}
+              {addressData.permanent.mobile_number1 && (
+                <TouchableOpacity 
+                  style={styles.contactBtn}
+                  onPress={() => openLink(`tel:${addressData.permanent.isd_code}${addressData.permanent.mobile_number1}`)}
+                >
+                  <Text style={styles.contactBtnText}>Call Mobile</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          </View>,
+          '#ffffff',
+          'permanent_address',
+          addressData.permanent
+        )
+      ) : (
+        renderInfoCard('Permanent Address', '🏠',
+          <View style={styles.emptyState}>
+            <Text style={styles.emptyStateIcon}>🏠</Text>
+            <Text style={styles.emptyStateText}>No permanent address available</Text>
+            
+            {isAdmin && (
+              <TouchableOpacity
+                style={styles.addEducationButton}
+                onPress={() => setAddPermanentAddressModalVisible(true)}
               >
-                <Text style={styles.contactBtnText}>Call Landline</Text>
+                <Text style={styles.addEducationIcon}>+</Text>
+                <Text style={styles.addEducationText}>Add Permanent Address</Text>
               </TouchableOpacity>
             )}
-            {addressData.permanent.mobile_number1 && (
-              <TouchableOpacity 
-                style={styles.contactBtn}
-                onPress={() => openLink(`tel:${addressData.permanent.isd_code}${addressData.permanent.mobile_number1}`)}
-              >
-                <Text style={styles.contactBtnText}>Call Mobile</Text>
-              </TouchableOpacity>
-            )}
-          </View>
-        </View>,
-        '#ffffff',
-        'permanent_address',    // editType
-        addressData.permanent   // editData
+          </View>,
+          '#ffffff'
+        )
       )}
 
       {/* Present Address */}
-      {addressData.present && renderInfoCard('Present Address', '🏢',
-        <View style={styles.contactSection}>
-          <Text style={styles.addressLine}>
-            {[
-              addressData.present.address1,
-              addressData.present.address2,
-              addressData.present.address3
-            ].filter(Boolean).join(', ')}
-          </Text>
-          <Text style={styles.addressLine}>
-            {addressData.present.state} - {addressData.present.pincode}
-          </Text>
-          
-          <View style={styles.contactButtons}>
-            {addressData.present.tel_number1 && (
-              <TouchableOpacity 
-                style={styles.contactBtn}
-                onPress={() => openLink(`tel:${formatPhoneNumber(
-                  addressData.present.isd_code,
-                  addressData.present.std_code,
-                  addressData.present.tel_number1
-                )}`)}
+      {addressData.present ? (
+        renderInfoCard('Present Address', '🏢',
+          <View style={styles.contactSection}>
+            <Text style={styles.addressLine}>
+              {[
+                addressData.present.address1,
+                addressData.present.address2,
+                addressData.present.address3
+              ].filter(Boolean).join(', ')}
+            </Text>
+            <Text style={styles.addressLine}>
+              {addressData.present.state} - {addressData.present.pincode}
+            </Text>
+            
+            <View style={styles.contactButtons}>
+              {addressData.present.tel_number1 && (
+                <TouchableOpacity 
+                  style={styles.contactBtn}
+                  onPress={() => openLink(`tel:${formatPhoneNumber(
+                    addressData.present.isd_code,
+                    addressData.present.std_code,
+                    addressData.present.tel_number1
+                  )}`)}
+                >
+                  <Text style={styles.contactBtnText}>Call Office</Text>
+                </TouchableOpacity>
+              )}
+              {addressData.present.mobile_number1 && (
+                <TouchableOpacity 
+                  style={styles.contactBtn}
+                  onPress={() => openLink(`tel:${addressData.present.isd_code}${addressData.present.mobile_number1}`)}
+                >
+                  <Text style={styles.contactBtnText}>Call Mobile</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          </View>,
+          '#ffffff',
+          'present_address',
+          addressData.present
+        )
+      ) : (
+        renderInfoCard('Present Address', '🏢',
+          <View style={styles.emptyState}>
+            <Text style={styles.emptyStateIcon}>🏢</Text>
+            <Text style={styles.emptyStateText}>No present address available</Text>
+            
+            {isAdmin && (
+              <TouchableOpacity
+                style={styles.addEducationButton}
+                onPress={() => setAddPresentAddressModalVisible(true)}
               >
-                <Text style={styles.contactBtnText}>Call Office</Text>
+                <Text style={styles.addEducationIcon}>+</Text>
+                <Text style={styles.addEducationText}>Add Present Address</Text>
               </TouchableOpacity>
             )}
-            {addressData.present.mobile_number1 && (
-              <TouchableOpacity 
-                style={styles.contactBtn}
-                onPress={() => openLink(`tel:${addressData.present.isd_code}${addressData.present.mobile_number1}`)}
-              >
-                <Text style={styles.contactBtnText}>Call Mobile</Text>
-              </TouchableOpacity>
-            )}
-          </View>
-        </View>,
-        '#ffffff',
-        'present_address',    // editType
-        addressData.present   // editData
+          </View>,
+          '#ffffff'
+        )
       )}
     </>
   );
@@ -4121,6 +4706,720 @@ const EditKYLMediaModal = ({ visible, item, onClose, onSave }) => {
   );
 };
 
+const renderAddPersonalModal = () => {
+  return (
+    <Modal
+      visible={addPersonalModalVisible}
+      animationType="slide"
+      presentationStyle="formSheet"
+      onRequestClose={() => setAddPersonalModalVisible(false)}
+    >
+      <SafeAreaView style={styles.editModalContainer}>
+        <KeyboardAvoidingView 
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={styles.editModalContent}
+        >
+          {/* Modal Header */}
+          <View style={styles.editModalHeader}>
+            <TouchableOpacity
+              onPress={() => setAddPersonalModalVisible(false)}
+              style={styles.editModalCloseButton}
+            >
+              <Text style={styles.editModalCloseText}>✕</Text>
+            </TouchableOpacity>
+            <View style={styles.editModalTitleContainer}>
+              <Text style={styles.editModalTitle}>Add Personal Information</Text>
+            </View>
+            <TouchableOpacity
+              onPress={submitPersonalEntry}
+              style={styles.editModalSaveButton}
+              disabled={addPersonalLoading}
+            >
+              {addPersonalLoading ? (
+                <ActivityIndicator size="small" color="#ffffff" />
+              ) : (
+                <Text style={styles.editModalSaveText}>Save</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+
+          {/* Modal Body */}
+          <ScrollView style={styles.editModalBody}>
+            <View style={styles.editFormContainer}>
+              <Text style={styles.editSectionTitle}>Personal Details</Text>
+              
+              {/* Birth Place Field */}
+              <View style={styles.editInputContainer}>
+                <Text style={styles.editInputLabel}>BIRTH PLACE</Text>
+                <TextInput
+                  style={styles.editInput}
+                  value={addPersonalData.birth_place}
+                  onChangeText={(text) => setAddPersonalData({
+                    ...addPersonalData,
+                    birth_place: text
+                  })}
+                  placeholder="e.g., Patna"
+                  multiline={false}
+                />
+              </View>
+
+              {/* Date of Birth Field */}
+              <View style={styles.editInputContainer}>
+                <Text style={styles.editInputLabel}>DATE OF BIRTH</Text>
+                <TextInput
+                  style={styles.editInput}
+                  value={addPersonalData.dob}
+                  onChangeText={(text) => setAddPersonalData({
+                    ...addPersonalData,
+                    dob: text
+                  })}
+                  placeholder="e.g., 12/08/1965"
+                  multiline={false}
+                />
+              </View>
+
+              {/* Father's Name Field */}
+              <View style={styles.editInputContainer}>
+                <Text style={styles.editInputLabel}>FATHER'S NAME</Text>
+                <TextInput
+                  style={styles.editInput}
+                  value={addPersonalData.father_name}
+                  onChangeText={(text) => setAddPersonalData({
+                    ...addPersonalData,
+                    father_name: text
+                  })}
+                  placeholder="e.g., Dr. Madan Prasad Jaiswal"
+                  multiline={false}
+                />
+              </View>
+
+              {/* Mother's Name Field */}
+              <View style={styles.editInputContainer}>
+                <Text style={styles.editInputLabel}>MOTHER'S NAME</Text>
+                <TextInput
+                  style={styles.editInput}
+                  value={addPersonalData.mother_name}
+                  onChangeText={(text) => setAddPersonalData({
+                    ...addPersonalData,
+                    mother_name: text
+                  })}
+                  placeholder="e.g., Dr. Saroj Jaiswal"
+                  multiline={false}
+                />
+              </View>
+
+              {/* Profession Field */}
+              <View style={styles.editInputContainer}>
+                <Text style={styles.editInputLabel}>PROFESSION</Text>
+                <TextInput
+                  style={styles.editInput}
+                  value={addPersonalData.profession}
+                  onChangeText={(text) => setAddPersonalData({
+                    ...addPersonalData,
+                    profession: text
+                  })}
+                  placeholder="e.g., Politician"
+                  multiline={false}
+                />
+              </View>
+
+              {/* Info Text */}
+              <View style={styles.infoContainer}>
+                <Text style={styles.infoText}>
+                  Fill in at least one field to add personal information.
+                </Text>
+              </View>
+            </View>
+          </ScrollView>
+        </KeyboardAvoidingView>
+      </SafeAreaView>
+    </Modal>
+  );
+};
+// Add Permanent Address Modal
+const renderAddPermanentAddressModal = () => {
+  return (
+    <Modal
+      visible={addPermanentAddressModalVisible}
+      animationType="slide"
+      presentationStyle="formSheet"
+      onRequestClose={() => setAddPermanentAddressModalVisible(false)}
+    >
+      <SafeAreaView style={styles.editModalContainer}>
+        <KeyboardAvoidingView 
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={styles.editModalContent}
+        >
+          <View style={styles.editModalHeader}>
+            <TouchableOpacity
+              onPress={() => setAddPermanentAddressModalVisible(false)}
+              style={styles.editModalCloseButton}
+            >
+              <Text style={styles.editModalCloseText}>✕</Text>
+            </TouchableOpacity>
+            <View style={styles.editModalTitleContainer}>
+              <Text style={styles.editModalTitle}>Add Permanent Address</Text>
+            </View>
+            <TouchableOpacity
+              onPress={submitPermanentAddressEntry}
+              style={styles.editModalSaveButton}
+              disabled={addPermanentAddressLoading}
+            >
+              {addPermanentAddressLoading ? (
+                <ActivityIndicator size="small" color="#ffffff" />
+              ) : (
+                <Text style={styles.editModalSaveText}>Save</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView style={styles.editModalBody}>
+            <View style={styles.editFormContainer}>
+              <Text style={styles.editSectionTitle}>Address Details</Text>
+              
+              <View style={styles.editInputContainer}>
+                <Text style={styles.editInputLabel}>ADDRESS LINE 1 *</Text>
+                <TextInput
+                  style={styles.editInput}
+                  value={addPermanentAddressData.address1}
+                  onChangeText={(text) => setAddPermanentAddressData({
+                    ...addPermanentAddressData,
+                    address1: text
+                  })}
+                  placeholder="e.g., Road No. 5"
+                />
+              </View>
+
+              <View style={styles.editInputContainer}>
+                <Text style={styles.editInputLabel}>ADDRESS LINE 2</Text>
+                <TextInput
+                  style={styles.editInput}
+                  value={addPermanentAddressData.address2}
+                  onChangeText={(text) => setAddPermanentAddressData({
+                    ...addPermanentAddressData,
+                    address2: text
+                  })}
+                  placeholder="e.g., Ramna"
+                />
+              </View>
+
+              <View style={styles.editInputContainer}>
+                <Text style={styles.editInputLabel}>ADDRESS LINE 3</Text>
+                <TextInput
+                  style={styles.editInput}
+                  value={addPermanentAddressData.address3}
+                  onChangeText={(text) => setAddPermanentAddressData({
+                    ...addPermanentAddressData,
+                    address3: text
+                  })}
+                  placeholder="e.g., Bettiah"
+                />
+              </View>
+
+              <View style={styles.editInputContainer}>
+                <Text style={styles.editInputLabel}>PINCODE</Text>
+                <TextInput
+                  style={styles.editInput}
+                  value={addPermanentAddressData.pincode}
+                  onChangeText={(text) => setAddPermanentAddressData({
+                    ...addPermanentAddressData,
+                    pincode: text
+                  })}
+                  placeholder="e.g., 851223"
+                  keyboardType="numeric"
+                />
+              </View>
+
+              <View style={styles.editInputContainer}>
+                <Text style={styles.editInputLabel}>STATE</Text>
+                <TextInput
+                  style={styles.editInput}
+                  value={addPermanentAddressData.state}
+                  onChangeText={(text) => setAddPermanentAddressData({
+                    ...addPermanentAddressData,
+                    state: text
+                  })}
+                  placeholder="e.g., Bihar"
+                />
+              </View>
+
+              <Text style={styles.editSectionTitle}>Contact Details</Text>
+
+              <View style={styles.editInputContainer}>
+                <Text style={styles.editInputLabel}>ISD CODE</Text>
+                <TextInput
+                  style={styles.editInput}
+                  value={addPermanentAddressData.isd_code}
+                  onChangeText={(text) => setAddPermanentAddressData({
+                    ...addPermanentAddressData,
+                    isd_code: text
+                  })}
+                  placeholder="e.g., +91"
+                />
+              </View>
+
+              <View style={styles.editInputContainer}>
+                <Text style={styles.editInputLabel}>STD CODE</Text>
+                <TextInput
+                  style={styles.editInput}
+                  value={addPermanentAddressData.std_code}
+                  onChangeText={(text) => setAddPermanentAddressData({
+                    ...addPermanentAddressData,
+                    std_code: text
+                  })}
+                  placeholder="e.g., 0622"
+                  keyboardType="numeric"
+                />
+              </View>
+
+              <View style={styles.editInputContainer}>
+                <Text style={styles.editInputLabel}>TELEPHONE 1</Text>
+                <TextInput
+                  style={styles.editInput}
+                  value={addPermanentAddressData.tel_number1}
+                  onChangeText={(text) => setAddPermanentAddressData({
+                    ...addPermanentAddressData,
+                    tel_number1: text
+                  })}
+                  placeholder="e.g., 2345672"
+                  keyboardType="phone-pad"
+                />
+              </View>
+
+              <View style={styles.editInputContainer}>
+                <Text style={styles.editInputLabel}>MOBILE 1</Text>
+                <TextInput
+                  style={styles.editInput}
+                  value={addPermanentAddressData.mobile_number1}
+                  onChangeText={(text) => setAddPermanentAddressData({
+                    ...addPermanentAddressData,
+                    mobile_number1: text
+                  })}
+                  placeholder="e.g., 8907896789"
+                  keyboardType="phone-pad"
+                />
+              </View>
+
+              <View style={styles.editInputContainer}>
+                <Text style={styles.editInputLabel}>TELEPHONE 2</Text>
+                <TextInput
+                  style={styles.editInput}
+                  value={addPermanentAddressData.tel_number2}
+                  onChangeText={(text) => setAddPermanentAddressData({
+                    ...addPermanentAddressData,
+                    tel_number2: text
+                  })}
+                  placeholder="e.g., 2345672"
+                  keyboardType="phone-pad"
+                />
+              </View>
+
+              <View style={styles.editInputContainer}>
+                <Text style={styles.editInputLabel}>MOBILE 2</Text>
+                <TextInput
+                  style={styles.editInput}
+                  value={addPermanentAddressData.mobile_number2}
+                  onChangeText={(text) => setAddPermanentAddressData({
+                    ...addPermanentAddressData,
+                    mobile_number2: text
+                  })}
+                  placeholder="e.g., 8907896789"
+                  keyboardType="phone-pad"
+                />
+              </View>
+
+              <View style={styles.infoContainer}>
+                <Text style={styles.infoText}>
+                  Address Line 1 is required. Other fields are optional.
+                </Text>
+              </View>
+            </View>
+          </ScrollView>
+        </KeyboardAvoidingView>
+      </SafeAreaView>
+    </Modal>
+  );
+};
+
+// Add Present Address Modal
+const renderAddPresentAddressModal = () => {
+  return (
+    <Modal
+      visible={addPresentAddressModalVisible}
+      animationType="slide"
+      presentationStyle="formSheet"
+      onRequestClose={() => setAddPresentAddressModalVisible(false)}
+    >
+      <SafeAreaView style={styles.editModalContainer}>
+        <KeyboardAvoidingView 
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={styles.editModalContent}
+        >
+          <View style={styles.editModalHeader}>
+            <TouchableOpacity
+              onPress={() => setAddPresentAddressModalVisible(false)}
+              style={styles.editModalCloseButton}
+            >
+              <Text style={styles.editModalCloseText}>✕</Text>
+            </TouchableOpacity>
+            <View style={styles.editModalTitleContainer}>
+              <Text style={styles.editModalTitle}>Add Present Address</Text>
+            </View>
+            <TouchableOpacity
+              onPress={submitPresentAddressEntry}
+              style={styles.editModalSaveButton}
+              disabled={addPresentAddressLoading}
+            >
+              {addPresentAddressLoading ? (
+                <ActivityIndicator size="small" color="#ffffff" />
+              ) : (
+                <Text style={styles.editModalSaveText}>Save</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView style={styles.editModalBody}>
+            <View style={styles.editFormContainer}>
+              <Text style={styles.editSectionTitle}>Address Details</Text>
+              
+              <View style={styles.editInputContainer}>
+                <Text style={styles.editInputLabel}>ADDRESS LINE 1 *</Text>
+                <TextInput
+                  style={styles.editInput}
+                  value={addPresentAddressData.address1}
+                  onChangeText={(text) => setAddPresentAddressData({
+                    ...addPresentAddressData,
+                    address1: text
+                  })}
+                  placeholder="e.g., 5 Talkatora Road"
+                />
+              </View>
+
+              <View style={styles.editInputContainer}>
+                <Text style={styles.editInputLabel}>ADDRESS LINE 2</Text>
+                <TextInput
+                  style={styles.editInput}
+                  value={addPresentAddressData.address2}
+                  onChangeText={(text) => setAddPresentAddressData({
+                    ...addPresentAddressData,
+                    address2: text
+                  })}
+                  placeholder="e.g., New Delhi"
+                />
+              </View>
+
+              <View style={styles.editInputContainer}>
+                <Text style={styles.editInputLabel}>ADDRESS LINE 3</Text>
+                <TextInput
+                  style={styles.editInput}
+                  value={addPresentAddressData.address3}
+                  onChangeText={(text) => setAddPresentAddressData({
+                    ...addPresentAddressData,
+                    address3: text
+                  })}
+                  placeholder="Optional"
+                />
+              </View>
+
+              <View style={styles.editInputContainer}>
+                <Text style={styles.editInputLabel}>PINCODE</Text>
+                <TextInput
+                  style={styles.editInput}
+                  value={addPresentAddressData.pincode}
+                  onChangeText={(text) => setAddPresentAddressData({
+                    ...addPresentAddressData,
+                    pincode: text
+                  })}
+                  placeholder="e.g., 110001"
+                  keyboardType="numeric"
+                />
+              </View>
+
+              <View style={styles.editInputContainer}>
+                <Text style={styles.editInputLabel}>STATE</Text>
+                <TextInput
+                  style={styles.editInput}
+                  value={addPresentAddressData.state}
+                  onChangeText={(text) => setAddPresentAddressData({
+                    ...addPresentAddressData,
+                    state: text
+                  })}
+                  placeholder="e.g., NCT of Delhi"
+                />
+              </View>
+
+              <Text style={styles.editSectionTitle}>Contact Details</Text>
+
+              <View style={styles.editInputContainer}>
+                <Text style={styles.editInputLabel}>ISD CODE</Text>
+                <TextInput
+                  style={styles.editInput}
+                  value={addPresentAddressData.isd_code}
+                  onChangeText={(text) => setAddPresentAddressData({
+                    ...addPresentAddressData,
+                    isd_code: text
+                  })}
+                  placeholder="e.g., +91"
+                />
+              </View>
+
+              <View style={styles.editInputContainer}>
+                <Text style={styles.editInputLabel}>STD CODE</Text>
+                <TextInput
+                  style={styles.editInput}
+                  value={addPresentAddressData.std_code}
+                  onChangeText={(text) => setAddPresentAddressData({
+                    ...addPresentAddressData,
+                    std_code: text
+                  })}
+                  placeholder="e.g., 011"
+                  keyboardType="numeric"
+                />
+              </View>
+
+              <View style={styles.editInputContainer}>
+                <Text style={styles.editInputLabel}>TELEPHONE 1</Text>
+                <TextInput
+                  style={styles.editInput}
+                  value={addPresentAddressData.tel_number1}
+                  onChangeText={(text) => setAddPresentAddressData({
+                    ...addPresentAddressData,
+                    tel_number1: text
+                  })}
+                  placeholder="e.g., 23456712"
+                  keyboardType="phone-pad"
+                />
+              </View>
+
+              <View style={styles.editInputContainer}>
+                <Text style={styles.editInputLabel}>MOBILE 1</Text>
+                <TextInput
+                  style={styles.editInput}
+                  value={addPresentAddressData.mobile_number1}
+                  onChangeText={(text) => setAddPresentAddressData({
+                    ...addPresentAddressData,
+                    mobile_number1: text
+                  })}
+                  placeholder="e.g., 7907896789"
+                  keyboardType="phone-pad"
+                />
+              </View>
+
+              <View style={styles.editInputContainer}>
+                <Text style={styles.editInputLabel}>TELEPHONE 2</Text>
+                <TextInput
+                  style={styles.editInput}
+                  value={addPresentAddressData.tel_number2}
+                  onChangeText={(text) => setAddPresentAddressData({
+                    ...addPresentAddressData,
+                    tel_number2: text
+                  })}
+                  placeholder="e.g., 23457221"
+                  keyboardType="phone-pad"
+                />
+              </View>
+
+              <View style={styles.editInputContainer}>
+                <Text style={styles.editInputLabel}>MOBILE 2</Text>
+                <TextInput
+                  style={styles.editInput}
+                  value={addPresentAddressData.mobile_number2}
+                  onChangeText={(text) => setAddPresentAddressData({
+                    ...addPresentAddressData,
+                    mobile_number2: text
+                  })}
+                  placeholder="e.g., 9907896789"
+                  keyboardType="phone-pad"
+                />
+              </View>
+
+              <View style={styles.infoContainer}>
+                <Text style={styles.infoText}>
+                  Address Line 1 is required. Other fields are optional.
+                </Text>
+              </View>
+            </View>
+          </ScrollView>
+        </KeyboardAvoidingView>
+      </SafeAreaView>
+    </Modal>
+  );
+};
+
+// Profile Image Edit Modal
+// Profile Image Edit Modal - UPDATED WITH MODERN UI
+const renderProfileImageEditModal = () => {
+  return (
+    <Modal
+      visible={editProfileImageModalVisible}
+      transparent
+      animationType="fade"
+      onRequestClose={() => {
+        setEditProfileImageModalVisible(false);
+        setSelectedProfileImage(null);
+      }}
+    >
+      <View style={styles.profileImageModalOverlay}>
+        <View style={styles.profileImageModalCard}>
+          
+          {/* ✅ MODERN HEADER WITH GRADIENT */}
+          <View style={styles.profileImageModalHeader}>
+            <View style={styles.profileImageHeaderContent}>
+              <View style={styles.profileImageIconContainer}>
+                <Icon name="account-circle" size={24} color="#e16e2b" />
+              </View>
+              <View style={styles.profileImageTitleContainer}>
+                <Text style={styles.profileImageModalTitle}>Update Profile Photo</Text>
+                <Text style={styles.profileImageModalSubtitle}>Choose a new profile picture</Text>
+              </View>
+            </View>
+            <TouchableOpacity 
+              onPress={() => {
+                setEditProfileImageModalVisible(false);
+                setSelectedProfileImage(null);
+              }} 
+              style={styles.profileImageCloseButton}
+            >
+              <Icon name="close" size={20} color="#7f8c8d" />
+            </TouchableOpacity>
+          </View>
+
+          {/* ✅ BODY WITH CURRENT AND NEW IMAGE SIDE BY SIDE */}
+          <View style={styles.profileImageModalBody}>
+            
+            {/* Current Image Section */}
+            <View style={styles.profileImageSection}>
+              <Text style={styles.profileImageSectionLabel}>Current Photo</Text>
+              <View style={styles.profileImagePreviewContainer}>
+                <Image 
+                  source={{ 
+                    uri: memberData?.profile_image || 'https://tse2.mm.bing.net/th/id/OIP.7nJJBy9zWC6D4pVeQDTEqAHaHX?pid=Api&P=0&h=180'
+                  }} 
+                  style={styles.profileImagePreview}
+                  resizeMode="cover"
+                />
+                <View style={styles.profileImageBadge}>
+                  <Icon name="check-circle" size={16} color="#27ae60" />
+                </View>
+              </View>
+            </View>
+
+            {/* Arrow Icon */}
+            <View style={styles.profileImageArrowContainer}>
+              <Icon name="arrow-forward" size={24} color="#e16e2b" />
+            </View>
+
+            {/* New Image Section */}
+            <View style={styles.profileImageSection}>
+              <Text style={styles.profileImageSectionLabel}>
+                {selectedProfileImage ? 'New Photo' : 'Select New'}
+              </Text>
+              <TouchableOpacity
+                style={styles.profileImagePreviewContainer}
+                onPress={() => {
+                  const options = {
+                    mediaType: 'photo',
+                    quality: 0.8,
+                    maxWidth: 1024,
+                    maxHeight: 1024,
+                  };
+
+                  launchImageLibrary(options, (response) => {
+                    if (response.didCancel) {
+                      console.log('User cancelled image picker');
+                    } else if (response.errorCode) {
+                      Alert.alert('Error', response.errorMessage);
+                    } else if (response.assets && response.assets[0]) {
+                      setSelectedProfileImage(response.assets[0]);
+                    }
+                  });
+                }}
+                activeOpacity={0.7}
+              >
+                {selectedProfileImage ? (
+                  <>
+                    <Image 
+                      source={{ uri: selectedProfileImage.uri }} 
+                      style={styles.profileImagePreview}
+                      resizeMode="cover"
+                    />
+                    <View style={styles.profileImageNewBadge}>
+                      <Text style={styles.profileImageNewBadgeText}>NEW</Text>
+                    </View>
+                  </>
+                ) : (
+                  <View style={styles.profileImagePlaceholder}>
+                    <Icon name="add-a-photo" size={32} color="#e16e2b" />
+                    <Text style={styles.profileImagePlaceholderText}>Tap to Choose</Text>
+                  </View>
+                )}
+              </TouchableOpacity>
+            </View>
+
+          </View>
+
+          {/* ✅ INFO BOX */}
+          {selectedProfileImage && (
+            <View style={styles.profileImageInfoBox}>
+              <Icon name="info" size={16} color="#3498db" />
+              <Text style={styles.profileImageInfoText}>
+                {selectedProfileImage.fileName || 'Image selected'} • {(selectedProfileImage.fileSize / 1024).toFixed(0)} KB
+              </Text>
+            </View>
+          )}
+
+          {/* ✅ TIPS SECTION */}
+          <View style={styles.profileImageTips}>
+            <Text style={styles.profileImageTipsTitle}>📸 Photo Tips:</Text>
+            <Text style={styles.profileImageTipItem}>• Use a clear, well-lit photo</Text>
+            <Text style={styles.profileImageTipItem}>• Face should be clearly visible</Text>
+            <Text style={styles.profileImageTipItem}>• Square format works best</Text>
+          </View>
+
+          {/* ✅ ACTION BUTTONS */}
+          <View style={styles.profileImageModalFooter}>
+            <TouchableOpacity 
+              style={styles.profileImageCancelButton}
+              onPress={() => {
+                setEditProfileImageModalVisible(false);
+                setSelectedProfileImage(null);
+              }}
+              disabled={profileImageLoading}
+            >
+              <Icon name="close" size={18} color="#7f8c8d" />
+              <Text style={styles.profileImageCancelButtonText}>Cancel</Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity 
+              style={[
+                styles.profileImageSaveButton,
+                (!selectedProfileImage || profileImageLoading) && styles.profileImageSaveButtonDisabled
+              ]}
+              onPress={() => handleUpdateProfileImage(selectedProfileImage)}
+              disabled={profileImageLoading || !selectedProfileImage}
+              activeOpacity={0.8}
+            >
+              {profileImageLoading ? (
+                <>
+                  <ActivityIndicator color="#fff" size="small" />
+                  <Text style={styles.profileImageSaveButtonText}>Uploading...</Text>
+                </>
+              ) : (
+                <>
+                  <Icon name="cloud-upload" size={18} color="#fff" />
+                  <Text style={styles.profileImageSaveButtonText}>
+                    {selectedProfileImage ? 'Update Photo' : 'Select Photo'}
+                  </Text>
+                </>
+              )}
+            </TouchableOpacity>
+          </View>
+
+        </View>
+      </View>
+    </Modal>
+  );
+};
 return (
   <ScrollView 
     style={styles.container}
@@ -4167,6 +5466,12 @@ return (
 
     {/* Timeline Edit Modal - ADD THIS LINE */}
     {renderTimelineEditModal()}
+    {renderAddPersonalModal()}
+    {renderAddPermanentAddressModal()}
+
+{/* Add Present Address Modal - ADD THIS */}
+{renderAddPresentAddressModal()}
+{renderProfileImageEditModal()} 
   </ScrollView>
 );
 

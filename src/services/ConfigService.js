@@ -3,7 +3,7 @@ import EncryptedStorage from 'react-native-encrypted-storage';
 
 class ConfigService {
   static BASE_URL_KEY = 'app_base_url';
-  static DEFAULT_BASE_URL = 'https://c28938fe0c52.ngrok-free.app'; // 👈 Update this when ngrok gives new URL
+  static DEFAULT_BASE_URL = 'http://192.168.0.105:5000'; // 👈 Update this when ngrok gives new URL
 
 
   
@@ -34,6 +34,7 @@ class ConfigService {
       console.error('❌ Error saving base URL:', error);
       return false;
     }
+    
   }
 
   // Get base URL
@@ -153,33 +154,88 @@ static async getApiEndpoints() {
       bootstrap: `${baseUrl}/api/bootstrap`,
     },
     coordinates: `${baseUrl}/api/coordinates`,
+    
+    // ✅ ADD THIS SECTION - Education Endpoints
+    education: {
+      getAll: `${baseUrl}/api/edudata/`,           // GET - Fetch all education data
+      entry: `${baseUrl}/api/edudata/entry`,       // POST - Create new entry, PUT - Update existing entry
+      deleteEntry: `${baseUrl}/api/edudata/entry`, // DELETE - Delete entry (with query params)
+    },
+    
+    // ✅ ADD THIS SECTION - Personal Details Endpoints
+    personalDetails: {
+      get: `${baseUrl}/api/personaldetails/`,      // GET - Fetch personal details
+      create: `${baseUrl}/api/personaldetails/`,   // POST - Create personal details
+      update: `${baseUrl}/api/personaldetails/`,   // PUT - Update personal details
+      delete: `${baseUrl}/api/personaldetails/`,   // DELETE - Delete personal details
+    },
+    
+    // ✅ ADD THIS SECTION - Address Endpoints
+    addresses: {
+      permanent: {
+        get: `${baseUrl}/api/permaddress/`,        // GET - Fetch permanent address
+        create: `${baseUrl}/api/permaddress/`,     // POST - Create permanent address
+        update: `${baseUrl}/api/permaddress/`,     // PUT - Update permanent address
+        delete: `${baseUrl}/api/permaddress/`,     // DELETE - Delete permanent address
+      },
+      present: {
+        get: `${baseUrl}/api/preaddress/`,         // GET - Fetch present address
+        create: `${baseUrl}/api/preaddress/`,      // POST - Create present address
+        update: `${baseUrl}/api/preaddress/`,      // PUT - Update present address
+        delete: `${baseUrl}/api/preaddress/`,      // DELETE - Delete present address
+      },
+    },
+    
+    // ✅ ADD THIS SECTION - Timeline Endpoints
+    timeline: {
+      get: `${baseUrl}/api/leadertimeline/`,       // GET - Fetch timeline
+      create: `${baseUrl}/api/leadertimeline`,     // POST - Create timeline entry
+      update: `${baseUrl}/api/leadertimeline/`,    // PUT - Update timeline entry
+      deleteEntry: `${baseUrl}/api/leadertimeline/entry`, // DELETE - Delete timeline entry
+    },
+    
+    // ✅ ADD THIS SECTION - Social Media Endpoints
+    socialMedia: {
+      get: `${baseUrl}/api/socialmedia/`,          // GET - Fetch social media
+      create: `${baseUrl}/api/socialmedia/`,       // POST - Create social media
+      update: `${baseUrl}/api/socialmedia/`,       // PUT - Update social media
+      delete: `${baseUrl}/api/socialmedia/`,       // DELETE - Delete social media
+    },
+    
+    // ✅ ADD THIS SECTION - Media Corner (KYL) Endpoints
+    mediaCorner: {
+      get: `${baseUrl}/api/mediacorner/`,          // GET - Fetch media items
+      create: `${baseUrl}/api/mediacorner`,        // POST - Create media item
+      update: `${baseUrl}/api/mediacorner`,        // PUT - Update media item
+      delete: `${baseUrl}/api/mediacorner/`,       // DELETE - Delete media item
+      asset: `${baseUrl}/api/mediacorner/asset/`,  // GET - Fetch media asset file
+    },
+    
     assemblyConstituencies: {
-  getAll: `${baseUrl}/api/assemblyconstituencies/`,
-  create: `${baseUrl}/api/assemblyconstituencies`,
-  update: `${baseUrl}/api/assemblyconstituencies/`,
-  delete: `${baseUrl}/api/assemblyconstituencies/`,
-},
+      getAll: `${baseUrl}/api/assemblyconstituencies/`,
+      create: `${baseUrl}/api/assemblyconstituencies`,
+      update: `${baseUrl}/api/assemblyconstituencies/`,
+      delete: `${baseUrl}/api/assemblyconstituencies/`,
+    },
     grievances: {
-      // Updated to use GET methods with query parameters
-      getAll: `${baseUrl}/api/grievances/search`, // GET method with query params
-      getByStatus: `${baseUrl}/api/grievances/status`, // GET method with query params  
-      search: `${baseUrl}/api/grievances/search`, // GET method with query params
-      create: `${baseUrl}/api/grievances`, // POST method (remains same)
-      update: `${baseUrl}/api/grievances/`, // PUT method (remains same)
-      delete: `${baseUrl}/api/grievances/`, // DELETE method (remains same)
-      count: `${baseUrl}/api/grievances/count`, // GET method
-      countByStatus: `${baseUrl}/api/grievances/countstatus`, // GET method
+      getAll: `${baseUrl}/api/grievances/search`,
+      getByStatus: `${baseUrl}/api/grievances/status`,
+      search: `${baseUrl}/api/grievances/search`,
+      create: `${baseUrl}/api/grievances`,
+      update: `${baseUrl}/api/grievances/`,
+      delete: `${baseUrl}/api/grievances/`,
+      count: `${baseUrl}/api/grievances/count`,
+      countByStatus: `${baseUrl}/api/grievances/countstatus`,
     },
     appointments: {
-      // Updated to use GET methods with query parameters
-      getAll: `${baseUrl}/api/appointments/`, // GET method with query params
-      getByStatus: `${baseUrl}/api/appointments/status`, // GET method with query params
-      search: `${baseUrl}/api/appointments/search`, // GET method with query params  
-      create: `${baseUrl}/api/appointments`, // POST method (remains same)
-      update: `${baseUrl}/api/appointments/`, // PUT method (remains same)
-      delete: `${baseUrl}/api/appointments/`, // DELETE method (remains same)
-      count: `${baseUrl}/api/appointments/count`, // GET method
-      countByStatus: `${baseUrl}/api/appointments/countstatus`, // GET method
+      getAll: `${baseUrl}/api/appointments/`,
+      getByStatus: `${baseUrl}/api/appointments/status`,
+      search: `${baseUrl}/api/appointments/search`,
+      create: `${baseUrl}/api/appointments`,
+      update: `${baseUrl}/api/appointments/`,
+      delete: `${baseUrl}/api/appointments/`,
+      count: `${baseUrl}/api/appointments/count`,
+      countByStatus: `${baseUrl}/api/appointments/countstatus`,
     },
   };
 }

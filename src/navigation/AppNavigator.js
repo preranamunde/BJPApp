@@ -26,6 +26,7 @@ import ChangePasswordScreen from '../screens/ChangePasswordScreen';
 import ForgotPasswordScreen from '../screens/ForgotPasswordScreen';
 import PartyUpdatesScreen from '../screens/PartyUpdatesScreen';
 import FeedbackScreen from '../screens/FeedbackScreen';
+import FeedbackDetailsScreen from '../screens/FeedbackDetailsScreen';
 
 const Stack = createStackNavigator();
 
@@ -61,6 +62,15 @@ const AppNavigator = () => {
         options={{ 
           headerShown: false,
         }}
+      />
+
+      <Stack.Screen
+      name="FeedbackDetails"
+      component={FeedbackDetailsScreen}
+      options={{
+        headerShown:false,
+        title:'Feedback Details'
+      }}
       />
       
       <Stack.Screen

@@ -35,6 +35,149 @@ const DeviceService = {
     return fingerprint;
   },
 
+  // ✅ NEW METHOD: Get complete device information for bootstrap API
+  async getCompleteDeviceInfo() {
+    try {
+      console.log('📱 Collecting complete device information...');
+      
+      // Helper function to safely get device info
+      const safeGet = async (fn, fallback = 'unknown') => {
+        try {
+          const result = await fn();
+          return result || fallback;
+        } catch (error) {
+          console.log(`Error getting device info field: ${error.message}`);
+          return fallback;
+        }
+      };
+
+      const safeGetSync = (fn, fallback = 'unknown') => {
+        try {
+          const result = fn();
+          return result || fallback;
+        } catch (error) {
+          console.log(`Error getting device info field: ${error.message}`);
+          return fallback;
+        }
+      };
+      
+      // Get all device information with error handling for each field
+      // Better AAID retrieval with proper error handling
+// Get all device information with error handling for each field
+const device_aaid = await safeGet(
+  async () => {
+    try {
+      // Check if getAdvertisingId method exists
+      if (typeof DeviceInfo.getAdvertisingId === 'function') {
+        const aaid = await DeviceInfo.getAdvertisingId();
+        console.log('📱 AAID retrieved successfully:', aaid);
+        return aaid || 'empty-response';
+      } else {
+        console.log('⚠️ getAdvertisingId method not found in DeviceInfo');
+        // Fallback: Try to get Android ID or unique device ID
+        const uniqueId = await DeviceInfo.getUniqueId();
+        console.log('📱 Using unique device ID as fallback:', uniqueId);
+        return `fallback-${uniqueId}`;
+      }
+    } catch (error) {
+      console.log('❌ Error getting AAID:', error.message);
+      // Return a unique identifier based on device info
+      const model = DeviceInfo.getModel();
+      const brand = DeviceInfo.getBrand();
+      return `device-${brand}-${model}`;
+    }
+  },
+  'method-not-available'
+);
+      
+      const device_manufacturer_name = await safeGet(
+        () => DeviceInfo.getManufacturer(),
+        'unknown'
+      );
+      
+      const device_model = safeGetSync(
+        () => DeviceInfo.getModel(),
+        'unknown'
+      );
+      
+      const device_brand_name = safeGetSync(
+        () => DeviceInfo.getBrand(),
+        'unknown'
+      );
+      
+      const device_os_version = safeGetSync(
+        () => DeviceInfo.getSystemVersion(),
+        'unknown'
+      );
+      
+      const device_api_level = await safeGet(
+        () => DeviceInfo.getApiLevel(),
+        '0'
+      );
+      
+      const device_type = await safeGet(
+        () => DeviceInfo.getDeviceType(),
+        'unknown'
+      );
+      
+      const device_app_version = safeGetSync(
+        () => DeviceInfo.getVersion(),
+        '1.0.0'
+      );
+      
+      const device_type_str = safeGetSync(
+        () => DeviceInfo.getType ? DeviceInfo.getType() : 'unknown',
+        'unknown'
+      );
+      
+      const device_os_codename = await safeGet(
+        () => DeviceInfo.getCodename ? DeviceInfo.getCodename() : Promise.resolve('unknown'),
+        'unknown'
+      );
+      
+      // Get screen density information
+      const device_screen_density = await safeGet(
+        () => DeviceInfo.getDeviceName ? DeviceInfo.getDeviceName() : Promise.resolve('unknown'),
+        'unknown'
+      );
+
+      const deviceInfo = {
+        device_aaid: String(device_aaid),
+        device_manufacturer_name: String(device_manufacturer_name),
+        device_model: String(device_model),
+        device_brand_name: String(device_brand_name),
+        device_os_version: String(device_os_version),
+        device_api_level: String(device_api_level),
+        device_type: String(device_type),
+        device_app_version: String(device_app_version),
+        device_type_str: String(device_type_str),
+        device_os_codename: String(device_os_codename),
+        device_screen_density: String(device_screen_density)
+      };
+
+      console.log('✅ Device information collected:', JSON.stringify(deviceInfo, null, 2));
+      return deviceInfo;
+
+    } catch (error) {
+      console.error('❌ Error collecting device info:', error);
+      
+      // Return fallback data
+      return {
+        device_aaid: 'unknown',
+        device_manufacturer_name: 'unknown',
+        device_model: 'unknown',
+        device_brand_name: 'unknown',
+        device_os_version: 'unknown',
+        device_api_level: '0',
+        device_type: 'unknown',
+        device_app_version: '1.0.0',
+        device_type_str: 'unknown',
+        device_os_codename: 'unknown',
+        device_screen_density: 'unknown'
+      };
+    }
+  },
+
   // Get device IP using multiple methods
   async getDeviceIP() {
     try {

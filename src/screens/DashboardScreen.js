@@ -520,6 +520,8 @@ const DashboardScreen = ({ navigation }) => {
     APPOINTMENT: 0,
     GRIEVANCE: 0,
     COMPLAINTS: 0,
+    FEEDBACK: 0,      // ✅ ADD THIS
+  ISSUES: 0,        // ✅ ADD THIS
   });
   
   const [loading, setLoading] = useState(true);
@@ -868,6 +870,91 @@ const fetchDashboardBanners = async (memberIdentifier, userEmailId) => {
     }
   };
 
+  // ✅ ADD THIS NEW FUNCTION (after fetchAppointmentCount, around line 450)
+const fetchFeedbackCounts = async (userInfo) => {
+  try {
+    const baseUrl = await ConfigService.getBaseUrl();
+    const headers = await getAuthHeaders();
+
+    const encodedMobile = encodeURIComponent(userInfo.leaderMobile);
+    const encodedEmail = encodeURIComponent(userInfo.userEmail);
+    
+    // Fetch Feedback count (uf_type=feedback)
+    const feedbackUrl = `${baseUrl}/api/userfeedback/count?leader_regd_mobile_no=${encodedMobile}&user_email_id=${encodedEmail}&uf_type=feedback`;
+    
+    console.log('📊 Fetching feedback count from:', feedbackUrl);
+
+    const feedbackResponse = await fetch(feedbackUrl, {
+      method: 'GET',
+      headers: headers,
+    });
+
+    const feedbackText = await feedbackResponse.text();
+    console.log('Feedback Count API Response:', feedbackText);
+
+    let feedbackCount = 0;
+    try {
+      const feedbackData = JSON.parse(feedbackText);
+      if (typeof feedbackData === 'number') {
+        feedbackCount = feedbackData;
+      } else if (feedbackData.count !== undefined) {
+        feedbackCount = feedbackData.count;
+      } else if (feedbackData.data !== undefined) {
+        feedbackCount = feedbackData.data;
+      } else if (feedbackData.total !== undefined) {
+        feedbackCount = feedbackData.total;
+      }
+    } catch (parseError) {
+      console.error('Failed to parse feedback count:', parseError);
+    }
+
+    console.log('✅ Feedback count:', feedbackCount);
+
+    // Fetch Issues count (uf_type=bug)
+    const issuesUrl = `${baseUrl}/api/userfeedback/count?leader_regd_mobile_no=${encodedMobile}&user_email_id=${encodedEmail}&uf_type=bug`;
+    
+    console.log('📊 Fetching issues count from:', issuesUrl);
+
+    const issuesResponse = await fetch(issuesUrl, {
+      method: 'GET',
+      headers: headers,
+    });
+
+    const issuesText = await issuesResponse.text();
+    console.log('Issues Count API Response:', issuesText);
+
+    let issuesCount = 0;
+    try {
+      const issuesData = JSON.parse(issuesText);
+      if (typeof issuesData === 'number') {
+        issuesCount = issuesData;
+      } else if (issuesData.count !== undefined) {
+        issuesCount = issuesData.count;
+      } else if (issuesData.data !== undefined) {
+        issuesCount = issuesData.data;
+      } else if (issuesData.total !== undefined) {
+        issuesCount = issuesData.total;
+      }
+    } catch (parseError) {
+      console.error('Failed to parse issues count:', parseError);
+    }
+
+    console.log('✅ Issues count:', issuesCount);
+
+    return {
+      FEEDBACK: feedbackCount || 0,
+      ISSUES: issuesCount || 0
+    };
+
+  } catch (error) {
+    console.error('❌ Error fetching feedback/issues counts:', error);
+    return {
+      FEEDBACK: 0,
+      ISSUES: 0
+    };
+  }
+};
+
   // ALTERNATIVE: If the above doesn't work, try the combined approach
   const fetchGrievanceCountsAlternative = async (userInfo) => {
     try {
@@ -949,7 +1036,7 @@ const loadUserInfoAndCounts = async () => {
     
     if (!userInfoData.leaderMobile || !userInfoData.userEmail) {
       console.log('❌ Missing user info, cannot fetch data');
-      setCounts({ APPEAL: 0, APPOINTMENT: 0, GRIEVANCE: 0, COMPLAINTS: 0 });
+      setCounts({ APPEAL: 0, APPOINTMENT: 0, GRIEVANCE: 0, COMPLAINTS: 0, FEEDBACK: 0, ISSUES: 0 });
       setDashboardBannersData([]);
       return;
     }
@@ -981,10 +1068,12 @@ const loadUserInfoAndCounts = async () => {
     }
 
     const appointmentCount = await fetchAppointmentCount(userInfoData);
+    const feedbackCounts = await fetchFeedbackCounts(userInfoData); // ✅ ADD THIS LINE
 
     const finalCounts = {
       ...grievanceCounts,
-      APPOINTMENT: appointmentCount
+      APPOINTMENT: appointmentCount,
+      ...feedbackCounts
     };
 
     console.log('✅ Final dashboard data loaded:', {
@@ -996,7 +1085,8 @@ const loadUserInfoAndCounts = async () => {
   } catch (error) {
     console.error('❌ Error loading dashboard data:', error);
     Alert.alert('Error', 'Failed to load dashboard data. Please try again.');
-    setCounts({ APPEAL: 0, APPOINTMENT: 0, GRIEVANCE: 0, COMPLAINTS: 0 });
+    setCounts({ APPEAL: 0, APPOINTMENT: 0, GRIEVANCE: 0, COMPLAINTS: 0, FEEDBACK: 0, ISSUES: 0 });
+
     setDashboardBannersData([]);
   } finally {
     setLoading(false);
@@ -1274,33 +1364,48 @@ const renderDashboardBannerGallery = () => {
        {renderDashboardBannerGallery()}
 
       {/* Dashboard Action Boxes */}
-      <View style={styles.gridContainer}>
-        <View style={styles.row}>
-          {renderGridItem(
-            'APPEAL', 
-            counts.APPEAL, 
-            () => handleGridItemPress('APPEAL')
-          )}
-          {renderGridItem(
-            'APPOINTMENT', 
-            counts.APPOINTMENT, 
-            () => handleGridItemPress('APPOINTMENT')
-          )}
-        </View>
+     
+<View style={styles.gridContainer}>
+  <View style={styles.row}>
+    {renderGridItem(
+      'APPEAL', 
+      counts.APPEAL, 
+      () => handleGridItemPress('APPEAL')
+    )}
+    {renderGridItem(
+      'APPOINTMENT', 
+      counts.APPOINTMENT, 
+      () => handleGridItemPress('APPOINTMENT')
+    )}
+  </View>
 
-        <View style={styles.row}>
-          {renderGridItem(
-            'GRIEVANCE', 
-            counts.GRIEVANCE, 
-            () => handleGridItemPress('GRIEVANCE')
-          )}
-          {renderGridItem(
-            'COMPLAINTS', 
-            counts.COMPLAINTS, 
-            () => handleGridItemPress('COMPLAINTS')
-          )}
-        </View>
-      </View>
+  <View style={styles.row}>
+    {renderGridItem(
+      'GRIEVANCE', 
+      counts.GRIEVANCE, 
+      () => handleGridItemPress('GRIEVANCE')
+    )}
+    {renderGridItem(
+      'COMPLAINTS', 
+      counts.COMPLAINTS, 
+      () => handleGridItemPress('COMPLAINTS')
+    )}
+  </View>
+
+  {/* ✅ ADD THIS NEW ROW */}
+  <View style={styles.row}>
+    {renderGridItem(
+      'FEEDBACK', 
+      counts.FEEDBACK, 
+      () => navigation.navigate('Feedback')
+    )}
+    {renderGridItem(
+      'ISSUES', 
+      counts.ISSUES, 
+      () => navigation.navigate('Feedback')
+    )}
+  </View>
+</View>
 
     
     </ScrollView>

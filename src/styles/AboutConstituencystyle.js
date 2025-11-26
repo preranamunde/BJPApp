@@ -1039,6 +1039,433 @@ acMediaAddText: {
   fontWeight: '600',
   color: '#e16e2b',
 },
+// Add these styles to your existing styles object
+paginationDots: {
+  flexDirection: 'row',
+  justifyContent: 'center',
+  alignItems: 'center',
+  paddingVertical: 10,
+  gap: 8,
+},
+paginationDot: {
+  width: 8,
+  height: 8,
+  borderRadius: 4,
+  backgroundColor: '#d1d5db',
+},
+paginationDotActive: {
+  width: 24,
+  backgroundColor: '#e16e2b',
+},
+// Add to your existing styles
+// ========================================
+// ENHANCED MEMBER IMAGE MODAL STYLES
+// ========================================
+
+// Modal Overlay
+memberImageModalOverlay: {
+  flex: 1,
+  backgroundColor: 'rgba(0, 0, 0, 0.65)',
+  justifyContent: 'center',
+  alignItems: 'center',
+  padding: 16,
+},
+
+// Modal Card Container
+memberImageModalCard: {
+  width: '100%',
+  maxWidth: 550,
+  maxHeight: '90%',
+  backgroundColor: '#ffffff',
+  borderRadius: 20,
+  overflow: 'hidden',
+  elevation: 20,
+  shadowColor: '#000',
+  shadowOffset: { width: 0, height: 10 },
+  shadowOpacity: 0.3,
+  shadowRadius: 20,
+},
+
+// ========== HEADER STYLES ==========
+memberImageModalHeader: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  padding: 20,
+  backgroundColor: '#f8f9fa',
+  borderBottomWidth: 1,
+  borderBottomColor: '#e9ecef',
+},
+
+memberImageHeaderLeft: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  flex: 1,
+},
+
+memberImageIconCircle: {
+  width: 56,
+  height: 56,
+  borderRadius: 28,
+  backgroundColor: '#f3e5f5',
+  justifyContent: 'center',
+  alignItems: 'center',
+  marginRight: 14,
+  borderWidth: 2,
+  borderColor: '#ce93d8',
+},
+
+memberImageTitleSection: {
+  flex: 1,
+},
+
+memberImageModalTitle: {
+  fontSize: 18,
+  fontWeight: 'bold',
+  color: '#2c3e50',
+  marginBottom: 4,
+},
+
+memberImageModalSubtitle: {
+  fontSize: 13,
+  color: '#7f8c8d',
+  fontWeight: '500',
+},
+
+memberImageCloseButton: {
+  width: 40,
+  height: 40,
+  borderRadius: 20,
+  backgroundColor: '#ecf0f1',
+  justifyContent: 'center',
+  alignItems: 'center',
+  marginLeft: 10,
+},
+
+// ========== BODY STYLES ==========
+memberImageModalBody: {
+  maxHeight: 500,
+  backgroundColor: '#ffffff',
+},
+
+// Image Comparison Container
+memberImageComparisonContainer: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  padding: 20,
+  backgroundColor: '#fafbfc',
+},
+
+memberImageCard: {
+  flex: 1,
+  backgroundColor: '#ffffff',
+  borderRadius: 12,
+  padding: 12,
+  elevation: 2,
+  shadowColor: '#000',
+  shadowOffset: { width: 0, height: 2 },
+  shadowOpacity: 0.1,
+  shadowRadius: 4,
+  borderWidth: 1,
+  borderColor: '#e9ecef',
+},
+
+memberImageCardHeader: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  marginBottom: 12,
+},
+
+memberImageCardTitle: {
+  fontSize: 12,
+  fontWeight: '700',
+  color: '#95a5a6',
+  textTransform: 'uppercase',
+  letterSpacing: 0.5,
+  marginLeft: 6,
+},
+
+memberImagePreviewWrapper: {
+  width: '100%',
+  aspectRatio: 1,
+  borderRadius: 8,
+  overflow: 'hidden',
+  backgroundColor: '#f8f9fa',
+  position: 'relative',
+  borderWidth: 2,
+  borderColor: '#e9ecef',
+},
+
+memberImagePreview: {
+  width: '100%',
+  height: '100%',
+},
+
+// Badge Styles
+memberImageActiveBadge: {
+  position: 'absolute',
+  bottom: 8,
+  left: 8,
+  right: 8,
+  backgroundColor: 'rgba(255, 255, 255, 0.95)',
+  borderRadius: 6,
+  paddingVertical: 4,
+  paddingHorizontal: 8,
+  flexDirection: 'row',
+  alignItems: 'center',
+  justifyContent: 'center',
+  elevation: 2,
+  shadowColor: '#000',
+  shadowOffset: { width: 0, height: 1 },
+  shadowOpacity: 0.2,
+  shadowRadius: 2,
+},
+
+memberImageBadgeText: {
+  fontSize: 11,
+  fontWeight: '700',
+  color: '#27ae60',
+  marginLeft: 4,
+},
+
+memberImageNewBadge: {
+  position: 'absolute',
+  top: 8,
+  right: 8,
+  backgroundColor: '#9b59b6',
+  borderRadius: 6,
+  paddingVertical: 4,
+  paddingHorizontal: 8,
+  flexDirection: 'row',
+  alignItems: 'center',
+  elevation: 3,
+  shadowColor: '#9b59b6',
+  shadowOffset: { width: 0, height: 2 },
+  shadowOpacity: 0.4,
+  shadowRadius: 3,
+},
+
+memberImageNewBadgeText: {
+  fontSize: 11,
+  fontWeight: 'bold',
+  color: '#ffffff',
+  marginLeft: 4,
+  letterSpacing: 0.5,
+},
+
+// Arrow Separator
+memberImageArrowSeparator: {
+  width: 50,
+  alignItems: 'center',
+  justifyContent: 'center',
+},
+
+memberImageArrowCircle: {
+  width: 36,
+  height: 36,
+  borderRadius: 18,
+  backgroundColor: '#f3e5f5',
+  justifyContent: 'center',
+  alignItems: 'center',
+  borderWidth: 2,
+  borderColor: '#ce93d8',
+},
+
+// Placeholder Styles
+memberImagePlaceholder: {
+  flex: 1,
+  justifyContent: 'center',
+  alignItems: 'center',
+  backgroundColor: '#fafbfc',
+  padding: 16,
+},
+
+memberImagePlaceholderTitle: {
+  fontSize: 14,
+  color: '#9b59b6',
+  fontWeight: '700',
+  marginTop: 12,
+  textAlign: 'center',
+},
+
+memberImagePlaceholderSubtitle: {
+  fontSize: 11,
+  color: '#95a5a6',
+  marginTop: 4,
+  textAlign: 'center',
+},
+
+// ========== INFO CARD STYLES ==========
+memberImageInfoCard: {
+  margin: 16,
+  marginTop: 0,
+  backgroundColor: '#e3f2fd',
+  borderRadius: 12,
+  padding: 14,
+  borderLeftWidth: 4,
+  borderLeftColor: '#3498db',
+},
+
+memberImageInfoHeader: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  marginBottom: 10,
+},
+
+memberImageInfoTitle: {
+  fontSize: 14,
+  fontWeight: '700',
+  color: '#2c3e50',
+  marginLeft: 8,
+},
+
+memberImageInfoRow: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  marginTop: 6,
+  paddingLeft: 4,
+},
+
+memberImageInfoText: {
+  fontSize: 12,
+  color: '#5a6c7d',
+  marginLeft: 8,
+  flex: 1,
+},
+
+// ========== GUIDELINES CARD STYLES ==========
+memberImageGuidelinesCard: {
+  margin: 16,
+  marginTop: 0,
+  backgroundColor: '#fff8e1',
+  borderRadius: 12,
+  padding: 14,
+  borderLeftWidth: 4,
+  borderLeftColor: '#f39c12',
+},
+
+memberImageGuidelinesHeader: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  marginBottom: 12,
+},
+
+memberImageGuidelinesTitle: {
+  fontSize: 14,
+  fontWeight: '700',
+  color: '#2c3e50',
+  marginLeft: 8,
+},
+
+memberImageGuidelinesList: {
+  paddingLeft: 4,
+},
+
+memberImageGuidelineItem: {
+  flexDirection: 'row',
+  alignItems: 'flex-start',
+  marginTop: 8,
+},
+
+memberImageGuidelineDot: {
+  width: 6,
+  height: 6,
+  borderRadius: 3,
+  backgroundColor: '#f39c12',
+  marginTop: 6,
+  marginRight: 10,
+},
+
+memberImageGuidelineText: {
+  fontSize: 12,
+  color: '#5a6c7d',
+  flex: 1,
+  lineHeight: 18,
+},
+
+// ========== FOOTER STYLES ==========
+memberImageModalFooter: {
+  flexDirection: 'row',
+  padding: 16,
+  gap: 12,
+  backgroundColor: '#f8f9fa',
+  borderTopWidth: 1,
+  borderTopColor: '#e9ecef',
+},
+
+memberImageCancelButton: {
+  flex: 1,
+  flexDirection: 'row',
+  alignItems: 'center',
+  justifyContent: 'center',
+  paddingVertical: 14,
+  borderRadius: 10,
+  backgroundColor: '#ecf0f1',
+  borderWidth: 1,
+  borderColor: '#bdc3c7',
+},
+
+memberImageCancelButtonText: {
+  fontSize: 15,
+  fontWeight: '700',
+  color: '#7f8c8d',
+  marginLeft: 8,
+},
+
+memberImageSaveButton: {
+  flex: 1,
+  flexDirection: 'row',
+  alignItems: 'center',
+  justifyContent: 'center',
+  paddingVertical: 14,
+  borderRadius: 10,
+  backgroundColor: '#9b59b6',
+  elevation: 3,
+  shadowColor: '#9b59b6',
+  shadowOffset: { width: 0, height: 3 },
+  shadowOpacity: 0.3,
+  shadowRadius: 4,
+},
+
+memberImageSaveButtonDisabled: {
+  backgroundColor: '#bdc3c7',
+  elevation: 0,
+  shadowOpacity: 0,
+},
+
+memberImageSaveButtonText: {
+  fontSize: 15,
+  fontWeight: 'bold',
+  color: '#ffffff',
+  marginLeft: 8,
+},
+
+// ========== MEMBER IMAGE CONTAINER & EDIT BUTTON ==========
+memberImageContainer: {
+  position: 'relative',
+  width: 50,
+  height: 50,
+  marginBottom: 8,
+},
+
+memberImageEditButton: {
+  position: 'absolute',
+  bottom: 0,
+  right: 0,
+  backgroundColor: '#9b59b6',
+  width: 24,
+  height: 24,
+  borderRadius: 12,
+  justifyContent: 'center',
+  alignItems: 'center',
+  borderWidth: 2,
+  borderColor: '#fff',
+  elevation: 4,
+  shadowColor: '#9b59b6',
+  shadowOffset: { width: 0, height: 2 },
+  shadowOpacity: 0.4,
+  shadowRadius: 4,
+},
 
 });
 

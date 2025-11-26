@@ -673,23 +673,11 @@ const CustomDrawer = ({ navigation, handleLogout, handleEditProfile, handleMyPro
 
         <View style={styles.divider} />
 
-        <TouchableOpacity
-          style={styles.drawerItem}
-          onPress={() => navigation.navigate('ViewProfile')}
-        >
-          <Icon name="account-circle" size={24} color="#e16e2b" />
-          <Text style={styles.drawerItemText}>View Profile</Text>
-        </TouchableOpacity>
+        
 
         {isUserLoggedIn && (
           <>
-            <TouchableOpacity
-              style={styles.drawerItem}
-              onPress={() => navigation.navigate('Registration', { isEditMode: true })}
-            >
-              <Icon name="edit" size={24} color="#e16e2b" />
-              <Text style={styles.drawerItemText}>Edit Profile</Text>
-            </TouchableOpacity>
+            
 
             <TouchableOpacity
               style={styles.drawerItem}

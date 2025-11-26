@@ -43,40 +43,69 @@ const FeedbackAttachmentImage = React.memo(({
       try {
         let mediaUrl = attachmentUrl;
         
+        // Fix localhost URLs
         if (mediaUrl.includes('localhost:5000') || mediaUrl.includes('localhost:')) {
           const baseUrl = await ConfigService.getBaseUrl();
           mediaUrl = mediaUrl.replace(/http:\/\/localhost:\d+/, baseUrl);
           console.log('🔄 Fixed localhost URL:', mediaUrl);
         }
         
+        // Fix ngrok URLs
         if (mediaUrl.includes('ngrok-free.app:')) {
           mediaUrl = mediaUrl.replace(/:(\d+)\//, '/');
         }
         
         console.log('📥 Loading feedback image from:', mediaUrl);
         
-        const appKey = await EncryptedStorage.getItem('APP_KEY');
-        const accessToken = await EncryptedStorage.getItem('accessToken');
+        // ✅ CHECK MULTIPLE STORAGE LOCATIONS (same as handleSaveFeedback)
+        const accessToken = await AsyncStorage.getItem('userAccessToken') ||
+                           await AsyncStorage.getItem('jwt_token') ||
+                           await EncryptedStorage.getItem('ACCESS_TOKEN') ||
+                           await EncryptedStorage.getItem('accessToken');
         
+        const appKey = await EncryptedStorage.getItem('APP_KEY');
+        
+        console.log('🔐 Auth check for image:', {
+          hasToken: !!accessToken,
+          hasAppKey: !!appKey,
+        });
+
+        if (!appKey || !accessToken) {
+          console.error('❌ Missing authentication credentials for image');
+          if (mounted) {
+            setImageError(true);
+            setImageLoading(false);
+          }
+          return;
+        }
+
         const response = await fetch(mediaUrl, {
           method: 'GET',
           headers: {
-            'x-app-key': appKey || '',
-            'Authorization': `Bearer ${accessToken || ''}`,
+            'x-app-key': appKey,
+            'Authorization': `Bearer ${accessToken}`,
             'ngrok-skip-browser-warning': 'true',
             'Accept': 'image/*',
           },
         });
+
+        console.log('📥 Image fetch response status:', response.status);
 
         if (!response.ok) {
           throw new Error(`HTTP ${response.status}: ${response.statusText}`);
         }
 
         const blob = await response.blob();
+        
+        // ✅ Check if blob is valid
+        if (!blob || blob.size === 0) {
+          throw new Error('Empty or invalid image data');
+        }
+
         const reader = new FileReader();
         
         reader.onloadend = () => {
-          if (mounted) {
+          if (mounted && reader.result) {
             setImageUri(reader.result);
             setImageLoading(false);
             console.log('✅ Feedback image loaded successfully');
@@ -94,7 +123,11 @@ const FeedbackAttachmentImage = React.memo(({
         reader.readAsDataURL(blob);
         
       } catch (error) {
-        console.error('❌ Error loading feedback image:', error);
+        console.error('❌ Error loading feedback image:', {
+          message: error.message,
+          url: attachmentUrl,
+          error: error
+        });
         if (mounted) {
           setImageError(true);
           setImageLoading(false);
@@ -113,6 +146,7 @@ const FeedbackAttachmentImage = React.memo(({
     return (
       <View style={styles.attachmentImageContainer}>
         <ActivityIndicator size="small" color="#e16e2b" />
+        <Text style={styles.imageLoadingText}>Loading image...</Text>
       </View>
     );
   }
@@ -121,6 +155,7 @@ const FeedbackAttachmentImage = React.memo(({
     return (
       <View style={styles.attachmentImageContainer}>
         <Icon name="broken-image" size={24} color="#bdc3c7" />
+        <Text style={styles.imageErrorText}>Image unavailable</Text>
       </View>
     );
   }
@@ -136,6 +171,10 @@ const FeedbackAttachmentImage = React.memo(({
         source={{ uri: imageUri }}
         style={styles.attachmentImage} 
         resizeMode="cover"
+        onError={(error) => {
+          console.error('❌ Image rendering error:', error.nativeEvent?.error);
+          setImageError(true);
+        }}
       />
     </TouchableOpacity>
   );
@@ -569,18 +608,34 @@ const fetchUserFeedbacksByStatus = async (filterType, status) => {
 };
 
 // Filter items based on search query
+// Filter items based on search query
 useEffect(() => {
   if (!searchQuery.trim()) {
     setFilteredItems(submittedItems);
   } else {
+    const query = searchQuery.toLowerCase();
     const filtered = submittedItems.filter(item => 
-      item.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      item.subject.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      item.description.toLowerCase().includes(searchQuery.toLowerCase())
+      item.id.toLowerCase().includes(query) ||
+      item.subject.toLowerCase().includes(query) ||
+      item.description.toLowerCase().includes(query) ||
+      (item.actionComments && item.actionComments.toLowerCase().includes(query))
     );
     setFilteredItems(filtered);
+    console.log(`🔍 Filtered ${filtered.length} items from ${submittedItems.length} total`);
   }
 }, [searchQuery, submittedItems]);
+
+// Add this after line 237 (after the search filter useEffect)
+// Initial load for admin when component mounts
+useEffect(() => {
+  if (isAdmin && ownerMobile && userEmail && !loading) {
+    // Set default tab if not set
+    if (!adminActiveTab) {
+      setAdminActiveTab('feedback');
+      setSelectedStatus('pending');
+    }
+  }
+}, [isAdmin, ownerMobile, userEmail, loading]);
 
   const handleEditFeedback = (item) => {
     console.log('✏️ === EDITING FEEDBACK ===');
@@ -992,147 +1047,216 @@ const renderAdminStatusFilter = () => {
 };
 
   // Render View Submissions (PREVIEW)
-  const renderViewSubmissions = () => (
-  <View style={styles.viewContainer}>
-    {isAdmin && renderAdminStatusFilter()}
-    <View style={styles.viewHeader}>
-      <View>
-        <Text style={styles.viewTitle}>
-          {adminActiveTab === 'feedback' ? 'All Feedback' : 'All Issues'}
-        </Text>
-        <Text style={styles.viewSubtitle}>
-          View and manage {adminActiveTab}
-        </Text>
-      </View>
-      <TouchableOpacity 
-        onPress={() => fetchUserFeedbacks(adminActiveTab)}
-        style={styles.refreshButton}
-        disabled={fetchingSubmissions}
-      >
-        <Icon 
-          name="refresh" 
-          size={24} 
-          color={fetchingSubmissions ? '#bdc3c7' : '#e16e2b'} 
-        />
-      </TouchableOpacity>
-    </View>
-
-    {fetchingSubmissions ? (
-      <View style={styles.fetchingContainer}>
-        <ActivityIndicator size="large" color="#e16e2b" />
-        <Text style={styles.fetchingText}>Loading submissions...</Text>
-      </View>
-    ) : submittedItems.length === 0 ? (
-      <View style={styles.emptyContainer}>
-        <Icon 
-          name={adminActiveTab === 'feedback' ? 'feedback' : 'report-problem'} 
-          size={60} 
-          color="#bdc3c7" 
-        />
-        <Text style={styles.emptyText}>No submissions yet</Text>
-        <Text style={styles.emptySubtext}>
-          No {adminActiveTab} have been submitted yet
-        </Text>
-      </View>
-    ) : (
-      <ScrollView showsVerticalScrollIndicator={false}>
-        {submittedItems.map((item) => (
-          <TouchableOpacity 
-            key={item.id} 
-            style={styles.submissionCard}
-            activeOpacity={0.8}
-            onPress={() => {
-              navigation.navigate('FeedbackDetails', {
-                feedbackId: item.id,
-                ownerMobile: ownerMobile,
-                userEmail: userEmail,
-              });
-            }}
-          >
-            {isAdmin && (
-              <TouchableOpacity 
-                style={styles.editIconButton}
-                onPress={(e) => {
-                  e.stopPropagation();
-                  handleEditFeedback(item);
-                }}
-                activeOpacity={0.7}
-              >
-                <Icon name="edit" size={20} color="#e16e2b" />
-              </TouchableOpacity>
-            )}
-
-            <View style={styles.submissionHeader}>
-              <View style={styles.submissionTypeContainer}>
-                <Icon
-                  name={item.type === 'feedback' ? 'feedback' : 'report-problem'}
-                  size={20}
-                  color="#e16e2b"
-                />
-                <Text style={styles.submissionType}>
-                  {item.type === 'feedback' ? 'Feedback' : 'Issue'}
-                </Text>
-              </View>
-              <View style={[
-                styles.statusBadge,
-                item.status === 'Resolved' && styles.statusResolved,
-                item.status === 'In Progress' && styles.statusInProgress,
-                item.status === 'Reported' && styles.statusReported,
-              ]}>
-                <Text style={styles.statusText}>{item.status}</Text>
-              </View>
-            </View>
-
-            <Text style={styles.submissionSubject}>{item.subject}</Text>
-            <Text style={styles.submissionDescription} numberOfLines={2}>
-              {item.description}
+const renderViewSubmissions = () => {
+  // Show loading state while fetching
+  if (fetchingSubmissions) {
+    return (
+      <View style={styles.viewContainer}>
+        {isAdmin && renderAdminStatusFilter()}
+        <View style={styles.viewHeader}>
+          <View>
+            <Text style={styles.viewTitle}>
+              {adminActiveTab === 'feedback' ? 'All Feedback' : 'All Issues'}
             </Text>
+            <Text style={styles.viewSubtitle}>
+              View and manage {adminActiveTab}
+            </Text>
+          </View>
+        </View>
+        <View style={styles.fetchingContainer}>
+          <ActivityIndicator size="large" color="#e16e2b" />
+          <Text style={styles.fetchingText}>Loading submissions...</Text>
+        </View>
+      </View>
+    );
+  }
 
-            {item.actionComments && (
-              <View style={styles.actionCommentsContainer}>
-                <Icon name="comment" size={16} color="#27ae60" />
-                <Text style={styles.actionComments} numberOfLines={2}>
-                  {item.actionComments}
-                </Text>
-              </View>
-            )}
+  return (
+    <View style={styles.viewContainer}>
+      {isAdmin && renderAdminStatusFilter()}
+      
+      <View style={styles.viewHeader}>
+        <View>
+          <Text style={styles.viewTitle}>
+            {adminActiveTab === 'feedback' ? 'All Feedback' : 'All Issues'}
+          </Text>
+          <Text style={styles.viewSubtitle}>
+            View and manage {adminActiveTab}
+          </Text>
+        </View>
+        <TouchableOpacity 
+          onPress={() => {
+            console.log('🔄 Manual refresh triggered');
+            fetchUserFeedbacksByStatus(adminActiveTab, selectedStatus);
+          }}
+          style={styles.refreshButton}
+          disabled={fetchingSubmissions}
+        >
+          <Icon 
+            name="refresh" 
+            size={24} 
+            color={fetchingSubmissions ? '#bdc3c7' : '#e16e2b'} 
+          />
+        </TouchableOpacity>
+      </View>
 
-            {item.attachment && (
-              <View style={styles.attachmentContainer}>
-                <Text style={styles.attachmentLabel}>Attachment:</Text>
-                <FeedbackAttachmentImage
-                  attachmentUrl={item.attachment}
-                  memberId={ownerMobile}
-                />
-              </View>
-            )}
-
-            <View style={styles.submissionFooter}>
-              <View style={styles.dateContainer}>
-                <Icon name="calendar-today" size={14} color="#7f8c8d" />
-                <Text style={styles.submissionDate}>{item.date}</Text>
-              </View>
-            </View>
+      {/* Search Input */}
+      <View style={styles.searchContainer}>
+        <Icon name="search" size={20} color="#7f8c8d" style={styles.searchIcon} />
+        <TextInput
+          style={styles.searchInput}
+          placeholder="Search by Case No, Subject, or Description..."
+          placeholderTextColor="#999"
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+        />
+        {searchQuery.length > 0 && (
+          <TouchableOpacity 
+            onPress={() => setSearchQuery('')}
+            style={styles.clearSearchButton}
+          >
+            <Icon name="close" size={20} color="#7f8c8d" />
           </TouchableOpacity>
-        ))}
-      </ScrollView>
-    )}
+        )}
+      </View>
 
-    {isAdmin && (
-      <EditFeedbackModal
-        visible={editModalVisible}
-        item={selectedFeedback}
-        ownerMobile={ownerMobile}
-        userEmail={userEmail}
-        onClose={() => {
-          setEditModalVisible(false);
-          setSelectedFeedback(null);
-        }}
-        onSave={handleSaveFeedback}
-      />
-    )}
-  </View>
-);
+      {/* Data Info Bar */}
+      {submittedItems.length > 0 && (
+        <View style={styles.dataInfoBar}>
+          <Text style={styles.dataInfoText}>
+            Showing {filteredItems.length} of {submittedItems.length} items
+            {searchQuery.trim() && ` (filtered by "${searchQuery}")`}
+          </Text>
+        </View>
+      )}
+
+      {/* Empty States */}
+      {submittedItems.length === 0 ? (
+        <View style={styles.emptyContainer}>
+          <Icon 
+            name={adminActiveTab === 'feedback' ? 'feedback' : 'report-problem'} 
+            size={60} 
+            color="#bdc3c7" 
+          />
+          <Text style={styles.emptyText}>No submissions yet</Text>
+          <Text style={styles.emptySubtext}>
+            No {adminActiveTab} have been submitted with status: {selectedStatus}
+          </Text>
+        </View>
+      ) : filteredItems.length === 0 ? (
+        <View style={styles.emptyContainer}>
+          <Icon name="search-off" size={60} color="#bdc3c7" />
+          <Text style={styles.emptyText}>No results found</Text>
+          <Text style={styles.emptySubtext}>
+            No matches for "{searchQuery}" in {submittedItems.length} items
+          </Text>
+          <TouchableOpacity 
+            style={styles.clearSearchButtonLarge}
+            onPress={() => setSearchQuery('')}
+          >
+            <Text style={styles.clearSearchButtonLargeText}>Clear Search</Text>
+          </TouchableOpacity>
+        </View>
+      ) : (
+        <ScrollView showsVerticalScrollIndicator={false}>
+          {filteredItems.map((item) => (
+            <TouchableOpacity 
+              key={item.id} 
+              style={styles.submissionCard}
+              activeOpacity={0.8}
+              onPress={() => {
+                navigation.navigate('FeedbackDetails', {
+                  feedbackId: item.id,
+                  ownerMobile: ownerMobile,
+                  userEmail: userEmail,
+                });
+              }}
+            >
+              {isAdmin && (
+                <TouchableOpacity 
+                  style={styles.editIconButton}
+                  onPress={(e) => {
+                    e.stopPropagation();
+                    handleEditFeedback(item);
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <Icon name="edit" size={20} color="#e16e2b" />
+                </TouchableOpacity>
+              )}
+
+              <View style={styles.submissionHeader}>
+                <View style={styles.submissionTypeContainer}>
+                  <Icon
+                    name={item.type === 'feedback' ? 'feedback' : 'report-problem'}
+                    size={20}
+                    color="#e16e2b"
+                  />
+                  <Text style={styles.submissionType}>
+                    {item.type === 'feedback' ? 'Feedback' : 'Issue'}
+                  </Text>
+                </View>
+                <View style={[
+                  styles.statusBadge,
+                  item.status === 'Resolved' && styles.statusResolved,
+                  item.status === 'In Progress' && styles.statusInProgress,
+                  item.status === 'Reported' && styles.statusReported,
+                ]}>
+                  <Text style={styles.statusText}>{item.status}</Text>
+                </View>
+              </View>
+
+              <Text style={styles.submissionSubject}>{item.subject}</Text>
+              <Text style={styles.submissionDescription} numberOfLines={2}>
+                {item.description}
+              </Text>
+
+              {item.actionComments && (
+                <View style={styles.actionCommentsContainer}>
+                  <Icon name="comment" size={16} color="#27ae60" />
+                  <Text style={styles.actionComments} numberOfLines={2}>
+                    {item.actionComments}
+                  </Text>
+                </View>
+              )}
+
+              {item.attachment && (
+                <View style={styles.attachmentContainer}>
+                  <Text style={styles.attachmentLabel}>Attachment:</Text>
+                  <FeedbackAttachmentImage
+                    attachmentUrl={item.attachment}
+                    memberId={ownerMobile}
+                  />
+                </View>
+              )}
+
+              <View style={styles.submissionFooter}>
+                <View style={styles.dateContainer}>
+                  <Icon name="calendar-today" size={14} color="#7f8c8d" />
+                  <Text style={styles.submissionDate}>{item.date}</Text>
+                </View>
+              </View>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      )}
+
+      {isAdmin && (
+        <EditFeedbackModal
+          visible={editModalVisible}
+          item={selectedFeedback}
+          ownerMobile={ownerMobile}
+          userEmail={userEmail}
+          onClose={() => {
+            setEditModalVisible(false);
+            setSelectedFeedback(null);
+          }}
+          onSave={handleSaveFeedback}
+        />
+      )}
+    </View>
+  );
+};
 
   // Render List View (LIST)
   // Render List View (LIST)
@@ -1173,7 +1297,7 @@ const renderListView = () => {
         </Text>
       </View>
       
-      {/* ✅ ADD SEARCH INPUT */}
+      {/* Search Input */}
       <View style={styles.searchContainer}>
         <Icon name="search" size={20} color="#7f8c8d" style={styles.searchIcon} />
         <TextInput
@@ -1211,7 +1335,9 @@ const renderListView = () => {
             <TouchableOpacity 
               key={`list-${item.id}-${index}`} 
               style={styles.listItemCard}
+              activeOpacity={0.7}
               onPress={() => {
+                // ✅ NAVIGATE TO DETAILS SCREEN
                 navigation.navigate('FeedbackDetails', {
                   feedbackId: item.id,
                   ownerMobile: ownerMobile,
@@ -1220,7 +1346,15 @@ const renderListView = () => {
               }}
             >
               <View style={styles.listItemHeader}>
-                <Text style={styles.listRegnNo}>{item.id}</Text>
+                <View style={styles.listItemLeft}>
+                  <Icon
+                    name={item.type === 'feedback' ? 'feedback' : 'report-problem'}
+                    size={18}
+                    color="#e16e2b"
+                    style={styles.listItemIcon}
+                  />
+                  <Text style={styles.listRegnNo}>{item.id}</Text>
+                </View>
                 <Text style={[
                   styles.listStatus,
                   item.status === 'Resolved' && styles.statusResolved,
@@ -1229,9 +1363,34 @@ const renderListView = () => {
                   {item.status.toUpperCase()}
                 </Text>
               </View>
-              <Text style={styles.listApplicantName}>{item.subject}</Text>
-              <Text style={styles.listMobile} numberOfLines={1}>{item.description}</Text>
-              <Text style={styles.listDate}>{item.date}</Text>
+              
+              <Text style={styles.listApplicantName} numberOfLines={1}>
+                {item.subject}
+              </Text>
+              
+              <Text style={styles.listMobile} numberOfLines={2}>
+                {item.description}
+              </Text>
+              
+              {item.actionComments && (
+                <View style={styles.listActionComments}>
+                  <Icon name="comment" size={14} color="#27ae60" />
+                  <Text style={styles.listActionText} numberOfLines={1}>
+                    {item.actionComments}
+                  </Text>
+                </View>
+              )}
+              
+              <View style={styles.listItemFooter}>
+                <View style={styles.listDateContainer}>
+                  <Icon name="calendar-today" size={12} color="#7f8c8d" />
+                  <Text style={styles.listDate}>{item.date}</Text>
+                </View>
+                <View style={styles.viewDetailsButtonSmall}>
+                  <Text style={styles.viewDetailsTextSmall}>Details</Text>
+                  <Icon name="arrow-forward" size={12} color="#e16e2b" />
+                </View>
+              </View>
             </TouchableOpacity>
           ))}
         </ScrollView>
@@ -1294,16 +1453,16 @@ const renderListView = () => {
 
       {/* ✅ ADD NEW VIEW BUTTON */}
       <TouchableOpacity
-        style={[
-          styles.typeBox,
-          selectedType === 'view' && styles.typeBoxSelected,
-        ]}
-        onPress={() => {
-          setSelectedType('view');
-          // Auto-fetch user's submissions when View is selected
-          fetchUserFeedbacks(null); // null = fetch all types
-        }}
-      >
+  style={[
+    styles.typeBox,
+    selectedType === 'view' && styles.typeBoxSelected,
+  ]}
+  onPress={() => {
+    setSelectedType('view');
+    // ✅ CHANGE THIS LINE
+    fetchUserFeedbacks('feedback'); // Fetch only feedback for users
+  }}
+>
         <Icon
           name="visibility"
           size={28}
@@ -1329,122 +1488,150 @@ const renderListView = () => {
   }
 
   // ✅ IF VIEW TYPE, SHOW USER'S SUBMISSIONS
-  if (selectedType === 'view') {
-    return (
-      <View style={styles.viewContainer}>
-        <View style={styles.viewHeader}>
-          <View>
-            <Text style={styles.viewTitle}>My Submissions</Text>
-            <Text style={styles.viewSubtitle}>
-              View your feedback and issues
-            </Text>
-          </View>
-          <TouchableOpacity 
-            onPress={() => fetchUserFeedbacks(null)}
-            style={styles.refreshButton}
-            disabled={fetchingSubmissions}
-          >
-            <Icon 
-              name="refresh" 
-              size={24} 
-              color={fetchingSubmissions ? '#bdc3c7' : '#e16e2b'} 
-            />
-          </TouchableOpacity>
+if (selectedType === 'view') {
+  return (
+    <View style={styles.viewContainer}>
+      <View style={styles.viewHeader}>
+        <View>
+          <Text style={styles.viewTitle}>My Submissions</Text>
+          <Text style={styles.viewSubtitle}>
+            View your feedback and issues
+          </Text>
         </View>
+        <TouchableOpacity 
+          onPress={() => fetchUserFeedbacks('feedback')}
+          style={styles.refreshButton}
+          disabled={fetchingSubmissions}
+        >
+          <Icon 
+            name="refresh" 
+            size={24} 
+            color={fetchingSubmissions ? '#bdc3c7' : '#e16e2b'} 
+          />
+        </TouchableOpacity>
+      </View>
 
-        {fetchingSubmissions ? (
-          <View style={styles.fetchingContainer}>
-            <ActivityIndicator size="large" color="#e16e2b" />
-            <Text style={styles.fetchingText}>Loading submissions...</Text>
-          </View>
-        ) : submittedItems.length === 0 ? (
-          <View style={styles.emptyContainer}>
-            <Icon name="inbox" size={60} color="#bdc3c7" />
-            <Text style={styles.emptyText}>No submissions yet</Text>
-            <Text style={styles.emptySubtext}>
-              You haven't submitted any feedback or issues yet
-            </Text>
-          </View>
-        ) : (
-          <ScrollView 
-            showsVerticalScrollIndicator={false}
-            style={{ maxHeight: 500 }}
+      {/* ✅ ADD THIS SEARCH INPUT */}
+      <View style={styles.searchContainer}>
+        <Icon name="search" size={20} color="#7f8c8d" style={styles.searchIcon} />
+        <TextInput
+          style={styles.searchInput}
+          placeholder="Search by Case No, Subject, or Description..."
+          placeholderTextColor="#999"
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+        />
+        {searchQuery.length > 0 && (
+          <TouchableOpacity 
+            onPress={() => setSearchQuery('')}
+            style={styles.clearSearchButton}
           >
-            {submittedItems.map((item) => (
-              <TouchableOpacity 
-                key={item.id} 
-                style={styles.submissionCard}
-                activeOpacity={0.8}
-                onPress={() => {
-                  navigation.navigate('FeedbackDetails', {
-                    feedbackId: item.id,
-                    ownerMobile: ownerMobile,
-                    userEmail: userEmail,
-                  });
-                }}
-              >
-                <View style={styles.submissionHeader}>
-                  <View style={styles.submissionTypeContainer}>
-                    <Icon
-                      name={item.type === 'feedback' ? 'feedback' : 'report-problem'}
-                      size={20}
-                      color="#e16e2b"
-                    />
-                    <Text style={styles.submissionType}>
-                      {item.type === 'feedback' ? 'Feedback' : 'Issue'}
-                    </Text>
-                  </View>
-                  <View style={[
-                    styles.statusBadge,
-                    item.status === 'Resolved' && styles.statusResolved,
-                    item.status === 'In Progress' && styles.statusInProgress,
-                    item.status === 'Reported' && styles.statusReported,
-                  ]}>
-                    <Text style={styles.statusText}>{item.status}</Text>
-                  </View>
-                </View>
-
-                <Text style={styles.submissionSubject}>{item.subject}</Text>
-                <Text style={styles.submissionDescription} numberOfLines={2}>
-                  {item.description}
-                </Text>
-
-                {item.actionComments && (
-                  <View style={styles.actionCommentsContainer}>
-                    <Icon name="comment" size={16} color="#27ae60" />
-                    <Text style={styles.actionComments} numberOfLines={2}>
-                      {item.actionComments}
-                    </Text>
-                  </View>
-                )}
-
-                {item.attachment && (
-                  <View style={styles.attachmentContainer}>
-                    <Text style={styles.attachmentLabel}>Attachment:</Text>
-                    <FeedbackAttachmentImage
-                      attachmentUrl={item.attachment}
-                      memberId={ownerMobile}
-                    />
-                  </View>
-                )}
-
-                <View style={styles.submissionFooter}>
-                  <View style={styles.dateContainer}>
-                    <Icon name="calendar-today" size={14} color="#7f8c8d" />
-                    <Text style={styles.submissionDate}>{item.date}</Text>
-                  </View>
-                  <View style={styles.viewDetailsButton}>
-                    <Text style={styles.viewDetailsText}>View Details</Text>
-                    <Icon name="arrow-forward" size={14} color="#e16e2b" />
-                  </View>
-                </View>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
+            <Icon name="close" size={20} color="#7f8c8d" />
+          </TouchableOpacity>
         )}
       </View>
-    );
-  }
+
+      {fetchingSubmissions ? (
+        <View style={styles.fetchingContainer}>
+          <ActivityIndicator size="large" color="#e16e2b" />
+          <Text style={styles.fetchingText}>Loading submissions...</Text>
+        </View>
+      ) : filteredItems.length === 0 && searchQuery.length > 0 ? (
+        <View style={styles.emptyContainer}>
+          <Icon name="search-off" size={60} color="#bdc3c7" />
+          <Text style={styles.emptyText}>No results found</Text>
+          <Text style={styles.emptySubtext}>
+            Try a different search term
+          </Text>
+        </View>
+      ) : submittedItems.length === 0 ? (
+        <View style={styles.emptyContainer}>
+          <Icon name="inbox" size={60} color="#bdc3c7" />
+          <Text style={styles.emptyText}>No submissions yet</Text>
+          <Text style={styles.emptySubtext}>
+            You haven't submitted any feedback or issues yet
+          </Text>
+        </View>
+      ) : (
+        <ScrollView 
+          showsVerticalScrollIndicator={false}
+          nestedScrollEnabled={true}
+        >
+       {filteredItems.map((item) => (
+  <TouchableOpacity 
+    key={item.id} 
+    style={styles.submissionCard}
+    activeOpacity={0.8}
+    onPress={() => {
+      navigation.navigate('FeedbackDetails', {
+        feedbackId: item.id,
+        ownerMobile: ownerMobile,
+        userEmail: userEmail,
+      });
+    }}
+  >
+    <View style={styles.submissionHeader}>
+      <View style={styles.submissionTypeContainer}>
+        <Icon
+          name={item.type === 'feedback' ? 'feedback' : 'report-problem'}
+          size={20}
+          color="#e16e2b"
+        />
+        <Text style={styles.submissionType}>
+          {item.type === 'feedback' ? 'Feedback' : 'Issue'}
+        </Text>
+      </View>
+      <View style={[
+        styles.statusBadge,
+        item.status === 'Resolved' && styles.statusResolved,
+        item.status === 'In Progress' && styles.statusInProgress,
+        item.status === 'Reported' && styles.statusReported,
+      ]}>
+        <Text style={styles.statusText}>{item.status}</Text>
+      </View>
+    </View>
+
+    <Text style={styles.submissionSubject}>{item.subject}</Text>
+    <Text style={styles.submissionDescription} numberOfLines={2}>
+      {item.description}
+    </Text>
+
+    {item.actionComments && (
+      <View style={styles.actionCommentsContainer}>
+        <Icon name="comment" size={16} color="#27ae60" />
+        <Text style={styles.actionComments} numberOfLines={2}>
+          {item.actionComments}
+        </Text>
+      </View>
+    )}
+
+    {item.attachment && (
+      <View style={styles.attachmentContainer}>
+        <Text style={styles.attachmentLabel}>Attachment:</Text>
+        <FeedbackAttachmentImage
+          attachmentUrl={item.attachment}
+          memberId={ownerMobile}
+        />
+      </View>
+    )}
+
+    <View style={styles.submissionFooter}>
+      <View style={styles.dateContainer}>
+        <Icon name="calendar-today" size={14} color="#7f8c8d" />
+        <Text style={styles.submissionDate}>{item.date}</Text>
+      </View>
+      <View style={styles.viewDetailsButton}>
+        <Text style={styles.viewDetailsText}>View Details</Text>
+        <Icon name="arrow-forward" size={14} color="#e16e2b" />
+      </View>
+    </View>
+  </TouchableOpacity>
+))}
+        </ScrollView>
+      )}
+    </View>
+  );
+}
 
   // ✅ ORIGINAL FORM CODE FOR FEEDBACK/COMPLAINT
   if (!selectedType) return null;
@@ -2432,6 +2619,69 @@ viewDetailsText: {
   fontSize: 12,
   color: '#e16e2b',
   fontWeight: '600',
+},
+// Add these new styles to your existing styles object
+listItemLeft: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  gap: 8,
+},
+listItemIcon: {
+  marginRight: 4,
+},
+listActionComments: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  gap: 6,
+  backgroundColor: '#e8f8f5',
+  padding: 8,
+  borderRadius: 6,
+  marginTop: 8,
+},
+listActionText: {
+  flex: 1,
+  fontSize: 12,
+  color: '#27ae60',
+  fontStyle: 'italic',
+},
+listItemFooter: {
+  flexDirection: 'row',
+  justifyContent: 'space-between',
+  alignItems: 'center',
+  marginTop: 10,
+  paddingTop: 10,
+  borderTopWidth: 1,
+  borderTopColor: '#e0e0e0',
+},
+listDateContainer: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  gap: 5,
+},
+viewDetailsButtonSmall: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  gap: 4,
+  backgroundColor: '#fff5f0',
+  paddingHorizontal: 10,
+  paddingVertical: 5,
+  borderRadius: 12,
+},
+viewDetailsTextSmall: {
+  fontSize: 11,
+  color: '#e16e2b',
+  fontWeight: '600',
+},
+imageLoadingText: {
+  marginTop: 8,
+  fontSize: 12,
+  color: '#7f8c8d',
+},
+imageErrorText: {
+  marginTop: 8,
+  fontSize: 12,
+  color: '#95a5a6',
+  textAlign: 'center',
 },
 });
 

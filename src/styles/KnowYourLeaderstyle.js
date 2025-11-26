@@ -1763,6 +1763,24 @@ profileImageSaveButtonText: {
   fontWeight: 'bold',
   color: '#fff',
 },
+// Add these styles to your existing styles object
+paginationDots: {
+  flexDirection: 'row',
+  justifyContent: 'center',
+  alignItems: 'center',
+  paddingVertical: 10,
+  gap: 8,
+},
+paginationDot: {
+  width: 8,
+  height: 8,
+  borderRadius: 4,
+  backgroundColor: '#d1d5db',
+},
+paginationDotActive: {
+  width: 24,
+  backgroundColor: '#e16e2b',
+},
 });
 
 export default styles;

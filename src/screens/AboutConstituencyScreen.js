@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback,useRef } from 'react';
 import {
   View,
   Text,
@@ -80,6 +80,10 @@ class ImageService {
       // If it's already a full URL, normalize it
       if (imageUrl.startsWith('http://') || imageUrl.startsWith('https://')) {
         let normalizedUrl = imageUrl;
+        
+        // ✅ ADD THIS: Remove duplicate port numbers (e.g., :5000:5000 -> :5000)
+        normalizedUrl = normalizedUrl.replace(/:(\d+):(\d+)\//, ':$1/');
+        ConstituencyLoggingService.constInfo('🔧 Fixed duplicate port in URL', normalizedUrl);
         
         // Remove port from ngrok URLs (ngrok doesn't use ports in URLs)
         if (normalizedUrl.includes('ngrok-free.app:')) {
@@ -442,6 +446,14 @@ const [addConstituencyData, setAddConstituencyData] = useState({
   voter_trunout_ratio_data: ''
 });
 const [addConstituencyLoading, setAddConstituencyLoading] = useState(false);
+// Auto-scroll states for AC media banners
+const acMediaScrollViewRef = useRef(null);
+const [currentACMediaIndex, setCurrentACMediaIndex] = useState(0);
+const acMediaAutoScrollInterval = useRef(null);
+// Add these with your existing state declarations
+const [editMemberImageModalVisible, setEditMemberImageModalVisible] = useState(false);
+const [selectedMemberImage, setSelectedMemberImage] = useState(null);
+const [memberImageLoading, setMemberImageLoading] = useState(false);
 const handleACEdit = (item) => {
   setSelectedACItem(item);
   setEditACModalVisible(true);
@@ -1351,6 +1363,40 @@ const fetchACMedia = async (memberIdentifier) => {
   }
 };
 
+// ✅ Auto-scroll effect for AC media banners (only for non-admin users)
+useEffect(() => {
+  // Only auto-scroll if user is NOT admin and has AC media data
+  if (!isAdmin && acMediaData && acMediaData.length > 1 && !acMediaLoading) {
+    // Clear any existing interval
+    if (acMediaAutoScrollInterval.current) {
+      clearInterval(acMediaAutoScrollInterval.current);
+    }
+
+    // Start auto-scroll interval (every 3 seconds)
+    acMediaAutoScrollInterval.current = setInterval(() => {
+      setCurrentACMediaIndex((prevIndex) => {
+        const nextIndex = (prevIndex + 1) % acMediaData.length;
+        
+        // Scroll to next banner
+        if (acMediaScrollViewRef.current) {
+          acMediaScrollViewRef.current.scrollTo({
+            x: nextIndex * (330 + 15), // banner width + margin
+            animated: true,
+          });
+        }
+        
+        return nextIndex;
+      });
+    }, 3000); // Change banner every 3 seconds
+
+    // Cleanup interval on unmount or when dependencies change
+    return () => {
+      if (acMediaAutoScrollInterval.current) {
+        clearInterval(acMediaAutoScrollInterval.current);
+      }
+    };
+  }
+}, [isAdmin, acMediaData, acMediaLoading]);
   // Refresh data with pull-to-refresh
   const onRefresh = useCallback(async () => {
     if (!regdMobileNo) {
@@ -2834,16 +2880,43 @@ const renderACMediaGallery = () => {
     );
   }
 
-  // ✅ UPDATED: Show "Add New" button if admin AND (0 banners OR 2+ banners)
   const showAddButton = isAdmin && acMediaData && (acMediaData.length === 0 || acMediaData.length >= 1);
 
   return (
     <>
       <View style={styles.acMediaContainer}>
         <ScrollView 
+          ref={acMediaScrollViewRef} // ✅ Add ref
           horizontal 
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.acMediaScrollContent}
+          // ✅ Disable manual scrolling for non-admin users (optional - remove this line if you want users to scroll manually)
+          scrollEnabled={isAdmin || true} // Set to 'true' to allow manual scrolling, 'isAdmin' to restrict
+          // ✅ Handle manual scroll (pause auto-scroll temporarily)
+          onScrollBeginDrag={() => {
+            if (!isAdmin && acMediaAutoScrollInterval.current) {
+              clearInterval(acMediaAutoScrollInterval.current);
+            }
+          }}
+          // ✅ Resume auto-scroll after manual scroll ends
+          onScrollEndDrag={() => {
+            if (!isAdmin && acMediaData && acMediaData.length > 1) {
+              setTimeout(() => {
+                acMediaAutoScrollInterval.current = setInterval(() => {
+                  setCurrentACMediaIndex((prevIndex) => {
+                    const nextIndex = (prevIndex + 1) % acMediaData.length;
+                    if (acMediaScrollViewRef.current) {
+                      acMediaScrollViewRef.current.scrollTo({
+                        x: nextIndex * (330 + 15),
+                        animated: true,
+                      });
+                    }
+                    return nextIndex;
+                  });
+                }, 3000);
+              }, 5000); // Resume after 5 seconds
+            }
+          }}
         >
           {/* Render existing AC media items */}
           {acMediaData && Array.isArray(acMediaData) && acMediaData.map((item, index) => {
@@ -2864,7 +2937,7 @@ const renderACMediaGallery = () => {
             );
           })}
 
-          {/* ✅ Add New Button - Show if admin AND (0 OR 2+ banners) */}
+          {/* Add New Button - Show if admin AND (0 OR 2+ banners) */}
           {showAddButton && (
             <TouchableOpacity
               style={styles.acMediaAddButton}
@@ -2880,6 +2953,21 @@ const renderACMediaGallery = () => {
             </TouchableOpacity>
           )}
         </ScrollView>
+
+        {/* ✅ Optional: Add pagination dots for non-admin users */}
+        {!isAdmin && acMediaData && acMediaData.length > 1 && (
+          <View style={styles.paginationDots}>
+            {acMediaData.map((_, index) => (
+              <View
+                key={`dot-${index}`}
+                style={[
+                  styles.paginationDot,
+                  index === currentACMediaIndex && styles.paginationDotActive
+                ]}
+              />
+            ))}
+          </View>
+        )}
       </View>
 
       {/* Edit Modal for existing AC media */}
@@ -2961,17 +3049,31 @@ const renderACMediaGallery = () => {
 
         <View style={styles.infoCard}>
           {/* Member Image or Icon */}
-          {shouldShowImage ? (
-            <Image
-              source={{ uri: memberImageUrl }}
-              style={styles.infoCardMemberImage}
-              onError={(error) => {
-                ConstituencyLoggingService.constError('Member image load failed in card', error);
-              }}
-            />
-          ) : (
-            <Icon name="person" size={24} color="#9b59b6" style={styles.infoIcon} />
-          )}
+        {/* Member Image with Edit Button Container */}
+<View style={styles.memberImageContainer}>
+  {shouldShowImage ? (
+    <Image
+      source={{ uri: memberImageUrl }}
+      style={styles.infoCardMemberImage}
+      onError={(error) => {
+        ConstituencyLoggingService.constError('Member image load failed in card', error);
+      }}
+    />
+  ) : (
+    <Icon name="person" size={24} color="#9b59b6" style={styles.infoIcon} />
+  )}
+  
+  {/* ✅ EDIT BUTTON - Only show for admin and when image exists */}
+  {isAdmin && shouldShowImage && (
+    <TouchableOpacity 
+      style={styles.memberImageEditButton}
+      onPress={() => setEditMemberImageModalVisible(true)}
+      activeOpacity={0.7}
+    >
+      <Icon name="edit" size={12} color="#fff" />
+    </TouchableOpacity>
+  )}
+</View>
           
           <Text style={styles.infoLabel}>Current MP</Text>
           <Text style={styles.infoValue} numberOfLines={3}>
@@ -4288,6 +4390,91 @@ const renderACMediaGallery = () => {
       ]
     );
   };
+
+  // Handle Member Image Update
+const handleUpdateMemberImage = async (selectedImage) => {
+  try {
+    if (!selectedImage) {
+      Alert.alert('Validation Error', 'Please select an image');
+      return;
+    }
+
+    setMemberImageLoading(true);
+
+    const baseUrl = await ConfigService.getBaseUrl();
+    const apiUrl = `${baseUrl}/api/constituencyprofile/image`;
+    
+    // Get email
+    let emailToUse = loggedInEmail || ownerEmail;
+    if (!emailToUse) {
+      try {
+        const appOwnerInfoStr = await EncryptedStorage.getItem('AppOwnerInfo');
+        if (appOwnerInfoStr) {
+          const appOwnerInfo = JSON.parse(appOwnerInfoStr);
+          emailToUse = appOwnerInfo.email || appOwnerInfo.user_email || appOwnerInfo.emailId || '';
+        }
+      } catch (error) {
+        ConstituencyLoggingService.constError('Error getting email', error);
+      }
+    }
+
+    console.log('📤 Updating member image:', {
+      mobile: regdMobileNo,
+      email: emailToUse,
+      fileName: selectedImage.fileName
+    });
+
+    // Create FormData
+    const formData = new FormData();
+    formData.append('leader_regd_mobile_no', regdMobileNo);
+    formData.append('user_email_id', emailToUse || 'sanjay.jaiswal@gmail.com');
+
+    // Append the selected image file
+    const fileUri = selectedImage.uri;
+    const fileName = selectedImage.fileName || fileUri.split('/').pop();
+    const fileType = selectedImage.type || 'image/jpeg';
+
+    formData.append('leader_image', {
+  uri: fileUri,
+  name: fileName,
+  type: fileType,
+});
+    console.log('📤 Sending PUT request to:', apiUrl);
+
+    // Use authPut with multipart/form-data
+    const result = await ApiService.authPut(apiUrl, formData, {}, true);
+
+    console.log('📥 PUT Response:', result);
+
+    if (result.success) {
+      Alert.alert('✅ Success', 'Member image updated successfully', [
+        {
+          text: 'OK',
+          onPress: async () => {
+            setEditMemberImageModalVisible(false);
+            setSelectedMemberImage(null);
+            
+            // Reload constituency data
+            await fetchConstituencyData(regdMobileNo);
+            
+            // Force re-render
+            setRefreshing(true);
+            setTimeout(() => {
+              setRefreshing(false);
+            }, 100);
+          }
+        }
+      ]);
+    } else {
+      throw new Error(result.message || 'Update failed');
+    }
+  } catch (error) {
+    console.error('❌ Error updating member image:', error);
+    Alert.alert('Error', error.message || 'Failed to update member image');
+  } finally {
+    setMemberImageLoading(false);
+  }
+};
   const renderAssemblyDropdownModal = () => {
     if (!dropdownVisible || !isAdmin) return null;
 
@@ -4946,6 +5133,230 @@ const renderACMediaGallery = () => {
     </Modal>
   );
 };
+
+// Member Image Edit Modal
+const renderMemberImageEditModal = () => {
+  return (
+    <Modal
+      visible={editMemberImageModalVisible}
+      transparent
+      animationType="fade"
+      onRequestClose={() => {
+        setEditMemberImageModalVisible(false);
+        setSelectedMemberImage(null);
+      }}
+    >
+      <View style={styles.memberImageModalOverlay}>
+        <View style={styles.memberImageModalCard}>
+          
+          {/* ========== HEADER ========== */}
+          <View style={styles.memberImageModalHeader}>
+            <View style={styles.memberImageHeaderLeft}>
+              <View style={styles.memberImageIconCircle}>
+                <Icon name="person" size={28} color="#9b59b6" />
+              </View>
+              <View style={styles.memberImageTitleSection}>
+                <Text style={styles.memberImageModalTitle}>Update Member Photo</Text>
+                <Text style={styles.memberImageModalSubtitle}>Choose a new member picture</Text>
+              </View>
+            </View>
+            <TouchableOpacity 
+              onPress={() => {
+                setEditMemberImageModalVisible(false);
+                setSelectedMemberImage(null);
+              }} 
+              style={styles.memberImageCloseButton}
+            >
+              <Icon name="close" size={20} color="#7f8c8d" />
+            </TouchableOpacity>
+          </View>
+
+          {/* ========== BODY - IMAGE COMPARISON ========== */}
+          <ScrollView style={styles.memberImageModalBody}>
+            
+            <View style={styles.memberImageComparisonContainer}>
+              
+              {/* CURRENT IMAGE CARD */}
+              <View style={styles.memberImageCard}>
+                <View style={styles.memberImageCardHeader}>
+                  <Icon name="image" size={14} color="#95a5a6" />
+                  <Text style={styles.memberImageCardTitle}>Current</Text>
+                </View>
+                
+                <View style={styles.memberImagePreviewWrapper}>
+                  <Image 
+                    source={{ 
+                      uri: constituencyData?.member_image || 'https://via.placeholder.com/150'
+                    }} 
+                    style={styles.memberImagePreview}
+                    resizeMode="cover"
+                  />
+                  <View style={styles.memberImageActiveBadge}>
+                    <Icon name="check-circle" size={14} color="#27ae60" />
+                    <Text style={styles.memberImageBadgeText}>ACTIVE</Text>
+                  </View>
+                </View>
+              </View>
+
+              {/* ARROW SEPARATOR */}
+              <View style={styles.memberImageArrowSeparator}>
+                <View style={styles.memberImageArrowCircle}>
+                  <Icon name="arrow-forward" size={20} color="#9b59b6" />
+                </View>
+              </View>
+
+              {/* NEW IMAGE CARD */}
+              <TouchableOpacity
+                style={styles.memberImageCard}
+                onPress={() => {
+                  const options = {
+                    mediaType: 'photo',
+                    quality: 0.8,
+                    maxWidth: 1024,
+                    maxHeight: 1024,
+                  };
+
+                  launchImageLibrary(options, (response) => {
+                    if (response.didCancel) {
+                      console.log('User cancelled image picker');
+                    } else if (response.errorCode) {
+                      Alert.alert('Error', response.errorMessage);
+                    } else if (response.assets && response.assets[0]) {
+                      setSelectedMemberImage(response.assets[0]);
+                    }
+                  });
+                }}
+                activeOpacity={0.7}
+              >
+                <View style={styles.memberImageCardHeader}>
+                  <Icon name="add-a-photo" size={14} color="#9b59b6" />
+                  <Text style={[styles.memberImageCardTitle, { color: '#9b59b6' }]}>
+                    {selectedMemberImage ? 'NEW' : 'SELECT'}
+                  </Text>
+                </View>
+                
+                <View style={styles.memberImagePreviewWrapper}>
+                  {selectedMemberImage ? (
+                    <>
+                      <Image 
+                        source={{ uri: selectedMemberImage.uri }} 
+                        style={styles.memberImagePreview}
+                        resizeMode="cover"
+                      />
+                      <View style={styles.memberImageNewBadge}>
+                        <Icon name="fiber-new" size={14} color="#fff" />
+                        <Text style={styles.memberImageNewBadgeText}>NEW</Text>
+                      </View>
+                    </>
+                  ) : (
+                    <View style={styles.memberImagePlaceholder}>
+                      <Icon name="add-a-photo" size={36} color="#9b59b6" />
+                      <Text style={styles.memberImagePlaceholderTitle}>Tap to Choose</Text>
+                      <Text style={styles.memberImagePlaceholderSubtitle}>Select new photo</Text>
+                    </View>
+                  )}
+                </View>
+              </TouchableOpacity>
+
+            </View>
+
+            {/* INFO CARD */}
+            {selectedMemberImage && (
+              <View style={styles.memberImageInfoCard}>
+                <View style={styles.memberImageInfoHeader}>
+                  <Icon name="info" size={16} color="#3498db" />
+                  <Text style={styles.memberImageInfoTitle}>Selected Image Details</Text>
+                </View>
+                <View style={styles.memberImageInfoRow}>
+                  <Icon name="insert-drive-file" size={14} color="#5a6c7d" />
+                  <Text style={styles.memberImageInfoText}>
+                    {selectedMemberImage.fileName || 'Image file'}
+                  </Text>
+                </View>
+                <View style={styles.memberImageInfoRow}>
+                  <Icon name="storage" size={14} color="#5a6c7d" />
+                  <Text style={styles.memberImageInfoText}>
+                    Size: {(selectedMemberImage.fileSize / 1024).toFixed(0)} KB
+                  </Text>
+                </View>
+              </View>
+            )}
+
+            {/* GUIDELINES CARD */}
+            <View style={styles.memberImageGuidelinesCard}>
+              <View style={styles.memberImageGuidelinesHeader}>
+                <Icon name="lightbulb-outline" size={16} color="#f39c12" />
+                <Text style={styles.memberImageGuidelinesTitle}>Photo Tips</Text>
+              </View>
+              
+              <View style={styles.memberImageGuidelinesList}>
+                <View style={styles.memberImageGuidelineItem}>
+                  <View style={styles.memberImageGuidelineDot} />
+                  <Text style={styles.memberImageGuidelineText}>
+                    Use a clear, well-lit photo with good visibility
+                  </Text>
+                </View>
+                <View style={styles.memberImageGuidelineItem}>
+                  <View style={styles.memberImageGuidelineDot} />
+                  <Text style={styles.memberImageGuidelineText}>
+                    Face should be clearly visible and centered
+                  </Text>
+                </View>
+                <View style={styles.memberImageGuidelineItem}>
+                  <View style={styles.memberImageGuidelineDot} />
+                  <Text style={styles.memberImageGuidelineText}>
+                    Square or portrait format works best
+                  </Text>
+                </View>
+              </View>
+            </View>
+
+          </ScrollView>
+
+          {/* ========== FOOTER - ACTION BUTTONS ========== */}
+          <View style={styles.memberImageModalFooter}>
+            <TouchableOpacity 
+              style={styles.memberImageCancelButton}
+              onPress={() => {
+                setEditMemberImageModalVisible(false);
+                setSelectedMemberImage(null);
+              }}
+              disabled={memberImageLoading}
+            >
+              <Icon name="close" size={18} color="#7f8c8d" />
+              <Text style={styles.memberImageCancelButtonText}>Cancel</Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity 
+              style={[
+                styles.memberImageSaveButton,
+                (!selectedMemberImage || memberImageLoading) && styles.memberImageSaveButtonDisabled
+              ]}
+              onPress={() => handleUpdateMemberImage(selectedMemberImage)}
+              disabled={memberImageLoading || !selectedMemberImage}
+              activeOpacity={0.8}
+            >
+              {memberImageLoading ? (
+                <>
+                  <ActivityIndicator color="#fff" size="small" />
+                  <Text style={styles.memberImageSaveButtonText}>Uploading...</Text>
+                </>
+              ) : (
+                <>
+                  <Icon name="cloud-upload" size={18} color="#fff" />
+                  <Text style={styles.memberImageSaveButtonText}>
+                    {selectedMemberImage ? 'Update Photo' : 'Select Photo'}
+                  </Text>
+                </>
+              )}
+            </TouchableOpacity>
+          </View>
+
+        </View>
+      </View>
+    </Modal>
+  );
+};
  return (
   <ScrollView
     style={styles.container}
@@ -5027,6 +5438,7 @@ const renderACMediaGallery = () => {
       {renderDeveloperInputModal()}
       {renderAssemblyDropdownModal()}
        {renderAddConstituencyModal()} 
+       {renderMemberImageEditModal()}
     </ScrollView>
   );
 };

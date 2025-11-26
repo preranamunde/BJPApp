@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect,useRef } from 'react';
 import {
   View,
   Text,
@@ -84,14 +84,14 @@ class ImageService {
       if (imageUrl.startsWith('http://') || imageUrl.startsWith('https://')) {
         let normalizedUrl = imageUrl;
         
-        // Remove port from ngrok URLs (ngrok doesn't use ports in URLs)
-        if (normalizedUrl.includes('ngrok-free.app:')) {
+        // ✅ CRITICAL FIX: Remove port from ANY URL (not just ngrok-free.app)
+        if (normalizedUrl.includes(':5000') || normalizedUrl.includes('ngrok-free.dev:')) {
           normalizedUrl = normalizedUrl.replace(/:(\d+)\//, '/');
-          console.log('🔧 Removed port from ngrok URL:', normalizedUrl);
+          console.log('🔧 Removed port from URL:', normalizedUrl);
         }
         
         // Replace localhost with current base URL
-        if (normalizedUrl.includes('localhost:5000') || normalizedUrl.includes('localhost:')) {
+        if (normalizedUrl.includes('localhost')) {
           const baseUrl = await ConfigService.getBaseUrl();
           normalizedUrl = normalizedUrl.replace(/http:\/\/localhost:\d+/, baseUrl);
           console.log('🔧 Replaced localhost with base URL:', normalizedUrl);
@@ -260,6 +260,10 @@ const [addPresentAddressLoading, setAddPresentAddressLoading] = useState(false);
 const [editProfileImageModalVisible, setEditProfileImageModalVisible] = useState(false);
 const [selectedProfileImage, setSelectedProfileImage] = useState(null);
 const [profileImageLoading, setProfileImageLoading] = useState(false);
+// Auto-scroll states for KYL media banners
+const kylMediaScrollViewRef = useRef(null);
+const [currentKYLMediaIndex, setCurrentKYLMediaIndex] = useState(0);
+const kylMediaAutoScrollInterval = useRef(null);
   useEffect(() => {
     initializeApp();
   }, []);
@@ -515,14 +519,32 @@ const handleUpdateProfileImage = async (selectedImage) => {
     console.log('📥 PUT Response:', result);
 
     if (result.success) {
+      // ✅ CRITICAL: Clear the old image from state first
+      setMemberData(prev => ({
+        ...prev,
+        profile_image: null,
+        leader_photo: null
+      }));
+
       Alert.alert('✅ Success', 'Profile image updated successfully', [
         {
           text: 'OK',
-          onPress: () => {
+          onPress: async () => {
             setEditProfileImageModalVisible(false);
             setSelectedProfileImage(null);
-            // Refresh the data to show new image
-            loadInitialData(memberId);
+            
+            // ✅ FORCE RELOAD with a small delay to ensure backend has processed
+            setTimeout(async () => {
+              console.log('🔄 Reloading profile data after image update...');
+              await loadInitialData(memberId);
+              
+              // ✅ DOUBLE CHECK: Force re-render by toggling state
+              setRefreshing(true);
+              setTimeout(() => {
+                setRefreshing(false);
+                console.log('✅ Profile data reloaded with new image');
+              }, 100);
+            }, 500);
           }
         }
       ]);
@@ -925,6 +947,41 @@ const fetchKYLMedia = async (memberIdentifier) => {
     };
   }
 };
+
+// ✅ Auto-scroll effect for KYL media banners (only for non-admin users)
+useEffect(() => {
+  // Only auto-scroll if user is NOT admin and has KYL media data
+  if (!isAdmin && kylMediaData && kylMediaData.length > 1 && !kylMediaLoading) {
+    // Clear any existing interval
+    if (kylMediaAutoScrollInterval.current) {
+      clearInterval(kylMediaAutoScrollInterval.current);
+    }
+
+    // Start auto-scroll interval (every 3 seconds)
+    kylMediaAutoScrollInterval.current = setInterval(() => {
+      setCurrentKYLMediaIndex((prevIndex) => {
+        const nextIndex = (prevIndex + 1) % kylMediaData.length;
+        
+        // Scroll to next banner
+        if (kylMediaScrollViewRef.current) {
+          kylMediaScrollViewRef.current.scrollTo({
+            x: nextIndex * (330 + 15), // banner width + margin
+            animated: true,
+          });
+        }
+        
+        return nextIndex;
+      });
+    }, 3000); // Change banner every 3 seconds
+
+    // Cleanup interval on unmount or when dependencies change
+    return () => {
+      if (kylMediaAutoScrollInterval.current) {
+        clearInterval(kylMediaAutoScrollInterval.current);
+      }
+    };
+  }
+}, [isAdmin, kylMediaData, kylMediaLoading]);
 
 const submitEducationEntry = async () => {
   try {
@@ -2007,7 +2064,7 @@ const deletePresentAddress = async (memberIdentifier) => {
     await loadTimelineData(memberIdentifier);
   };
 
- const loadProfileData = async (memberIdentifier) => {
+const loadProfileData = async (memberIdentifier) => {
   try {
     console.log('📡 Loading profile data for member:', memberIdentifier);
 
@@ -2021,7 +2078,7 @@ const deletePresentAddress = async (memberIdentifier) => {
       educationalDetails,
       permanentAddress,
       presentAddress,
-       kylMedia 
+      kylMedia 
     ] = await Promise.all([
       fetchMemberCoordinates(memberIdentifier),
       fetchSocialMedia(memberIdentifier),
@@ -2036,13 +2093,20 @@ const deletePresentAddress = async (memberIdentifier) => {
     if (memberCoordinates.success && memberCoordinates.data.leader_coordinates) {
       const leaderData = memberCoordinates.data.leader_coordinates;
       
-      // Normalize leader photo URL if present
+      // ✅ CRITICAL: Normalize leader photo URL with cache buster
       if (leaderData.leader_photo || leaderData.profile_image) {
         const originalPhotoUrl = leaderData.leader_photo || leaderData.profile_image;
         console.log('🖼️ Original leader photo URL:', originalPhotoUrl);
         
-        const normalizedPhotoUrl = await ImageService.normalizeImageUrl(originalPhotoUrl);
-        console.log('✅ Normalized leader photo URL:', normalizedPhotoUrl);
+        // Normalize the URL
+        let normalizedPhotoUrl = await ImageService.normalizeImageUrl(originalPhotoUrl);
+        
+        // ✅ CRITICAL: Add timestamp to force reload and bypass cache
+        if (normalizedPhotoUrl) {
+          normalizedPhotoUrl = `${normalizedPhotoUrl}?t=${Date.now()}`;
+        }
+        
+        console.log('✅ Normalized leader photo URL with cache buster:', normalizedPhotoUrl);
         
         // Update the leader data with normalized URL
         leaderData.profile_image = normalizedPhotoUrl;
@@ -2055,30 +2119,28 @@ const deletePresentAddress = async (memberIdentifier) => {
       console.error('Failed to load member coordinates:', memberCoordinates.error);
     }
 
-    // ... rest of your existing code for other data ...
+    // Set social media data
+    if (socialMedia.success && socialMedia.data.social_media) {
+      setSocialMediaData(socialMedia.data.social_media);
+    } else {
+      console.error('Failed to load social media:', socialMedia.error);
+    }
 
-      // Set social media data
-      if (socialMedia.success && socialMedia.data.social_media) {
-        setSocialMediaData(socialMedia.data.social_media);
-      } else {
-        console.error('Failed to load social media:', socialMedia.error);
-      }
+    // Set personal data
+    if (personalDetails.success && personalDetails.data.personal_details) {
+      setPersonalData(personalDetails.data.personal_details);
+    } else {
+      console.error('Failed to load personal details:', personalDetails.error);
+    }
 
-      // Set personal data
-      if (personalDetails.success && personalDetails.data.personal_details) {
-        setPersonalData(personalDetails.data.personal_details);
-      } else {
-        console.error('Failed to load personal details:', personalDetails.error);
-      }
+    // Set education data
+    if (educationalDetails.success && educationalDetails.data.leader_edu_data) {
+      setEducationData(educationalDetails.data.leader_edu_data.edu_qual);
+    } else {
+      console.error('Failed to load educational details:', educationalDetails.error);
+    }
 
-      // Set education data
-      if (educationalDetails.success && educationalDetails.data.leader_edu_data) {
-        setEducationData(educationalDetails.data.leader_edu_data.edu_qual);
-      } else {
-        console.error('Failed to load educational details:', educationalDetails.error);
-      }
-
-      if (kylMedia.success && kylMedia.data) {
+    if (kylMedia.success && kylMedia.data) {
       setKylMediaData(kylMedia.data);
       console.log('✅ KYL media data loaded:', kylMedia.data.length, 'items');
     } else {
@@ -2088,30 +2150,30 @@ const deletePresentAddress = async (memberIdentifier) => {
 
     setKylMediaLoading(false);
 
-      // Combine address data
-      const addresses = {
-        permanent: permanentAddress.success ? permanentAddress.data.perm_address : null,
-        present: presentAddress.success ? presentAddress.data.present_address : null
-      };
-      setAddressData(addresses);
+    // Combine address data
+    const addresses = {
+      permanent: permanentAddress.success ? permanentAddress.data.perm_address : null,
+      present: presentAddress.success ? presentAddress.data.present_address : null
+    };
+    setAddressData(addresses);
 
-      // Set errors for debugging
-      const apiErrors = {
-        memberCoordinates: !memberCoordinates.success ? memberCoordinates.error : null,
-        socialMedia: !socialMedia.success ? socialMedia.error : null,
-        personalDetails: !personalDetails.success ? personalDetails.error : null,
-        educationalDetails: !educationalDetails.success ? educationalDetails.error : null,
-        permanentAddress: !permanentAddress.success ? permanentAddress.error : null,
-        presentAddress: !presentAddress.success ? presentAddress.error : null,
-      };
-      setErrors(apiErrors);
+    // Set errors for debugging
+    const apiErrors = {
+      memberCoordinates: !memberCoordinates.success ? memberCoordinates.error : null,
+      socialMedia: !socialMedia.success ? socialMedia.error : null,
+      personalDetails: !personalDetails.success ? personalDetails.error : null,
+      educationalDetails: !educationalDetails.success ? educationalDetails.error : null,
+      permanentAddress: !permanentAddress.success ? permanentAddress.error : null,
+      presentAddress: !presentAddress.success ? presentAddress.error : null,
+    };
+    setErrors(apiErrors);
 
-      console.log('✅ Profile data loaded successfully');
-    } catch (error) {
-      console.error('Profile data loading error:', error);
-      Alert.alert('Network Error', 'Please check your internet connection and try again.');
-    }
-  };
+    console.log('✅ Profile data loaded successfully');
+  } catch (error) {
+    console.error('Profile data loading error:', error);
+    Alert.alert('Network Error', 'Please check your internet connection and try again.');
+  }
+};
 
 
   const loadTimelineData = async (memberIdentifier) => {
@@ -3128,8 +3190,11 @@ const renderTimelineEditModal = () => {
     );
   }
 
-  const renderModernHeader = () => {
-  const profileImageUrl = memberData?.profile_image || 'https://tse2.mm.bing.net/th/id/OIP.7nJJBy9zWC6D4pVeQDTEqAHaHX?pid=Api&P=0&h=180';
+const renderModernHeader = () => {
+  // ✅ ADD CACHE BUSTER - forces image reload
+  const profileImageUrl = memberData?.profile_image 
+    ? `${memberData.profile_image}?t=${Date.now()}` 
+    : 'https://tse2.mm.bing.net/th/id/OIP.7nJJBy9zWC6D4pVeQDTEqAHaHX?pid=Api&P=0&h=180';
   
   return (
     <View style={styles.modernHeader}>
@@ -3149,7 +3214,7 @@ const renderTimelineEditModal = () => {
               onError={() => console.log('Failed to load profile image')}
             />
             
-            {/* ✅ ADD EDIT ICON BUTTON */}
+            {/* ✅ EDIT ICON BUTTON */}
             {isAdmin && (
               <TouchableOpacity 
                 style={styles.avatarEditButton}
@@ -3159,9 +3224,6 @@ const renderTimelineEditModal = () => {
                 <Icon name="edit" size={14} color="#fff" />
               </TouchableOpacity>
             )}
-            
-            {/* Online Indicator - keep if needed */}
-          
           </View>
           
           {/* Rest of your existing header code... */}
@@ -3905,7 +3967,6 @@ const renderContactInfo = () => {
     socialMediaData  // editData
   );
 };
-
 const renderKYLMediaGallery = () => {
   if (kylMediaLoading) {
     return (
@@ -3918,16 +3979,43 @@ const renderKYLMediaGallery = () => {
     );
   }
 
-  // ✅ UPDATED: Show "Add New" button if admin AND (0 banners OR 1+ banners)
   const showAddButton = isAdmin && (kylMediaData.length === 0 || kylMediaData.length >= 1);
 
   return (
     <>
       <View style={styles.kylMediaContainer}>
         <ScrollView 
+          ref={kylMediaScrollViewRef} // ✅ Add ref
           horizontal 
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.kylMediaScrollContent}
+          // ✅ Allow manual scrolling for all users
+          scrollEnabled={true}
+          // ✅ Handle manual scroll (pause auto-scroll temporarily)
+          onScrollBeginDrag={() => {
+            if (!isAdmin && kylMediaAutoScrollInterval.current) {
+              clearInterval(kylMediaAutoScrollInterval.current);
+            }
+          }}
+          // ✅ Resume auto-scroll after manual scroll ends
+          onScrollEndDrag={() => {
+            if (!isAdmin && kylMediaData && kylMediaData.length > 1) {
+              setTimeout(() => {
+                kylMediaAutoScrollInterval.current = setInterval(() => {
+                  setCurrentKYLMediaIndex((prevIndex) => {
+                    const nextIndex = (prevIndex + 1) % kylMediaData.length;
+                    if (kylMediaScrollViewRef.current) {
+                      kylMediaScrollViewRef.current.scrollTo({
+                        x: nextIndex * (330 + 15),
+                        animated: true,
+                      });
+                    }
+                    return nextIndex;
+                  });
+                }, 3000);
+              }, 5000); // Resume after 5 seconds
+            }
+          }}
         >
           {/* Render existing KYL media items */}
           {kylMediaData && kylMediaData.map((item, index) => (
@@ -3939,7 +4027,7 @@ const renderKYLMediaGallery = () => {
             />
           ))}
 
-          {/* ✅ Add New Button - Show if admin AND (0 OR 1+ banners) */}
+          {/* Add New Button - Show if admin AND (0 OR 1+ banners) */}
           {showAddButton && (
             <TouchableOpacity
               style={styles.kylMediaAddButton}
@@ -3955,6 +4043,21 @@ const renderKYLMediaGallery = () => {
             </TouchableOpacity>
           )}
         </ScrollView>
+
+        {/* ✅ Optional: Add pagination dots for non-admin users */}
+        {!isAdmin && kylMediaData && kylMediaData.length > 1 && (
+          <View style={styles.paginationDots}>
+            {kylMediaData.map((_, index) => (
+              <View
+                key={`dot-${index}`}
+                style={[
+                  styles.paginationDot,
+                  index === currentKYLMediaIndex && styles.paginationDotActive
+                ]}
+              />
+            ))}
+          </View>
+        )}
       </View>
 
       {/* Edit Modal for existing KYL media */}
@@ -3970,7 +4073,7 @@ const renderKYLMediaGallery = () => {
         />
       )}
 
-      {/* ✅ Add Modal for new KYL media */}
+      {/* Add Modal for new KYL media */}
       {isAdmin && (
         <AddKYLMediaModal
           visible={addKYLModalVisible}
@@ -5293,7 +5396,7 @@ const renderProfileImageEditModal = () => {
               <View style={styles.profileImagePreviewContainer}>
                 <Image 
                   source={{ 
-                    uri: memberData?.profile_image || 'https://tse2.mm.bing.net/th/id/OIP.7nJJBy9zWC6D4pVeQDTEqAHaHX?pid=Api&P=0&h=180'
+                    uri: memberData?.profile_image?.split('?')[0] || 'https://tse2.mm.bing.net/th/id/OIP.7nJJBy9zWC6D4pVeQDTEqAHaHX?pid=Api&P=0&h=180'
                   }} 
                   style={styles.profileImagePreview}
                   resizeMode="cover"

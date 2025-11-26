@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect,useRef } from 'react';
 import {
   View,
   Text,
@@ -542,6 +542,15 @@ const [userRole, setUserRole] = useState('user');
 const [isLoggedIn, setIsLoggedIn] = useState(false);
 // ADD THIS LINE with your other dashboard banner states:
 const [addBannerModalVisible, setAddBannerModalVisible] = useState(false);
+// Auto-scroll states for dashboard banners
+const scrollViewRef = useRef(null);
+const [currentBannerIndex, setCurrentBannerIndex] = useState(0);
+const autoScrollInterval = useRef(null);
+const [leaderProfileImage, setLeaderProfileImage] = useState(null);
+const [leaderImageLoading, setLeaderImageLoading] = useState(false);
+const [editProfileImageModalVisible, setEditProfileImageModalVisible] = useState(false);
+const [selectedProfileImage, setSelectedProfileImage] = useState(null);
+const [profileImageLoading, setProfileImageLoading] = useState(false);
 
   // Load counts when screen comes into focus
   useFocusEffect(
@@ -549,6 +558,41 @@ const [addBannerModalVisible, setAddBannerModalVisible] = useState(false);
       loadUserInfoAndCounts();
     }, [])
   );
+
+  // ✅ Auto-scroll effect for dashboard banners (only for non-admin users)
+useEffect(() => {
+  // Only auto-scroll if user is NOT admin and has banner data
+  if (!isAdmin && dashboardBannersData && dashboardBannersData.length > 1 && !dashboardBannersLoading) {
+    // Clear any existing interval
+    if (autoScrollInterval.current) {
+      clearInterval(autoScrollInterval.current);
+    }
+
+    // Start auto-scroll interval (every 3 seconds)
+    autoScrollInterval.current = setInterval(() => {
+      setCurrentBannerIndex((prevIndex) => {
+        const nextIndex = (prevIndex + 1) % dashboardBannersData.length;
+        
+        // Scroll to next banner
+        if (scrollViewRef.current) {
+          scrollViewRef.current.scrollTo({
+            x: nextIndex * (330 + 15), // banner width + margin
+            animated: true,
+          });
+        }
+        
+        return nextIndex;
+      });
+    }, 3000); // Change banner every 3 seconds
+
+    // Cleanup interval on unmount or when dependencies change
+    return () => {
+      if (autoScrollInterval.current) {
+        clearInterval(autoScrollInterval.current);
+      }
+    };
+  }
+}, [isAdmin, dashboardBannersData, dashboardBannersLoading]);
 
   const getUserInfo = async () => {
     try {
@@ -714,6 +758,77 @@ const fetchDashboardBanners = async (memberIdentifier, userEmailId) => {
   } catch (error) {
     console.error("❌ Dashboard banners error:", error);
     return { success: false, data: [] };
+  }
+};
+
+// ✅ ADD THIS NEW FUNCTION
+// Fetch Leader Photo from Coordinates API
+const fetchLeaderPhoto = async (memberIdentifier, userEmailId) => {
+  try {
+    const baseUrl = await ConfigService.getBaseUrl();
+    
+    const endpoint = `${baseUrl}/api/coordinates/?leader_regd_mobile_no=${encodeURIComponent(memberIdentifier)}&user_email_id=${encodeURIComponent(userEmailId)}`;
+    
+    console.log('🖼️ Fetching leader photo from:', endpoint);
+
+    const result = await ApiService.authGet(endpoint);
+
+    if (result.success && result.data.leader_coordinates) {
+      const leaderData = result.data.leader_coordinates;
+      
+      // Get the raw photo URL
+      const rawPhotoUrl = leaderData.leader_photo || leaderData.profile_image;
+      
+      if (rawPhotoUrl) {
+        console.log('🖼️ Raw leader photo URL:', rawPhotoUrl);
+        
+        // Normalize the URL (remove port, fix localhost, etc.)
+        let normalizedPhotoUrl = rawPhotoUrl;
+        
+        if (normalizedPhotoUrl.startsWith('http://') || normalizedPhotoUrl.startsWith('https://')) {
+          // Remove port from any URL
+          if (normalizedPhotoUrl.includes(':5000') || normalizedPhotoUrl.includes('ngrok-free.dev:')) {
+            normalizedPhotoUrl = normalizedPhotoUrl.replace(/:(\d+)\//, '/');
+          }
+          
+          // Replace localhost with current base URL
+          if (normalizedPhotoUrl.includes('localhost')) {
+            normalizedPhotoUrl = normalizedPhotoUrl.replace(/http:\/\/localhost:\d+/, baseUrl);
+          }
+        } else {
+          // Construct full URL from relative path
+          const cleanPath = normalizedPhotoUrl.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '');
+          const filename = cleanPath.split('/').pop();
+          normalizedPhotoUrl = `${baseUrl}/leader/${filename}`;
+        }
+        
+        // Add cache buster to force reload
+        normalizedPhotoUrl = `${normalizedPhotoUrl}?t=${Date.now()}`;
+        
+        console.log('✅ Normalized leader photo URL:', normalizedPhotoUrl);
+        
+        return {
+          success: true,
+          photoUrl: normalizedPhotoUrl,
+          error: null
+        };
+      }
+    }
+    
+    console.log('⚠️ No leader photo found in API response');
+    return {
+      success: true,
+      photoUrl: null,
+      error: null
+    };
+    
+  } catch (error) {
+    console.error('❌ Error fetching leader photo:', error);
+    return { 
+      success: false, 
+      photoUrl: null,
+      error: error.message 
+    };
   }
 };
 
@@ -1024,6 +1139,7 @@ const fetchFeedbackCounts = async (userInfo) => {
   };
 
  // 👇 REPLACE EXISTING loadUserInfoAndCounts FUNCTION
+// 👇 REPLACE EXISTING loadUserInfoAndCounts FUNCTION
 const loadUserInfoAndCounts = async () => {
   setLoading(true);
   try {
@@ -1038,12 +1154,29 @@ const loadUserInfoAndCounts = async () => {
       console.log('❌ Missing user info, cannot fetch data');
       setCounts({ APPEAL: 0, APPOINTMENT: 0, GRIEVANCE: 0, COMPLAINTS: 0, FEEDBACK: 0, ISSUES: 0 });
       setDashboardBannersData([]);
+      setLeaderProfileImage(null); // ✅ ADD THIS
       return;
     }
 
     console.log('📊 Starting to fetch dashboard data...');
 
-    // 📸 STEP 3: Fetch dashboard banners
+    // 📸 STEP 3: Fetch leader photo ✅ ADD THIS SECTION
+    setLeaderImageLoading(true);
+    const leaderPhoto = await fetchLeaderPhoto(
+      userInfoData.leaderMobile, 
+      userInfoData.userEmail
+    );
+    
+    if (leaderPhoto.success && leaderPhoto.photoUrl) {
+      setLeaderProfileImage(leaderPhoto.photoUrl);
+      console.log('✅ Leader photo loaded:', leaderPhoto.photoUrl);
+    } else {
+      setLeaderProfileImage(null);
+      console.log('⚠️ Using default profile image');
+    }
+    setLeaderImageLoading(false);
+
+    // 📸 STEP 4: Fetch dashboard banners (existing code continues...)
     setDashboardBannersLoading(true);
     const dashboardBanners = await fetchDashboardBanners(
       userInfoData.leaderMobile, 
@@ -1058,7 +1191,7 @@ const loadUserInfoAndCounts = async () => {
     }
     setDashboardBannersLoading(false);
 
-    // 📊 STEP 4: Fetch counts in parallel
+    // 📊 STEP 5: Fetch counts in parallel (rest of your existing code)
     let grievanceCounts;
     try {
       grievanceCounts = await fetchGrievanceCounts(userInfoData);
@@ -1068,7 +1201,7 @@ const loadUserInfoAndCounts = async () => {
     }
 
     const appointmentCount = await fetchAppointmentCount(userInfoData);
-    const feedbackCounts = await fetchFeedbackCounts(userInfoData); // ✅ ADD THIS LINE
+    const feedbackCounts = await fetchFeedbackCounts(userInfoData);
 
     const finalCounts = {
       ...grievanceCounts,
@@ -1078,7 +1211,8 @@ const loadUserInfoAndCounts = async () => {
 
     console.log('✅ Final dashboard data loaded:', {
       banners: dashboardBannersData.length,
-      counts: finalCounts
+      counts: finalCounts,
+      hasLeaderPhoto: !!leaderProfileImage // ✅ ADD THIS
     });
     setCounts(finalCounts);
 
@@ -1086,8 +1220,8 @@ const loadUserInfoAndCounts = async () => {
     console.error('❌ Error loading dashboard data:', error);
     Alert.alert('Error', 'Failed to load dashboard data. Please try again.');
     setCounts({ APPEAL: 0, APPOINTMENT: 0, GRIEVANCE: 0, COMPLAINTS: 0, FEEDBACK: 0, ISSUES: 0 });
-
     setDashboardBannersData([]);
+    setLeaderProfileImage(null); // ✅ ADD THIS
   } finally {
     setLoading(false);
   }
@@ -1219,6 +1353,89 @@ const handleAddDashboardBanner = async (selectedImage) => {
   }
 };
 
+// ✅ ADD THIS NEW FUNCTION
+// Handle Profile Image Update
+const handleUpdateProfileImage = async (selectedImage) => {
+  try {
+    if (!selectedImage) {
+      Alert.alert('Validation Error', 'Please select an image');
+      return;
+    }
+
+    setProfileImageLoading(true);
+
+    const baseUrl = await ConfigService.getBaseUrl();
+    const apiUrl = `${baseUrl}/api/leaderimage/`;
+    
+    const currentUserInfo = await getCurrentUserRole();
+    const userEmailId = currentUserInfo.loggedin_email || '';
+
+    console.log('📤 Updating leader profile image:', {
+      mobile: userInfo.leaderMobile,
+      email: userEmailId,
+      fileName: selectedImage.fileName
+    });
+
+    // Create FormData
+    const formData = new FormData();
+    formData.append('leader_regd_mobile_no', userInfo.leaderMobile);
+    formData.append('user_email_id', userEmailId);
+
+    // Append the selected image file
+    const fileUri = selectedImage.uri;
+    const fileName = selectedImage.fileName || fileUri.split('/').pop();
+    const fileType = selectedImage.type || 'image/jpeg';
+
+    formData.append('leader_image', {
+      uri: fileUri,
+      name: fileName,
+      type: fileType,
+    });
+
+    console.log('📤 Sending PUT request to:', apiUrl);
+
+    // Use authPut with multipart/form-data
+    const result = await ApiService.authPut(apiUrl, formData, {}, true);
+
+    console.log('📥 PUT Response:', result);
+
+    if (result.success) {
+      // Clear the old image from state first
+      setLeaderProfileImage(null);
+
+      Alert.alert('✅ Success', 'Profile image updated successfully', [
+        {
+          text: 'OK',
+          onPress: async () => {
+            setEditProfileImageModalVisible(false);
+            setSelectedProfileImage(null);
+            
+            // Force reload with delay
+            setTimeout(async () => {
+              console.log('🔄 Reloading profile data after image update...');
+              await loadUserInfoAndCounts();
+              
+              // Force re-render
+              setRefreshing(true);
+              setTimeout(() => {
+                setRefreshing(false);
+                console.log('✅ Profile data reloaded with new image');
+              }, 100);
+            }, 500);
+          }
+        }
+      ]);
+    } else {
+      throw new Error(result.message || 'Update failed');
+    }
+  } catch (error) {
+    console.error('❌ Error updating profile image:', error);
+    Alert.alert('Error', error.message || 'Failed to update profile image');
+  } finally {
+    setProfileImageLoading(false);
+  }
+};
+
   const onRefresh = async () => {
     setRefreshing(true);
     await loadUserInfoAndCounts();
@@ -1263,16 +1480,43 @@ const renderDashboardBannerGallery = () => {
     );
   }
 
-  // ✅ UPDATED: Show "Add New" button if admin AND (0 banners OR 1+ banners)
   const showAddButton = isAdmin && (dashboardBannersData.length === 0 || dashboardBannersData.length >= 1);
 
   return (
     <>
       <View style={styles.dashboardBannerContainer}>
         <ScrollView 
+          ref={scrollViewRef} // ✅ Add ref
           horizontal 
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.dashboardBannerScrollContent}
+          // ✅ Disable manual scrolling for non-admin users (optional)
+          scrollEnabled={isAdmin}
+          // ✅ Handle manual scroll (pause auto-scroll temporarily)
+          onScrollBeginDrag={() => {
+            if (!isAdmin && autoScrollInterval.current) {
+              clearInterval(autoScrollInterval.current);
+            }
+          }}
+          // ✅ Resume auto-scroll after manual scroll ends
+          onScrollEndDrag={() => {
+            if (!isAdmin && dashboardBannersData && dashboardBannersData.length > 1) {
+              setTimeout(() => {
+                autoScrollInterval.current = setInterval(() => {
+                  setCurrentBannerIndex((prevIndex) => {
+                    const nextIndex = (prevIndex + 1) % dashboardBannersData.length;
+                    if (scrollViewRef.current) {
+                      scrollViewRef.current.scrollTo({
+                        x: nextIndex * (330 + 15),
+                        animated: true,
+                      });
+                    }
+                    return nextIndex;
+                  });
+                }, 3000);
+              }, 5000); // Resume after 5 seconds
+            }
+          }}
         >
           {/* Render existing dashboard banner items */}
           {dashboardBannersData && Array.isArray(dashboardBannersData) && dashboardBannersData.map((item, index) => {
@@ -1293,7 +1537,7 @@ const renderDashboardBannerGallery = () => {
             );
           })}
 
-          {/* ✅ Add New Button - Show if admin AND (0 OR 1+ banners) */}
+          {/* Add New Button - Show only for admin */}
           {showAddButton && (
             <TouchableOpacity
               style={styles.dashboardBannerAddButton}
@@ -1309,6 +1553,21 @@ const renderDashboardBannerGallery = () => {
             </TouchableOpacity>
           )}
         </ScrollView>
+
+        {/* ✅ Optional: Add pagination dots for non-admin users */}
+        {!isAdmin && dashboardBannersData && dashboardBannersData.length > 1 && (
+          <View style={styles.paginationDots}>
+            {dashboardBannersData.map((_, index) => (
+              <View
+                key={`dot-${index}`}
+                style={[
+                  styles.paginationDot,
+                  index === currentBannerIndex && styles.paginationDotActive
+                ]}
+              />
+            ))}
+          </View>
+        )}
       </View>
 
       {/* Edit Modal for existing dashboard banners */}
@@ -1324,7 +1583,7 @@ const renderDashboardBannerGallery = () => {
         />
       )}
 
-      {/* ✅ Add Modal for new dashboard banners */}
+      {/* Add Modal for new dashboard banners */}
       {isAdmin && (
         <AddDashboardBannerModal
           visible={addBannerModalVisible}
@@ -1332,7 +1591,182 @@ const renderDashboardBannerGallery = () => {
           onSave={handleAddDashboardBanner}
         />
       )}
+       {isAdmin && renderProfileImageEditModal()}
     </>
+  );
+};
+// ✅ ADD THIS NEW FUNCTION
+// Profile Image Edit Modal
+const renderProfileImageEditModal = () => {
+  return (
+    <Modal
+      visible={editProfileImageModalVisible}
+      transparent
+      animationType="fade"
+      onRequestClose={() => {
+        setEditProfileImageModalVisible(false);
+        setSelectedProfileImage(null);
+      }}
+    >
+      <View style={styles.profileImageModalOverlay}>
+        <View style={styles.profileImageModalCard}>
+          
+          {/* Header */}
+          <View style={styles.profileImageModalHeader}>
+            <View style={styles.profileImageHeaderContent}>
+              <View style={styles.profileImageIconContainer}>
+                <Icon name="account-circle" size={24} color="#e16e2b" />
+              </View>
+              <View style={styles.profileImageTitleContainer}>
+                <Text style={styles.profileImageModalTitle}>Update Profile Photo</Text>
+                <Text style={styles.profileImageModalSubtitle}>Choose a new profile picture</Text>
+              </View>
+            </View>
+            <TouchableOpacity 
+              onPress={() => {
+                setEditProfileImageModalVisible(false);
+                setSelectedProfileImage(null);
+              }} 
+              style={styles.profileImageCloseButton}
+            >
+              <Icon name="close" size={20} color="#7f8c8d" />
+            </TouchableOpacity>
+          </View>
+
+          {/* Body with Current and New Image */}
+          <View style={styles.profileImageModalBody}>
+            
+            {/* Current Image Section */}
+            <View style={styles.profileImageSection}>
+              <Text style={styles.profileImageSectionLabel}>Current Photo</Text>
+              <View style={styles.profileImagePreviewContainer}>
+                <Image 
+                  source={{ 
+                    uri: leaderProfileImage?.split('?')[0] || 'https://tse2.mm.bing.net/th/id/OIP.7nJJBy9zWC6D4pVeQDTEqAHaHX?pid=Api&P=0&h=180'
+                  }} 
+                  style={styles.profileImagePreview}
+                  resizeMode="cover"
+                />
+                <View style={styles.profileImageBadge}>
+                  <Icon name="check-circle" size={16} color="#27ae60" />
+                </View>
+              </View>
+            </View>
+
+            {/* Arrow Icon */}
+            <View style={styles.profileImageArrowContainer}>
+              <Icon name="arrow-forward" size={24} color="#e16e2b" />
+            </View>
+
+            {/* New Image Section */}
+            <View style={styles.profileImageSection}>
+              <Text style={styles.profileImageSectionLabel}>
+                {selectedProfileImage ? 'New Photo' : 'Select New'}
+              </Text>
+              <TouchableOpacity
+                style={styles.profileImagePreviewContainer}
+                onPress={() => {
+                  const options = {
+                    mediaType: 'photo',
+                    quality: 0.8,
+                    maxWidth: 1024,
+                    maxHeight: 1024,
+                  };
+
+                  launchImageLibrary(options, (response) => {
+                    if (response.didCancel) {
+                      console.log('User cancelled image picker');
+                    } else if (response.errorCode) {
+                      Alert.alert('Error', response.errorMessage);
+                    } else if (response.assets && response.assets[0]) {
+                      setSelectedProfileImage(response.assets[0]);
+                    }
+                  });
+                }}
+                activeOpacity={0.7}
+              >
+                {selectedProfileImage ? (
+                  <>
+                    <Image 
+                      source={{ uri: selectedProfileImage.uri }} 
+                      style={styles.profileImagePreview}
+                      resizeMode="cover"
+                    />
+                    <View style={styles.profileImageNewBadge}>
+                      <Text style={styles.profileImageNewBadgeText}>NEW</Text>
+                    </View>
+                  </>
+                ) : (
+                  <View style={styles.profileImagePlaceholder}>
+                    <Icon name="add-a-photo" size={32} color="#e16e2b" />
+                    <Text style={styles.profileImagePlaceholderText}>Tap to Choose</Text>
+                  </View>
+                )}
+              </TouchableOpacity>
+            </View>
+
+          </View>
+
+          {/* Info Box */}
+          {selectedProfileImage && (
+            <View style={styles.profileImageInfoBox}>
+              <Icon name="info" size={16} color="#3498db" />
+              <Text style={styles.profileImageInfoText}>
+                {selectedProfileImage.fileName || 'Image selected'} • {(selectedProfileImage.fileSize / 1024).toFixed(0)} KB
+              </Text>
+            </View>
+          )}
+
+          {/* Tips Section */}
+          <View style={styles.profileImageTips}>
+            <Text style={styles.profileImageTipsTitle}>📸 Photo Tips:</Text>
+            <Text style={styles.profileImageTipItem}>• Use a clear, well-lit photo</Text>
+            <Text style={styles.profileImageTipItem}>• Face should be clearly visible</Text>
+            <Text style={styles.profileImageTipItem}>• Square format works best</Text>
+          </View>
+
+          {/* Action Buttons */}
+          <View style={styles.profileImageModalFooter}>
+            <TouchableOpacity 
+              style={styles.profileImageCancelButton}
+              onPress={() => {
+                setEditProfileImageModalVisible(false);
+                setSelectedProfileImage(null);
+              }}
+              disabled={profileImageLoading}
+            >
+              <Icon name="close" size={18} color="#7f8c8d" />
+              <Text style={styles.profileImageCancelButtonText}>Cancel</Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity 
+              style={[
+                styles.profileImageSaveButton,
+                (!selectedProfileImage || profileImageLoading) && styles.profileImageSaveButtonDisabled
+              ]}
+              onPress={() => handleUpdateProfileImage(selectedProfileImage)}
+              disabled={profileImageLoading || !selectedProfileImage}
+              activeOpacity={0.8}
+            >
+              {profileImageLoading ? (
+                <>
+                  <ActivityIndicator color="#fff" size="small" />
+                  <Text style={styles.profileImageSaveButtonText}>Uploading...</Text>
+                </>
+              ) : (
+                <>
+                  <Icon name="cloud-upload" size={18} color="#fff" />
+                  <Text style={styles.profileImageSaveButtonText}>
+                    {selectedProfileImage ? 'Update Photo' : 'Select Photo'}
+                  </Text>
+                </>
+              )}
+            </TouchableOpacity>
+          </View>
+
+        </View>
+      </View>
+    </Modal>
   );
 };
 
@@ -1343,23 +1777,46 @@ const renderDashboardBannerGallery = () => {
         <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
       }
     >
-      {/* Header Section */}
-      <View style={styles.header}>
-        <View style={styles.profileImageContainer}>
-          <Image
-            source={{ 
-              uri: 'https://tse2.mm.bing.net/th/id/OIP.7nJJBy9zWC6D4pVeQDTEqAHaHX?pid=Api&P=0&h=180' 
-            }}
-            style={styles.profileImage}
-          />
-        </View>
-        <Text style={styles.name}>Dr. Sanjay Jaiswal</Text>
-        <Text style={styles.degree}>MBBS, MD</Text>
-        <View style={styles.positionCard}>
-          <Text style={styles.position}>Member of Parliament</Text>
-          <Text style={styles.constituency}>Paschim Champaran (Lok Sabha), Bihar</Text>
-        </View>
+     {/* Header Section */}
+<View style={styles.header}>
+  <View style={styles.profileImageContainer}>
+    {leaderImageLoading ? (
+      <View style={styles.profileImageLoadingContainer}>
+        <ActivityIndicator size="small" color="#e16e2b" />
       </View>
+    ) : (
+      <>
+        <Image
+          source={{ 
+            uri: leaderProfileImage || 'https://tse2.mm.bing.net/th/id/OIP.7nJJBy9zWC6D4pVeQDTEqAHaHX?pid=Api&P=0&h=180' 
+          }}
+          style={styles.profileImage}
+          onError={() => {
+            console.log('Failed to load leader photo, using fallback');
+            setLeaderProfileImage(null);
+          }}
+        />
+        
+        {/* ✅ EDIT ICON BUTTON - Only show for admin */}
+        {isAdmin && (
+          <TouchableOpacity 
+            style={styles.profileImageEditButton}
+            onPress={() => setEditProfileImageModalVisible(true)}
+            activeOpacity={0.7}
+          >
+            <Icon name="edit" size={14} color="#fff" />
+          </TouchableOpacity>
+        )}
+      </>
+    )}
+  </View>
+  <Text style={styles.name}>Dr. Sanjay Jaiswal</Text>
+  <Text style={styles.degree}>MBBS, MD</Text>
+  <View style={styles.positionCard}>
+    <Text style={styles.position}>Member of Parliament</Text>
+    <Text style={styles.constituency}>Paschim Champaran (Lok Sabha), Bihar</Text>
+  </View>
+</View>
 
        {renderDashboardBannerGallery()}
 
@@ -1788,6 +2245,311 @@ loadingText: {
   marginTop: 10,
   fontSize: 14,
   color: '#7f8c8d',
+},
+// Add these styles to your existing styles object
+paginationDots: {
+  flexDirection: 'row',
+  justifyContent: 'center',
+  alignItems: 'center',
+  paddingVertical: 10,
+  gap: 8,
+},
+paginationDot: {
+  width: 8,
+  height: 8,
+  borderRadius: 4,
+  backgroundColor: '#d1d5db',
+},
+paginationDotActive: {
+  width: 24,
+  backgroundColor: '#e16e2b',
+},
+// ✅ ADD THESE NEW STYLES
+
+// Profile Image Loading Container
+profileImageLoadingContainer: {
+  width: 120,
+  height: 120,
+  borderRadius: 60,
+  backgroundColor: '#f0f0f0',
+  justifyContent: 'center',
+  alignItems: 'center',
+},
+
+// Profile Image Edit Button
+profileImageEditButton: {
+  position: 'absolute',
+  bottom: 5,
+  right: 5,
+  backgroundColor: '#e16e2b',
+  width: 32,
+  height: 32,
+  borderRadius: 16,
+  justifyContent: 'center',
+  alignItems: 'center',
+  borderWidth: 2,
+  borderColor: '#fff',
+  elevation: 3,
+  shadowColor: '#000',
+  shadowOffset: { width: 0, height: 2 },
+  shadowOpacity: 0.25,
+  shadowRadius: 3,
+},
+
+// Profile Image Modal Styles
+profileImageModalOverlay: {
+  flex: 1,
+  backgroundColor: 'rgba(0, 0, 0, 0.6)',
+  justifyContent: 'center',
+  alignItems: 'center',
+  padding: 20,
+},
+
+profileImageModalCard: {
+  width: '100%',
+  maxWidth: 500,
+  backgroundColor: '#ffffff',
+  borderRadius: 20,
+  overflow: 'hidden',
+  elevation: 10,
+  shadowColor: '#000',
+  shadowOffset: { width: 0, height: 5 },
+  shadowOpacity: 0.3,
+  shadowRadius: 10,
+},
+
+profileImageModalHeader: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  padding: 20,
+  backgroundColor: '#f8f9fa',
+  borderBottomWidth: 1,
+  borderBottomColor: '#e9ecef',
+},
+
+profileImageHeaderContent: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  flex: 1,
+},
+
+profileImageIconContainer: {
+  width: 48,
+  height: 48,
+  borderRadius: 24,
+  backgroundColor: '#fff5f0',
+  justifyContent: 'center',
+  alignItems: 'center',
+  marginRight: 12,
+},
+
+profileImageTitleContainer: {
+  flex: 1,
+},
+
+profileImageModalTitle: {
+  fontSize: 18,
+  fontWeight: 'bold',
+  color: '#2c3e50',
+  marginBottom: 2,
+},
+
+profileImageModalSubtitle: {
+  fontSize: 13,
+  color: '#7f8c8d',
+},
+
+profileImageCloseButton: {
+  width: 36,
+  height: 36,
+  borderRadius: 18,
+  backgroundColor: '#ecf0f1',
+  justifyContent: 'center',
+  alignItems: 'center',
+},
+
+profileImageModalBody: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  padding: 30,
+  backgroundColor: '#ffffff',
+},
+
+profileImageSection: {
+  flex: 1,
+  alignItems: 'center',
+},
+
+profileImageSectionLabel: {
+  fontSize: 12,
+  fontWeight: '600',
+  color: '#7f8c8d',
+  textTransform: 'uppercase',
+  letterSpacing: 0.5,
+  marginBottom: 12,
+},
+
+profileImagePreviewContainer: {
+  width: 120,
+  height: 120,
+  borderRadius: 60,
+  overflow: 'hidden',
+  borderWidth: 3,
+  borderColor: '#e9ecef',
+  backgroundColor: '#f8f9fa',
+  position: 'relative',
+},
+
+profileImagePreview: {
+  width: '100%',
+  height: '100%',
+},
+
+profileImageBadge: {
+  position: 'absolute',
+  bottom: 5,
+  right: 5,
+  backgroundColor: '#ffffff',
+  borderRadius: 12,
+  padding: 2,
+  elevation: 2,
+  shadowColor: '#000',
+  shadowOffset: { width: 0, height: 1 },
+  shadowOpacity: 0.2,
+  shadowRadius: 2,
+},
+
+profileImageNewBadge: {
+  position: 'absolute',
+  top: 5,
+  right: 5,
+  backgroundColor: '#e16e2b',
+  borderRadius: 8,
+  paddingHorizontal: 8,
+  paddingVertical: 3,
+},
+
+profileImageNewBadgeText: {
+  fontSize: 10,
+  fontWeight: 'bold',
+  color: '#ffffff',
+  letterSpacing: 0.5,
+},
+
+profileImagePlaceholder: {
+  flex: 1,
+  justifyContent: 'center',
+  alignItems: 'center',
+  backgroundColor: '#f8f9fa',
+},
+
+profileImagePlaceholderText: {
+  fontSize: 12,
+  color: '#e16e2b',
+  fontWeight: '600',
+  marginTop: 8,
+},
+
+profileImageArrowContainer: {
+  paddingHorizontal: 15,
+},
+
+profileImageInfoBox: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  backgroundColor: '#e3f2fd',
+  marginHorizontal: 20,
+  marginBottom: 15,
+  padding: 12,
+  borderRadius: 10,
+  borderLeftWidth: 3,
+  borderLeftColor: '#3498db',
+},
+
+profileImageInfoText: {
+  fontSize: 12,
+  color: '#2c3e50',
+  marginLeft: 8,
+  flex: 1,
+},
+
+profileImageTips: {
+  backgroundColor: '#fff5f0',
+  marginHorizontal: 20,
+  marginBottom: 20,
+  padding: 15,
+  borderRadius: 10,
+  borderLeftWidth: 3,
+  borderLeftColor: '#e16e2b',
+},
+
+profileImageTipsTitle: {
+  fontSize: 13,
+  fontWeight: 'bold',
+  color: '#2c3e50',
+  marginBottom: 8,
+},
+
+profileImageTipItem: {
+  fontSize: 12,
+  color: '#5a6c7d',
+  marginBottom: 4,
+  paddingLeft: 5,
+},
+
+profileImageModalFooter: {
+  flexDirection: 'row',
+  padding: 20,
+  gap: 12,
+  backgroundColor: '#f8f9fa',
+  borderTopWidth: 1,
+  borderTopColor: '#e9ecef',
+},
+
+profileImageCancelButton: {
+  flex: 1,
+  flexDirection: 'row',
+  alignItems: 'center',
+  justifyContent: 'center',
+  paddingVertical: 14,
+  borderRadius: 12,
+  backgroundColor: '#ecf0f1',
+  gap: 8,
+},
+
+profileImageCancelButtonText: {
+  fontSize: 15,
+  fontWeight: '600',
+  color: '#7f8c8d',
+},
+
+profileImageSaveButton: {
+  flex: 1,
+  flexDirection: 'row',
+  alignItems: 'center',
+  justifyContent: 'center',
+  paddingVertical: 14,
+  borderRadius: 12,
+  backgroundColor: '#e16e2b',
+  gap: 8,
+  elevation: 2,
+  shadowColor: '#e16e2b',
+  shadowOffset: { width: 0, height: 2 },
+  shadowOpacity: 0.3,
+  shadowRadius: 4,
+},
+
+profileImageSaveButtonDisabled: {
+  backgroundColor: '#bdc3c7',
+  elevation: 0,
+},
+
+profileImageSaveButtonText: {
+  fontSize: 15,
+  fontWeight: 'bold',
+  color: '#ffffff',
 },
 });
 

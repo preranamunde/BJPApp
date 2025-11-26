@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect,useRef } from 'react';
 import {
   View,
   Text,
@@ -647,6 +647,13 @@ const [isAdmin, setIsAdmin] = useState(false);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   // ADD THIS LINE with your other state declarations:
 const [addMediaModalVisible, setAddMediaModalVisible] = useState(false);
+// Add these state/ref declarations with your other useState
+const scrollViewRef = useRef(null);
+const [currentBannerIndex, setCurrentBannerIndex] = useState(0);
+const autoScrollInterval = useRef(null);
+// Add this with your other state declarations (around line 215-220)
+const [latestNewsData, setLatestNewsData] = useState([]);
+const [newsLoading, setNewsLoading] = useState(false);
 // Add with other useState declarations
 const [clientAppName, setClientAppName] = useState('Leader App');
 
@@ -726,6 +733,41 @@ const checkAdminRole = async () => {
   }, 3000);
 }, []);
 
+// ✅ Auto-scroll effect for banners (only for non-admin users)
+useEffect(() => {
+  // Only auto-scroll if user is NOT admin and has banner data
+  if (!isAdmin && homeMediaData && homeMediaData.length > 1 && !homeMediaLoading) {
+    // Clear any existing interval
+    if (autoScrollInterval.current) {
+      clearInterval(autoScrollInterval.current);
+    }
+
+    // Start auto-scroll interval (every 3 seconds)
+    autoScrollInterval.current = setInterval(() => {
+      setCurrentBannerIndex((prevIndex) => {
+        const nextIndex = (prevIndex + 1) % homeMediaData.length;
+        
+        // Scroll to next banner
+        if (scrollViewRef.current) {
+          scrollViewRef.current.scrollTo({
+            x: nextIndex * (330 + 15), // banner width + margin
+            animated: true,
+          });
+        }
+        
+        return nextIndex;
+      });
+    }, 3000); // Change banner every 3 seconds
+
+    // Cleanup interval on unmount or when dependencies change
+    return () => {
+      if (autoScrollInterval.current) {
+        clearInterval(autoScrollInterval.current);
+      }
+    };
+  }
+}, [isAdmin, homeMediaData, homeMediaLoading]);
+
   const getMobileNumberFromStorage = async () => {
     try {
       const appOwnerInfoStr = await EncryptedStorage.getItem('AppOwnerInfo');
@@ -791,9 +833,58 @@ const checkAdminRole = async () => {
     }
   };
 
+  const fetchLatestNews = async (memberIdentifier) => {
+  try {
+    const baseUrl = await ConfigService.getBaseUrl();
+    const currentUserInfo = await getCurrentUserRole();
+    const userEmailId = currentUserInfo.loggedin_email || '';
+    
+    // ✅ CHANGE: Use media_type=LN for Latest News
+    const endpoint = `${baseUrl}/api/mediacorner/?leader_regd_mobile_no=${encodeURIComponent(memberIdentifier)}&user_email_id=${encodeURIComponent(userEmailId)}&media_type=LN`;
+    
+    console.log('📰 Fetching Latest News from:', endpoint);
+    
+    const result = await ApiService.authGet(endpoint);
+
+    if (result.success && result.data) {
+      let items = [];
+      
+      if (Array.isArray(result.data)) {
+        items = result.data;
+      } else if (result.data.media_items) {
+        items = result.data.media_items;
+      } else if (result.data.items) {
+        items = result.data.items;
+      }
+
+      console.log('✅ Latest News items fetched:', items.length);
+      return {
+        success: true,
+        data: items,
+        error: null
+      };
+    } else {
+      console.log('⚠️ No latest news data found');
+      return {
+        success: true,
+        data: [],
+        error: null
+      };
+    }
+  } catch (error) {
+    console.error('❌ API Error (Latest News):', error);
+    return { 
+      success: false, 
+      data: [],
+      error: error.message 
+    };
+  }
+};
+
 const initializeHomeMedia = async () => {
   try {
     setHomeMediaLoading(true);
+    setNewsLoading(true); // ✅ ADD THIS
     
     await checkAdminRole();
     
@@ -804,7 +895,6 @@ const initializeHomeMedia = async () => {
     const email = currentUserInfo.loggedin_email || 'default@email.com';
     setUserEmail(email);
     
-    // ✅ REPLACE owner_name with client_app_name
     const fetchedAppName = currentUserInfo.client_app_name || '';
     if (fetchedAppName && fetchedAppName.trim() !== '') {
       setClientAppName(fetchedAppName);
@@ -814,19 +904,38 @@ const initializeHomeMedia = async () => {
       console.log('⚠️ No client app name found, using default');
     }
     
-    const homeMedia = await fetchHomeMedia(mobileNo);
+    // ✅ FETCH BOTH Home Media AND Latest News
+    const [homeMedia, latestNews] = await Promise.all([
+      fetchHomeMedia(mobileNo),
+      fetchLatestNews(mobileNo) // ✅ ADD THIS
+    ]);
     
+    // Set Home Media
     if (homeMedia.success && homeMedia.data) {
       setHomeMediaData(homeMedia.data);
+      console.log('✅ Home media loaded:', homeMedia.data.length, 'items');
     } else {
       setHomeMediaData([]);
+      console.log('⚠️ No home media found');
     }
+    
+    // ✅ SET LATEST NEWS
+    if (latestNews.success && latestNews.data) {
+      setLatestNewsData(latestNews.data);
+      console.log('✅ Latest news loaded:', latestNews.data.length, 'items');
+    } else {
+      setLatestNewsData([]);
+      console.log('⚠️ No latest news found');
+    }
+    
   } catch (error) {
     console.error('Error initializing home media:', error);
     setHomeMediaData([]);
-    setClientAppName('Leader App'); // ✅ Fallback on error
+    setLatestNewsData([]); // ✅ ADD THIS
+    setClientAppName('Leader App');
   } finally {
     setHomeMediaLoading(false);
+    setNewsLoading(false); // ✅ ADD THIS
   }
 };
 
@@ -883,6 +992,7 @@ const initializeHomeMedia = async () => {
       Alert.alert('Error', error.message || 'Failed to update home media');
     }
   };
+// Update handleNewsSave (around line 500)
 const handleNewsSave = async (updatedData) => {
   try {
     const baseUrl = await ConfigService.getBaseUrl();
@@ -894,18 +1004,10 @@ const handleNewsSave = async (updatedData) => {
     formData.append('media_header', updatedData.media_header);
     formData.append('media_narration', updatedData.media_narration);
     formData.append('media_url', updatedData.media_url || '');
-    formData.append('media_type', 'Home');
+    formData.append('media_type', 'LN'); // ✅ CHANGE: Home -> LN
     formData.append('id', updatedData.id);
     
-    // ✅ DON'T append media_file at all for news updates
-    
-    console.log('📤 Sending PUT request for NEWS to:', apiUrl);
-    console.log('📋 News Update Data:', {
-      id: updatedData.id,
-      header: updatedData.media_header,
-      narration: updatedData.media_narration,
-      url: updatedData.media_url
-    });
+    console.log('📤 Sending PUT request for LATEST NEWS to:', apiUrl);
 
     const result = await ApiService.authPut(apiUrl, formData, {}, true);
 
@@ -913,7 +1015,7 @@ const handleNewsSave = async (updatedData) => {
       Alert.alert('✅ Success', 'News item updated successfully');
       setEditNewsModalVisible(false);
       setSelectedNewsItem(null);
-      initializeHomeMedia(); // Refresh the list
+      initializeHomeMedia(); // This will refresh both
     } else {
       throw new Error(result.message || 'Update failed');
     }
@@ -1074,16 +1176,43 @@ const renderHomeMediaGallery = () => {
     );
   }
 
-  // ✅ UPDATED: Show "Add New" button if admin AND (0 banners OR 1+ banners)
   const showAddButton = isAdmin && homeMediaData && (homeMediaData.length === 0 || homeMediaData.length >= 1);
 
   return (
     <>
       <View style={styles.homeMediaContainer}>
         <ScrollView 
+          ref={scrollViewRef} // ✅ Add ref
           horizontal 
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.homeMediaScrollContent}
+          // ✅ Disable manual scrolling for non-admin users (optional)
+          scrollEnabled={isAdmin}
+          // ✅ Handle manual scroll (pause auto-scroll temporarily)
+          onScrollBeginDrag={() => {
+            if (!isAdmin && autoScrollInterval.current) {
+              clearInterval(autoScrollInterval.current);
+            }
+          }}
+          // ✅ Resume auto-scroll after manual scroll ends
+          onScrollEndDrag={() => {
+            if (!isAdmin && homeMediaData && homeMediaData.length > 1) {
+              setTimeout(() => {
+                autoScrollInterval.current = setInterval(() => {
+                  setCurrentBannerIndex((prevIndex) => {
+                    const nextIndex = (prevIndex + 1) % homeMediaData.length;
+                    if (scrollViewRef.current) {
+                      scrollViewRef.current.scrollTo({
+                        x: nextIndex * (330 + 15),
+                        animated: true,
+                      });
+                    }
+                    return nextIndex;
+                  });
+                }, 3000);
+              }, 5000); // Resume after 5 seconds
+            }
+          }}
         >
           {/* Render existing home media items */}
           {homeMediaData && Array.isArray(homeMediaData) && homeMediaData.map((item, index) => {
@@ -1104,7 +1233,7 @@ const renderHomeMediaGallery = () => {
             );
           })}
 
-          {/* ✅ Add New Button - Show if admin AND (0 OR 1+ banners) */}
+          {/* Add New Button - Show only for admin */}
           {showAddButton && (
             <TouchableOpacity
               style={styles.homeMediaAddButton}
@@ -1120,6 +1249,21 @@ const renderHomeMediaGallery = () => {
             </TouchableOpacity>
           )}
         </ScrollView>
+
+        {/* ✅ Optional: Add pagination dots for non-admin users */}
+        {!isAdmin && homeMediaData && homeMediaData.length > 1 && (
+          <View style={styles.paginationDots}>
+            {homeMediaData.map((_, index) => (
+              <View
+                key={`dot-${index}`}
+                style={[
+                  styles.paginationDot,
+                  index === currentBannerIndex && styles.paginationDotActive
+                ]}
+              />
+            ))}
+          </View>
+        )}
       </View>
 
       {/* Edit Modal for existing home media */}
@@ -1135,7 +1279,7 @@ const renderHomeMediaGallery = () => {
         />
       )}
 
-      {/* ✅ Add Modal for new home media */}
+      {/* Add Modal for new home media */}
       {isAdmin && (
         <AddHomeMediaModal
           visible={addMediaModalVisible}
@@ -1147,13 +1291,25 @@ const renderHomeMediaGallery = () => {
   );
 };
 const renderNewsSection = () => {
-  const newsItems = homeMediaData?.filter(item => 
-    item.media_header && 
-    item.media_narration && 
-    item.media_header.trim() !== '' && 
-    item.media_narration.trim() !== ''
-  ) || [];
+  // ✅ CHANGE: Use latestNewsData instead of filtering homeMediaData
+  const newsItems = latestNewsData || [];
 
+  // Show loading state
+  if (newsLoading) {
+    return (
+      <View style={styles.newsSection}>
+        <Text style={[styles.sectionTitle, { fontSize: fontSize + 2 }]}>{lang.latestNews}</Text>
+        <View style={styles.newsCard}>
+          <View style={styles.emptyNewsState}>
+            <ActivityIndicator size="large" color="#e16e2b" />
+            <Text style={styles.emptyStateText}>Loading latest news...</Text>
+          </View>
+        </View>
+      </View>
+    );
+  }
+
+  // Show empty state
   if (newsItems.length === 0) {
     return (
       <View style={styles.newsSection}>
@@ -1161,14 +1317,25 @@ const renderNewsSection = () => {
         <View style={styles.newsCard}>
           <View style={styles.emptyNewsState}>
             <Icon name="article" size={48} color="#bdc3c7" />
-            <Text style={styles.emptyStateText}>No news available at the moment</Text>
+            <Text style={styles.emptyStateText}>No latest news available</Text>
+            {/* ✅ ADD: Show Add button for admin when no news */}
+            {isAdmin && (
+              <TouchableOpacity
+                style={[styles.readMoreButton, { marginTop: 15, borderTopWidth: 0 }]}
+                onPress={() => {
+                  // TODO: Add modal for creating new news
+                  Alert.alert('Add News', 'Feature coming soon!');
+                }}
+              >
+                <Icon name="add-circle" size={20} color="#e16e2b" />
+                <Text style={[styles.readMoreText, { marginLeft: 8 }]}>Add First News</Text>
+              </TouchableOpacity>
+            )}
           </View>
         </View>
       </View>
     );
   }
-
-  
 
   return (
     <View style={styles.newsSection}>
@@ -1183,66 +1350,66 @@ const renderNewsSection = () => {
             })
           : 'Recent';
 
-       return (
-  <View key={item._id || `news-${index}`} style={styles.newsCard}>
-    {/* ✅ Three Dot Menu Button - Absolutely positioned at top-right */}
-    {isAdmin && (
-      <TouchableOpacity 
-        style={styles.newsMenuButton}
-        onPress={(event) => {
-          const { pageX, pageY } = event.nativeEvent;
-          setNewsMenuPosition({ x: pageX, y: pageY + 10 });
-          setSelectedNewsItem(item);
-          setNewsMenuVisible(true);
-        }}
-        activeOpacity={0.7}
-      >
-        <Text style={styles.newsMenuIcon}>⋮</Text>
-      </TouchableOpacity>
-    )}
+        return (
+          <View key={item._id || `news-${index}`} style={styles.newsCard}>
+            {/* ✅ Three Dot Menu for admin */}
+            {isAdmin && (
+              <TouchableOpacity 
+                style={styles.newsMenuButton}
+                onPress={(event) => {
+                  const { pageX, pageY } = event.nativeEvent;
+                  setNewsMenuPosition({ x: pageX, y: pageY + 10 });
+                  setSelectedNewsItem(item);
+                  setNewsMenuVisible(true);
+                }}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.newsMenuIcon}>⋮</Text>
+              </TouchableOpacity>
+            )}
 
-    <View style={styles.newsHeaderRow}>
-      <View style={styles.newsHeader}>
-        <Icon name="campaign" size={20} color="#e16e2b" />
-        <Text style={[styles.newsTitle, { fontSize: fontSize, flex: 1, marginLeft: 8 }]}>
-          {item.media_header}
-        </Text>
-      </View>
-    </View>
-    
-    <Text style={[styles.newsDate, { fontSize: fontSize - 2 }]}>
-      {newsDate}
-    </Text>
-    
-    <Text 
-      style={[styles.newsDescription, { fontSize: fontSize - 2 }]}
-      numberOfLines={3}
-    >
-      {item.media_narration}
-    </Text>
+            <View style={styles.newsHeaderRow}>
+              <View style={styles.newsHeader}>
+                <Icon name="campaign" size={20} color="#e16e2b" />
+                <Text style={[styles.newsTitle, { fontSize: fontSize, flex: 1, marginLeft: 8 }]}>
+                  {item.media_header}
+                </Text>
+              </View>
+            </View>
+            
+            <Text style={[styles.newsDate, { fontSize: fontSize - 2 }]}>
+              {newsDate}
+            </Text>
+            
+            <Text 
+              style={[styles.newsDescription, { fontSize: fontSize - 2 }]}
+              numberOfLines={3}
+            >
+              {item.media_narration}
+            </Text>
 
-    {item.media_url && (
-      <TouchableOpacity
-        style={styles.readMoreButton}
-        onPress={() => {
-          if (item.media_url) {
-            Linking.openURL(item.media_url).catch(err => {
-              console.error('Failed to open URL:', err);
-              Alert.alert('Error', 'Could not open the link');
-            });
-          }
-        }}
-        activeOpacity={0.7}
-      >
-        <Text style={styles.readMoreText}>Read More</Text>
-        <Icon name="arrow-forward" size={14} color="#e16e2b" />
-      </TouchableOpacity>
-    )}
-  </View>
-);
+            {item.media_url && (
+              <TouchableOpacity
+                style={styles.readMoreButton}
+                onPress={() => {
+                  if (item.media_url) {
+                    Linking.openURL(item.media_url).catch(err => {
+                      console.error('Failed to open URL:', err);
+                      Alert.alert('Error', 'Could not open the link');
+                    });
+                  }
+                }}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.readMoreText}>Read More</Text>
+                <Icon name="arrow-forward" size={14} color="#e16e2b" />
+              </TouchableOpacity>
+            )}
+          </View>
+        );
       })}
 
-      {/* ✅ Only show menu and modals for admin */}
+      {/* Admin controls */}
       {isAdmin && (
         <>
           <ThreeDotMenu
@@ -1851,6 +2018,29 @@ homeMediaAddText: {
     fontStyle: 'italic',
     lineHeight: 18,
   },
+  // Add these styles to your existing styles object
+paginationDots: {
+  flexDirection: 'row',
+  justifyContent: 'center',
+  alignItems: 'center',
+  paddingVertical: 10,
+  gap: 8,
+},
+paginationDot: {
+  width: 8,
+  height: 8,
+  borderRadius: 4,
+  backgroundColor: '#d1d5db',
+},
+paginationDotActive: {
+  width: 24,
+  backgroundColor: '#e16e2b',
+},
+newsHeaderRow: {
+  flexDirection: 'row',
+  alignItems: 'flex-start',
+  marginBottom: 8,
+},
 });
 
 export default HomeScreen;

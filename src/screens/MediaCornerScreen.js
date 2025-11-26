@@ -50,6 +50,7 @@ const ThreeDotMenu = ({ visible, position, onEdit, onDelete, onDismiss }) => {
         onPress={onDismiss}
       >
         <View style={[styles.dropdownMenu, {
+          
           top: position.y,
           left: position.x - 120,
         }]}>
@@ -96,12 +97,20 @@ const AddMediaModal = ({ visible, onClose, onSave, mediaType, regdMobileNo, user
     }
   }, [visible]);
 
-  const handlePickImage = () => {
+const handlePickImage = () => {
+    // Check if we're in video mode (VE = Video)
+    const isVideoMode = mediaType === 'VE';
+    
     const options = {
-      mediaType: mediaType === 'video' ? 'video' : 'photo',
+      mediaType: isVideoMode ? 'video' : 'photo',
       quality: 0.8,
       maxWidth: 1920,
       maxHeight: 1080,
+      videoQuality: 'high', // For video uploads
+      // Remove size limits for videos
+      ...(isVideoMode && {
+        durationLimit: 60, // Allow up to 60 seconds video
+      }),
     };
 
     launchImageLibrary(options, (response) => {
@@ -110,8 +119,48 @@ const AddMediaModal = ({ visible, onClose, onSave, mediaType, regdMobileNo, user
       } else if (response.errorCode) {
         Alert.alert('Error', response.errorMessage);
       } else if (response.assets && response.assets[0]) {
-        setSelectedImage(response.assets[0]);
-        console.log('File selected:', response.assets[0].uri);
+        const selectedFile = response.assets[0];
+        
+        // Check file size
+        const fileSizeInMB = selectedFile.fileSize / (1024 * 1024);
+        console.log(`📦 File size: ${fileSizeInMB.toFixed(2)} MB`);
+        
+        // Show warning if file is too large (backend limit is typically 10-50MB)
+        if (fileSizeInMB > 50) {
+          Alert.alert(
+            '⚠️ File Too Large',
+            `This file is ${fileSizeInMB.toFixed(2)} MB. The server may reject files over 50MB.\n\nPlease:\n• Choose a shorter video\n• Compress the video\n• Or contact admin to increase server limits`,
+            [
+              { text: 'Cancel', style: 'cancel' },
+              { 
+                text: 'Try Anyway', 
+                onPress: () => {
+                  setSelectedImage(selectedFile);
+                  console.log('File selected:', selectedFile.uri);
+                }
+              }
+            ]
+          );
+        } else if (fileSizeInMB > 20) {
+          // Warning for files between 20-50MB
+          Alert.alert(
+            '📁 Large File',
+            `This file is ${fileSizeInMB.toFixed(2)} MB. Upload may take longer and could fail if server limits are exceeded. Continue?`,
+            [
+              { text: 'Cancel', style: 'cancel' },
+              { 
+                text: 'Continue', 
+                onPress: () => {
+                  setSelectedImage(selectedFile);
+                  console.log('File selected:', selectedFile.uri);
+                }
+              }
+            ]
+          );
+        } else {
+          setSelectedImage(selectedFile);
+          console.log('File selected:', selectedFile.uri);
+        }
       }
     });
   };
@@ -761,6 +810,7 @@ useEffect(() => {
 
 
 // ✅ Improved Video Item with better menu positioning
+// ✅ Video Item Component with View More button
 const VideoItem = React.memo(({ 
   video, 
   regdMobileNo, 
@@ -777,8 +827,14 @@ const VideoItem = React.memo(({
     let mounted = true;
     
     const loadVideo = async () => {
+      console.log('🎥 === LOADING VIDEO ===');
+      console.log('Video object:', video);
+      console.log('media_file_url:', video.media_file_url);
+      console.log('media_file:', video.media_file);
+      
+      // Try media_file_url first
       if (video.media_file_url) {
-        console.log('🎥 Using media_file_url from API:', video.media_file_url);
+        console.log('✅ Using media_file_url from API:', video.media_file_url);
         
         let videoUrl = video.media_file_url;
         
@@ -794,9 +850,11 @@ const VideoItem = React.memo(({
         return;
       }
       
+      // Fallback to media_file
       if (video.media_file) {
-        console.log('⚠️ No media_file_url, using media_file:', video.media_file);
+        console.log('⚠️ No media_file_url, constructing from media_file:', video.media_file);
         
+        // If it's already a full URL
         if (video.media_file.startsWith('http://') || video.media_file.startsWith('https://')) {
           let videoUrl = video.media_file;
           
@@ -811,15 +869,32 @@ const VideoItem = React.memo(({
           return;
         }
         
+        // Construct full URL from filename
         const baseUrl = await ConfigService.getBaseUrl();
-        const cleanFile = video.media_file.replace(/^[\\\/]+/, '');
-        const videoUrl = `${baseUrl}/media/${cleanFile}`;
         
-        console.log('🔧 Constructed media URL:', videoUrl);
+        // Remove any leading slashes or backslashes
+        const cleanFile = video.media_file.replace(/^[\\\/]+/, '');
+        
+        // Check if it's in uploads/media_corner folder
+        let videoUrl;
+        if (cleanFile.includes('uploads\\media_corner') || cleanFile.includes('uploads/media_corner')) {
+          // Already has full path
+          videoUrl = `${baseUrl}/${cleanFile.replace(/\\/g, '/')}`;
+        } else if (cleanFile.startsWith('media_file-')) {
+          // Just the filename, construct path
+          videoUrl = `${baseUrl}/uploads/media_corner/${cleanFile}`;
+        } else {
+          // Default fallback
+          videoUrl = `${baseUrl}/media/${cleanFile}`;
+        }
+        
+        console.log('🔧 Constructed video URL:', videoUrl);
         
         if (mounted) {
           setVideoUri(videoUrl);
         }
+      } else {
+        console.error('❌ No media_file or media_file_url found');
       }
     };
     
@@ -944,6 +1019,17 @@ const VideoItem = React.memo(({
         <Text style={styles.videoDescription}>
           {video.media_narration}
         </Text>
+      )}
+
+      {video.media_url && (
+        <TouchableOpacity 
+          style={styles.linkButton}
+          onPress={() => Linking.openURL(video.media_url).catch(() => 
+            Alert.alert('Error', 'Could not open the link')
+          )}
+        >
+          <Text style={styles.linkText}>View More</Text>
+        </TouchableOpacity>
       )}
     </View>
   );

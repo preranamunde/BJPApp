@@ -3,7 +3,8 @@ import EncryptedStorage from 'react-native-encrypted-storage';
 
 class ConfigService {
   static BASE_URL_KEY = 'app_base_url';
-  static DEFAULT_BASE_URL = 'http://192.168.0.105:5000'; // 👈 Update this when ngrok gives new URL
+static DEFAULT_BASE_URL = 'http://192.168.0.105:5000';
+ // 👈 Update this when ngrok gives new URL
 
 
   

@@ -111,106 +111,132 @@ const ForgotPasswordScreen = ({ navigation }) => {
   };
 
   // Email verification
-  const handleEmailVerification = async () => {
-    if (!email || !validateEmail(email)) {
-      Alert.alert('Error', 'Please enter a valid email address');
-      return;
-    }
+ const handleEmailVerification = async () => {
+  if (!email || !validateEmail(email)) {
+    Alert.alert('Error', 'Please enter a valid email address');
+    return;
+  }
 
-    if (!apiEndpoints) {
-      Alert.alert('Error', 'API configuration not loaded');
-      return;
-    }
+  if (!apiEndpoints) {
+    Alert.alert('Error', 'API configuration not loaded');
+    return;
+  }
 
-    setEmailVerificationState('loading');
+  setEmailVerificationState('loading');
 
-    try {
-      const result = await ApiService.post(apiEndpoints.auth.verifyEmail, {
-        email: email.trim().toLowerCase(),
-      });
+  try {
+    // ✅ Change from post to authPost
+    // Change from ApiService.post to ApiService.authPost
+const result = await ApiService.authPost(apiEndpoints.profile.verifyEmail, {
+  email: email.trim().toLowerCase(),
+});
 
-      if (result.success) {
-        setEmailVerificationState('verify');
-      } else {
-        setEmailVerificationState('input');
-        Alert.alert('Error', result.message || 'Failed to verify email. Please try again.');
-      }
-    } catch (error) {
+    if (result.success) {
+      setEmailVerificationState('verify');
+    } else {
       setEmailVerificationState('input');
-      Alert.alert('Error', 'Failed to verify email. Please try again.');
+      Alert.alert('Error', result.message || 'Failed to verify email. Please try again.');
     }
-  };
+  } catch (error) {
+    setEmailVerificationState('input');
+    Alert.alert('Error', 'Failed to verify email. Please try again.');
+  }
+};
 
   // Send OTP
   const sendEmailOTP = async () => {
-    if (!apiEndpoints) {
-      Alert.alert('Error', 'API configuration not loaded');
+  if (!apiEndpoints) {
+    Alert.alert('Error', 'API configuration not loaded');
+    return;
+  }
+
+  try {
+    setEmailVerificationState('loading');
+
+    // ✅ Change from post to authPost
+    // Change from ApiService.post to ApiService.authPost
+const result = await ApiService.authPost(apiEndpoints.profile.sendOTP, {
+  email: email.trim().toLowerCase(),
+});
+
+    console.log('OTP Send API response:', result);
+
+    if (result.success && (result.data?.message === 'OTP sent to email successfully' || result.message === 'OTP sent to email successfully')) {
+      setVerificationToken('dummy-token');
+      setEmailVerificationState('otp');
+      setOtpTimer(300);
+      Alert.alert('OTP Sent', `Verification code has been sent to ${email}.`);
+    } else {
+      throw new Error(result.message || 'Unexpected response');
+    }
+  } catch (error) {
+    console.log('OTP send error:', error);
+    setEmailVerificationState('verify');
+    Alert.alert('Error', 'Failed to send OTP. Please try again.');
+  }
+};
+
+const verifyEmailOTP = async () => {
+  if (!emailOtp || emailOtp.length !== 6) {
+    Alert.alert('Error', 'Please enter the 6-digit OTP');
+    return;
+  }
+
+  if (!apiEndpoints) {
+    Alert.alert('Error', 'API configuration not loaded');
+    return;
+  }
+
+  try {
+    setEmailVerificationState('loading');
+
+    // get APP_KEY from secure storage
+    const appKey = await EncryptedStorage.getItem('APP_KEY');
+
+    if (!appKey) {
+      Alert.alert('Error', 'APP KEY not found');
       return;
     }
 
-    try {
-      setEmailVerificationState('loading');
-
-      const result = await ApiService.post(apiEndpoints.auth.sendOTP, {
-        email: email.trim().toLowerCase(),
-      });
-
-      console.log('OTP Send API response:', result);
-
-      if (result.success && (result.data?.message === 'OTP sent to email successfully' || result.message === 'OTP sent to email successfully')) {
-        setVerificationToken('dummy-token');
-        setEmailVerificationState('otp');
-        setOtpTimer(300);
-        Alert.alert('OTP Sent', `Verification code has been sent to ${email}.`);
-      } else {
-        throw new Error(result.message || 'Unexpected response');
-      }
-    } catch (error) {
-      console.log('OTP send error:', error);
-      setEmailVerificationState('verify');
-      Alert.alert('Error', 'Failed to send OTP. Please try again.');
-    }
-  };
-
-  // Verify OTP
-  const verifyEmailOTP = async () => {
-    if (!emailOtp || emailOtp.length !== 6) {
-      Alert.alert('Error', 'Please enter the 6-digit OTP');
-      return;
-    }
-
-    if (!apiEndpoints) {
-      Alert.alert('Error', 'API configuration not loaded');
-      return;
-    }
-
-    try {
-      setEmailVerificationState('loading');
-
-      const result = await ApiService.post(apiEndpoints.auth.verifyEmailOTP, {
+    const result = await ApiService.authPost(
+      apiEndpoints.profile.verifyEmailOTP,
+      {
         email: email.trim().toLowerCase(),
         otp: emailOtp,
         verificationToken: verificationToken,
-      });
-
-      console.log('Verification response:', result);
-
-      if (result.success && (result.data?.message === 'Email verified and greeted!' || result.message === 'Email verified and greeted!')) {
-        setIsEmailVerified(true);
-        setEmailVerificationState('verified');
-        Alert.alert('Success', 'Email verified successfully!');
-        setEmailOtp('');
-        setVerificationToken('');
-      } else {
-        setEmailVerificationState('otp');
-        Alert.alert('Error', result.message || 'OTP verification failed. Please try again.');
+      },
+      {
+        'x-app-key': appKey,       // ✔ SAME AS POSTMAN
+        'Content-Type': 'application/json',
       }
-    } catch (error) {
-      console.log('Verification error:', error);
+    );
+
+    console.log("Verification response:", result);
+
+    if (
+      result.success ||
+      result.message === 'Email verified successfully!' ||
+      result.data?.message === 'Email verified successfully!'
+    ) {
+      setIsEmailVerified(true);
+      setEmailVerificationState('verified');
+      Alert.alert('Success', 'Email verified successfully!');
+      setEmailOtp('');
+      setVerificationToken('');
+    } else {
       setEmailVerificationState('otp');
-      Alert.alert('Error', 'Failed to verify OTP. Please try again.');
+      Alert.alert('Error', result.message || 'OTP verification failed.');
     }
-  };
+
+  } catch (error) {
+    console.log("Verification error:", error);
+    setEmailVerificationState('otp');
+    Alert.alert('Error', 'Failed to verify OTP. Please try again.');
+  }
+};
+
+
+
 
   // Resend OTP
   const resendEmailOTP = () => {

@@ -3,7 +3,7 @@ import EncryptedStorage from 'react-native-encrypted-storage';
 
 class ConfigService {
   static BASE_URL_KEY = 'app_base_url';
-static DEFAULT_BASE_URL = 'http://192.168.0.105:5000';
+static DEFAULT_BASE_URL = 'http://192.168.0.102:5000';
  // 👈 Update this when ngrok gives new URL
 
 
@@ -146,6 +146,13 @@ static async getApiEndpoints() {
       profile: `${baseUrl}/api/profile`,
       updateProfile: `${baseUrl}/api/profile/`,
       updateProfileImage: `${baseUrl}/api/profile/image`,
+    },
+
+    profile: {
+      verifyEmail: `${baseUrl}/api/profile/verifyemail`,
+      sendOTP: `${baseUrl}/api/profile/sendotp`,
+      verifyEmailOTP: `${baseUrl}/api/profile/verifyemailotp`,
+      forgotPassword: `${baseUrl}/api/profile/fp`,
     },
     location: {
       pincode: `${baseUrl}/api/pincodes`,

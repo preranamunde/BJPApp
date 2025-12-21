@@ -7,6 +7,74 @@ import ApiService from '../services/ApiService';
 import { getCurrentUserRole,checkIfCurrentUserIsAdmin} from '../../App';
 import { useTranslation } from '../context/TranslationContext';
 import TranslatableText from '../components/TranslatableText';
+// ✅ ADD THESE VALIDATION HELPER FUNCTIONS
+const validateMobileNumber = (mobile) => {
+  // Remove any spaces or special characters
+  const cleanMobile = mobile.replace(/\s+/g, '').replace(/[^0-9]/g, '');
+  
+  // Must be exactly 10 digits
+  if (cleanMobile.length !== 10) {
+    return { valid: false, message: 'Mobile number must be exactly 10 digits' };
+  }
+  
+  // First digit must be 6, 7, 8, or 9 (Indian mobile numbers)
+  const firstDigit = cleanMobile.charAt(0);
+  if (!['6', '7', '8', '9'].includes(firstDigit)) {
+    return { valid: false, message: 'Mobile number must start with 6, 7, 8, or 9' };
+  }
+  
+  return { valid: true, cleanNumber: cleanMobile };
+};
+
+const validateTelephoneNumber = (telephone) => {
+  // Remove any spaces or special characters
+  const cleanTel = telephone.replace(/\s+/g, '').replace(/[^0-9]/g, '');
+  
+  // Must be maximum 8 digits
+  if (cleanTel.length > 8) {
+    return { valid: false, message: 'Telephone number cannot exceed 8 digits' };
+  }
+  
+  // Must be at least 6 digits (typical landline length)
+  if (cleanTel.length > 0 && cleanTel.length < 6) {
+    return { valid: false, message: 'Telephone number must be at least 6 digits' };
+  }
+  
+  return { valid: true, cleanNumber: cleanTel };
+};
+
+const validateSTDCode = (stdCode) => {
+  // Remove any spaces or special characters
+  const cleanSTD = stdCode.replace(/\s+/g, '').replace(/[^0-9]/g, '');
+  
+  // Must be between 2 to 5 digits
+  if (cleanSTD.length > 0 && (cleanSTD.length < 2 || cleanSTD.length > 5)) {
+    return { valid: false, message: 'STD code must be between 2 to 5 digits' };
+  }
+  
+  return { valid: true, cleanNumber: cleanSTD };
+};
+
+const formatPhoneNumberForCall = (isd, std, telephone) => {
+  if (!telephone) return null;
+  
+  // Clean all inputs
+  const cleanISD = (isd || '').replace(/\s+/g, '').replace(/[^0-9+]/g, '');
+  const cleanSTD = (std || '').replace(/\s+/g, '').replace(/[^0-9]/g, '');
+  const cleanTel = telephone.replace(/\s+/g, '').replace(/[^0-9]/g, '');
+  
+  // Remove leading zeros from ISD (convert 0091 to 91)
+  let formattedISD = cleanISD.replace(/^0+/, '');
+  if (!formattedISD.startsWith('+')) {
+    formattedISD = '+' + formattedISD;
+  }
+  
+  // Remove leading zero from STD (convert 011 to 11, 022 to 22)
+  const formattedSTD = cleanSTD.replace(/^0+/, '');
+  
+  // Combine: +[ISD][STD][Telephone]
+  return `${formattedISD}${formattedSTD}${cleanTel}`;
+};
 
 const ThreeDotMenu = ({ visible, position, onEdit, onDelete, onDismiss }) => {
   if (!visible) return null;
@@ -647,6 +715,60 @@ const handleAddContactOffice = () => {
 
 const handleSaveAddContactOffice = async () => {
   try {
+    // ✅ VALIDATE CONSTITUENCY OFFICE MOBILE NUMBERS
+    if (addingContactOfficeData.const_off_mobile_number1.trim()) {
+      const validation1 = validateMobileNumber(addingContactOfficeData.const_off_mobile_number1);
+      if (!validation1.valid) {
+        Alert.alert('Validation Error', `Constituency Mobile: ${validation1.message}`);
+        return;
+      }
+    }
+
+    // ✅ VALIDATE CONSTITUENCY OFFICE TELEPHONE
+    if (addingContactOfficeData.const_off_tel_number1.trim()) {
+      const telValidation = validateTelephoneNumber(addingContactOfficeData.const_off_tel_number1);
+      if (!telValidation.valid) {
+        Alert.alert('Validation Error', `Constituency Telephone: ${telValidation.message}`);
+        return;
+      }
+    }
+
+    // ✅ VALIDATE CONSTITUENCY OFFICE STD CODE
+    if (addingContactOfficeData.const_off_std_code.trim()) {
+      const stdValidation = validateSTDCode(addingContactOfficeData.const_off_std_code);
+      if (!stdValidation.valid) {
+        Alert.alert('Validation Error', `Constituency STD Code: ${stdValidation.message}`);
+        return;
+      }
+    }
+
+    // ✅ VALIDATE CAPITAL OFFICE MOBILE NUMBERS
+    if (addingContactOfficeData.capital_off_mobile_number1.trim()) {
+      const validation2 = validateMobileNumber(addingContactOfficeData.capital_off_mobile_number1);
+      if (!validation2.valid) {
+        Alert.alert('Validation Error', `Capital Mobile: ${validation2.message}`);
+        return;
+      }
+    }
+
+    // ✅ VALIDATE CAPITAL OFFICE TELEPHONE
+    if (addingContactOfficeData.capital_off_tel_number1.trim()) {
+      const telValidation2 = validateTelephoneNumber(addingContactOfficeData.capital_off_tel_number1);
+      if (!telValidation2.valid) {
+        Alert.alert('Validation Error', `Capital Telephone: ${telValidation2.message}`);
+        return;
+      }
+    }
+
+    // ✅ VALIDATE CAPITAL OFFICE STD CODE
+    if (addingContactOfficeData.capital_off_std_code.trim()) {
+      const stdValidation2 = validateSTDCode(addingContactOfficeData.capital_off_std_code);
+      if (!stdValidation2.valid) {
+        Alert.alert('Validation Error', `Capital STD Code: ${stdValidation2.message}`);
+        return;
+      }
+    }
+
     const result = await createContactOffice(memberId, addingContactOfficeData);
     if (result.success) {
       Alert.alert('Success', 'Contact office added successfully');
@@ -707,6 +829,60 @@ const handleEditContactOffice = () => {
 
 const handleSaveContactOffice = async () => {
   try {
+    // ✅ VALIDATE CONSTITUENCY OFFICE MOBILE NUMBERS
+    if (editingContactOfficeData.const_off_mobile_number1.trim()) {
+      const validation1 = validateMobileNumber(editingContactOfficeData.const_off_mobile_number1);
+      if (!validation1.valid) {
+        Alert.alert('Validation Error', `Constituency Mobile: ${validation1.message}`);
+        return;
+      }
+    }
+
+    // ✅ VALIDATE CONSTITUENCY OFFICE TELEPHONE
+    if (editingContactOfficeData.const_off_tel_number1.trim()) {
+      const telValidation = validateTelephoneNumber(editingContactOfficeData.const_off_tel_number1);
+      if (!telValidation.valid) {
+        Alert.alert('Validation Error', `Constituency Telephone: ${telValidation.message}`);
+        return;
+      }
+    }
+
+    // ✅ VALIDATE CONSTITUENCY OFFICE STD CODE
+    if (editingContactOfficeData.const_off_std_code.trim()) {
+      const stdValidation = validateSTDCode(editingContactOfficeData.const_off_std_code);
+      if (!stdValidation.valid) {
+        Alert.alert('Validation Error', `Constituency STD Code: ${stdValidation.message}`);
+        return;
+      }
+    }
+
+    // ✅ VALIDATE CAPITAL OFFICE MOBILE NUMBERS
+    if (editingContactOfficeData.capital_off_mobile_number1.trim()) {
+      const validation2 = validateMobileNumber(editingContactOfficeData.capital_off_mobile_number1);
+      if (!validation2.valid) {
+        Alert.alert('Validation Error', `Capital Mobile: ${validation2.message}`);
+        return;
+      }
+    }
+
+    // ✅ VALIDATE CAPITAL OFFICE TELEPHONE
+    if (editingContactOfficeData.capital_off_tel_number1.trim()) {
+      const telValidation2 = validateTelephoneNumber(editingContactOfficeData.capital_off_tel_number1);
+      if (!telValidation2.valid) {
+        Alert.alert('Validation Error', `Capital Telephone: ${telValidation2.message}`);
+        return;
+      }
+    }
+
+    // ✅ VALIDATE CAPITAL OFFICE STD CODE
+    if (editingContactOfficeData.capital_off_std_code.trim()) {
+      const stdValidation2 = validateSTDCode(editingContactOfficeData.capital_off_std_code);
+      if (!stdValidation2.valid) {
+        Alert.alert('Validation Error', `Capital STD Code: ${stdValidation2.message}`);
+        return;
+      }
+    }
+
     const result = await updateContactOffice(memberId, editingContactOfficeData);
     if (result.success) {
       Alert.alert('Success', 'Contact office updated successfully');
@@ -904,29 +1080,41 @@ const createContactOffice = async (memberIdentifier, data) => {
       )}
       
       {/* Contact Numbers */}
-      {(contactOfficeData.const_off_tel_number1 || contactOfficeData.const_off_mobile_number1) && (
-        <View style={styles.officeContactButtons}>
-          {contactOfficeData.const_off_tel_number1 && (
-            <TouchableOpacity 
-              style={styles.officeContactBtn}
-              onPress={() => handleCall(`${contactOfficeData.const_off_isd_code || '+91'}${contactOfficeData.const_off_std_code || ''}${contactOfficeData.const_off_tel_number1}`)}
-            >
-              <Icon name="phone" size={14} color="#e16e2b" />
-              <Text style={styles.officeContactText}>Landline</Text>
-            </TouchableOpacity>
-          )}
-          
-          {contactOfficeData.const_off_mobile_number1 && (
-            <TouchableOpacity 
-              style={styles.officeContactBtn}
-              onPress={() => handleCall(`${contactOfficeData.const_off_isd_code || '+91'}${contactOfficeData.const_off_mobile_number1}`)}
-            >
-              <Icon name="smartphone" size={14} color="#e16e2b" />
-              <Text style={styles.officeContactText}>Mobile</Text>
-            </TouchableOpacity>
-          )}
-        </View>
-      )}
+     {/* Contact Numbers */}
+{(contactOfficeData.const_off_tel_number1 || contactOfficeData.const_off_mobile_number1) && (
+  <View style={styles.officeContactButtons}>
+    {contactOfficeData.const_off_tel_number1 && (
+      <TouchableOpacity 
+        style={styles.officeContactBtn}
+        onPress={() => {
+          const formattedNumber = formatPhoneNumberForCall(
+            contactOfficeData.const_off_isd_code,
+            contactOfficeData.const_off_std_code,
+            contactOfficeData.const_off_tel_number1
+          );
+          handleCall(formattedNumber);
+        }}
+      >
+        <Icon name="phone" size={14} color="#e16e2b" />
+        <Text style={styles.officeContactText}>Landline</Text>
+      </TouchableOpacity>
+    )}
+    
+    {contactOfficeData.const_off_mobile_number1 && (
+      <TouchableOpacity 
+        style={styles.officeContactBtn}
+        onPress={() => {
+          // For mobile, just use ISD + Mobile (no STD code)
+          const isd = (contactOfficeData.const_off_isd_code || '+91').replace(/^0+/, '').replace('+', '');
+          handleCall(`+${isd}${contactOfficeData.const_off_mobile_number1}`);
+        }}
+      >
+        <Icon name="smartphone" size={14} color="#e16e2b" />
+        <Text style={styles.officeContactText}>Mobile</Text>
+      </TouchableOpacity>
+    )}
+  </View>
+)}
       
       <View style={styles.badge}>
         <TranslatableText style={styles.badgeText}>Main Office</TranslatableText>
@@ -966,29 +1154,41 @@ const createContactOffice = async (memberIdentifier, data) => {
       )}
       
       {/* Contact Numbers */}
-      {(contactOfficeData.capital_off_tel_number1 || contactOfficeData.capital_off_mobile_number1) && (
-        <View style={styles.officeContactButtons}>
-          {contactOfficeData.capital_off_tel_number1 && (
-            <TouchableOpacity 
-              style={styles.officeContactBtn}
-              onPress={() => handleCall(`${contactOfficeData.capital_off_isd_code || '+91'}${contactOfficeData.capital_off_std_code || ''}${contactOfficeData.capital_off_tel_number1}`)}
-            >
-              <Icon name="phone" size={14} color="#e16e2b" />
-              <Text style={styles.officeContactText}>Landline</Text>
-            </TouchableOpacity>
-          )}
-          
-          {contactOfficeData.capital_off_mobile_number1 && (
-            <TouchableOpacity 
-              style={styles.officeContactBtn}
-              onPress={() => handleCall(`${contactOfficeData.capital_off_isd_code || '+91'}${contactOfficeData.capital_off_mobile_number1}`)}
-            >
-              <Icon name="smartphone" size={14} color="#e16e2b" />
-              <Text style={styles.officeContactText}>Mobile</Text>
-            </TouchableOpacity>
-          )}
-        </View>
-      )}
+     {/* Contact Numbers */}
+{(contactOfficeData.capital_off_tel_number1 || contactOfficeData.capital_off_mobile_number1) && (
+  <View style={styles.officeContactButtons}>
+    {contactOfficeData.capital_off_tel_number1 && (
+      <TouchableOpacity 
+        style={styles.officeContactBtn}
+        onPress={() => {
+          const formattedNumber = formatPhoneNumberForCall(
+            contactOfficeData.capital_off_isd_code,
+            contactOfficeData.capital_off_std_code,
+            contactOfficeData.capital_off_tel_number1
+          );
+          handleCall(formattedNumber);
+        }}
+      >
+        <Icon name="phone" size={14} color="#e16e2b" />
+        <Text style={styles.officeContactText}>Landline</Text>
+      </TouchableOpacity>
+    )}
+    
+    {contactOfficeData.capital_off_mobile_number1 && (
+      <TouchableOpacity 
+        style={styles.officeContactBtn}
+        onPress={() => {
+          // For mobile, just use ISD + Mobile (no STD code)
+          const isd = (contactOfficeData.capital_off_isd_code || '+91').replace(/^0+/, '').replace('+', '');
+          handleCall(`+${isd}${contactOfficeData.capital_off_mobile_number1}`);
+        }}
+      >
+        <Icon name="smartphone" size={14} color="#e16e2b" />
+        <Text style={styles.officeContactText}>Mobile</Text>
+      </TouchableOpacity>
+    )}
+  </View>
+)}
       
       <View style={styles.badge}>
         <TranslatableText style={styles.badgeText}>Parliament</TranslatableText>
@@ -1664,14 +1864,20 @@ const createContactOffice = async (memberIdentifier, data) => {
             <View style={[styles.editInputContainer, styles.smallWidth]}>
               <Text style={styles.editInputLabel}>STD</Text>
               <TextInput
-                style={styles.editInput}
-                value={editingContactOfficeData.capital_off_std_code}
-                onChangeText={(text) => setEditingContactOfficeData({
-                  ...editingContactOfficeData,
-                  capital_off_std_code: text
-                })}
-                placeholder="0622"
-              />
+  style={styles.editInput}
+  value={addingContactOfficeData.const_off_std_code}
+  onChangeText={(text) => {
+    // Only allow numbers and limit to 5 digits
+    const cleaned = text.replace(/[^0-9]/g, '').slice(0, 5);
+    setAddingContactOfficeData({
+      ...addingContactOfficeData,
+      const_off_std_code: cleaned
+    });
+  }}
+  placeholder="0622"
+  keyboardType="numeric"
+  maxLength={5}  // ✅ ADD THIS
+/>
             </View>
 
             <View style={[styles.editInputContainer, styles.largeWidth]}>

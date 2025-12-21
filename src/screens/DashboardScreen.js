@@ -20,6 +20,8 @@ import { launchImageLibrary } from 'react-native-image-picker';
 import { getCurrentUserRole, checkIfCurrentUserIsAdmin } from '../../App';
 import ApiService from '../services/ApiService';
 import Icon from 'react-native-vector-icons/MaterialIcons';
+import { useTranslation } from '../context/TranslationContext';
+import TranslatableText from '../components/TranslatableText';
 
 
 // ============================================
@@ -558,6 +560,9 @@ const [profileImageLoading, setProfileImageLoading] = useState(false);
       loadUserInfoAndCounts();
     }, [])
   );
+//translation hook
+  const { isTranslating } = useTranslation();
+const fontSize = 16;
 
   // ✅ Auto-scroll effect for dashboard banners (only for non-admin users)
 useEffect(() => {
@@ -594,21 +599,69 @@ useEffect(() => {
   }
 }, [isAdmin, dashboardBannersData, dashboardBannersLoading]);
 
-  const getUserInfo = async () => {
+ const getUserInfo = async () => {
+  try {
+    console.log('🔍 === GETTING USER INFO FOR DASHBOARD ===');
+    
+    let leaderMobile = '';
+    
+    // ✅ PRIORITY 1: Get OWNER_MOBILE directly (stored during bootstrap)
     try {
-      console.log('🔍 === GETTING USER INFO FOR DASHBOARD ===');
-      
-      let leaderMobile = '';
-      
-      // Try AsyncStorage first
+      const ownerMobile = await EncryptedStorage.getItem('OWNER_MOBILE');
+      if (ownerMobile && ownerMobile.trim() !== '') {
+        leaderMobile = ownerMobile.trim();
+        console.log('✅ Owner mobile found from OWNER_MOBILE:', leaderMobile);
+      }
+    } catch (error) {
+      console.log('⚠️ Error reading OWNER_MOBILE:', error.message);
+    }
+
+    // ✅ PRIORITY 2: Get from AppOwnerInfo (EncryptedStorage first)
+    if (!leaderMobile) {
+      try {
+        const encryptedAppOwnerInfo = await EncryptedStorage.getItem('AppOwnerInfo');
+        if (encryptedAppOwnerInfo) {
+          const ownerInfo = JSON.parse(encryptedAppOwnerInfo);
+          console.log('📱 AppOwnerInfo keys from EncryptedStorage:', Object.keys(ownerInfo));
+          
+          // Expanded list of possible mobile field names
+          const mobileFields = [
+            'mobile_no', 'mobile_number', 'regdMobileNo', 'regd_mobile_no',
+            'client_mobile', 'owner_mobile', 'phone', 'mobileNo', 'Mobile',
+            'mobile', 'contact', 'phoneNumber', 'contactNumber'
+          ];
+          
+          for (const field of mobileFields) {
+            if (ownerInfo[field]) {
+              leaderMobile = String(ownerInfo[field]).trim();
+              console.log(`✅ Mobile found in AppOwnerInfo.${field}:`, leaderMobile);
+              break;
+            }
+          }
+        }
+      } catch (error) {
+        console.log('⚠️ Error reading AppOwnerInfo from EncryptedStorage:', error.message);
+      }
+    }
+
+    // ✅ PRIORITY 3: Try AsyncStorage AppOwnerInfo as fallback
+    if (!leaderMobile) {
       try {
         const appOwnerInfo = await AsyncStorage.getItem('appOwnerInfo');
         if (appOwnerInfo) {
           const ownerInfo = JSON.parse(appOwnerInfo);
-          const mobileFields = ['client_mobile', 'mobile', 'mobile_no', 'phone', 'contact'];
+          console.log('📱 AppOwnerInfo keys from AsyncStorage:', Object.keys(ownerInfo));
+          
+          const mobileFields = [
+            'mobile_no', 'mobile_number', 'regdMobileNo', 'regd_mobile_no',
+            'client_mobile', 'owner_mobile', 'phone', 'mobileNo', 'Mobile',
+            'mobile', 'contact', 'phoneNumber', 'contactNumber'
+          ];
+          
           for (const field of mobileFields) {
             if (ownerInfo[field]) {
               leaderMobile = String(ownerInfo[field]).trim();
+              console.log(`✅ Mobile found in AsyncStorage AppOwnerInfo.${field}:`, leaderMobile);
               break;
             }
           }
@@ -616,64 +669,49 @@ useEffect(() => {
       } catch (error) {
         console.log('⚠️ Error reading AppOwnerInfo from AsyncStorage:', error.message);
       }
-
-      // Try EncryptedStorage if no mobile found
-      if (!leaderMobile) {
-        try {
-          const encryptedAppOwnerInfo = await EncryptedStorage.getItem('AppOwnerInfo');
-          if (encryptedAppOwnerInfo) {
-            const ownerInfo = JSON.parse(encryptedAppOwnerInfo);
-            const mobileFields = ['client_mobile', 'mobile', 'mobile_no', 'phone', 'contact'];
-            for (const field of mobileFields) {
-              if (ownerInfo[field]) {
-                leaderMobile = String(ownerInfo[field]).trim();
-                break;
-              }
-            }
-          }
-        } catch (error) {
-          console.log('⚠️ Error reading AppOwnerInfo from EncryptedStorage:', error.message);
-        }
-      }
-
-      // Try direct owner mobile storage
-      if (!leaderMobile) {
-        try {
-          leaderMobile = await EncryptedStorage.getItem('OWNER_MOBILE') || '';
-        } catch (error) {
-          console.log('⚠️ Error reading OWNER_MOBILE:', error.message);
-        }
-      }
-
-      // Get user email
-      let userEmail = '';
-      try {
-        userEmail = await AsyncStorage.getItem('userEmail') || 
-                   await AsyncStorage.getItem('user_email') || 
-                   await EncryptedStorage.getItem('LOGGED_IN_EMAIL') || '';
-      } catch (error) {
-        console.log('⚠️ Error reading user email:', error.message);
-      }
-
-      const userInfoData = {
-        leaderMobile: leaderMobile || '',
-        userEmail: userEmail || ''
-      };
-
-      setUserInfo(userInfoData);
-      
-      console.log('✅ Dashboard User Info:', {
-        leaderMobile: leaderMobile || '(EMPTY)',
-        userEmail: userEmail || '(EMPTY)'
-      });
-
-      return userInfoData;
-      
-    } catch (error) {
-      console.error('❌ Error getting user info for dashboard:', error);
-      return { leaderMobile: '', userEmail: '' };
     }
-  };
+
+    // Get user email (existing code, keep as-is)
+    let userEmail = '';
+    try {
+      userEmail = await AsyncStorage.getItem('userEmail') || 
+                 await AsyncStorage.getItem('user_email') || 
+                 await EncryptedStorage.getItem('LOGGED_IN_EMAIL') || '';
+    } catch (error) {
+      console.log('⚠️ Error reading user email:', error.message);
+    }
+
+    const userInfoData = {
+      leaderMobile: leaderMobile || '',
+      userEmail: userEmail || ''
+    };
+
+    setUserInfo(userInfoData);
+    
+    // ✅ ENHANCED LOGGING
+    console.log('📱 ===================================');
+    console.log('📱 DASHBOARD USER INFO FINAL:');
+    console.log('📱 Owner Mobile:', leaderMobile || '(EMPTY - ERROR!)');
+    console.log('📱 User Email:', userEmail || '(EMPTY)');
+    console.log('📱 ===================================');
+
+    // ✅ ALERT IF NO MOBILE FOUND
+    if (!leaderMobile) {
+      console.error('❌ CRITICAL: No owner mobile number found for Dashboard!');
+      Alert.alert(
+        'Configuration Error',
+        'Owner mobile number not found. Please restart the app.',
+        [{ text: 'OK' }]
+      );
+    }
+
+    return userInfoData;
+    
+  } catch (error) {
+    console.error('❌ Error getting user info for dashboard:', error);
+    return { leaderMobile: '', userEmail: '' };
+  }
+};
 
   // 👇 ADD THIS FUNCTION after getUserInfo
 const checkAdminRole = async () => {
@@ -1246,7 +1284,7 @@ const handleSaveDashboardBanner = async (updatedData) => {
     const apiUrl = `${baseUrl}/api/mediacorner`;
 
     const formData = new FormData();
-    formData.append('regd_mobile_no', userInfo.leaderMobile);
+    formData.append('leader_regd_mobile_no', userInfo.leaderMobile);
     formData.append('user_email_id', userInfo.userEmail);
     formData.append('media_header', updatedData.media_header);
     formData.append('media_narration', updatedData.media_narration);
@@ -1318,7 +1356,7 @@ const handleAddDashboardBanner = async (selectedImage) => {
     const apiUrl = `${baseUrl}/api/mediacorner`;
 
     const formData = new FormData();
-    formData.append('regd_mobile_no', userInfo.leaderMobile);
+    formData.append('leader_regd_mobile_no', userInfo.leaderMobile);
     formData.append('user_email_id', userInfo.userEmail);
     formData.append('media_header', 'null');
     formData.append('media_narration', 'null');
@@ -1450,20 +1488,22 @@ const handleUpdateProfileImage = async (selectedImage) => {
   };
 
   const renderGridItem = (title, count, onPress) => (
-    <TouchableOpacity
-      key={title}
-      style={styles.gridItem}
-      onPress={onPress}
-      activeOpacity={0.7}
-    >
-      <Text style={styles.gridTitle}>{title}</Text>
-      {loading ? (
-        <ActivityIndicator size="small" color="#e16e2b" />
-      ) : (
-        <Text style={styles.gridCount}>{count}</Text>
-      )}
-    </TouchableOpacity>
-  );
+  <TouchableOpacity
+    key={title}
+    style={styles.gridItem}
+    onPress={onPress}
+    activeOpacity={0.7}
+  >
+    <TranslatableText style={[styles.gridTitle, { fontSize: fontSize }]}>
+      {title}
+    </TranslatableText>
+    {loading ? (
+      <ActivityIndicator size="small" color="#e16e2b" />
+    ) : (
+      <Text style={styles.gridCount}>{count}</Text>
+    )}
+  </TouchableOpacity>
+);
 
   // 👇 ADD THIS RENDER FUNCTION before the return statement
 
@@ -1770,103 +1810,95 @@ const renderProfileImageEditModal = () => {
   );
 };
 
-  return (
+ return (
+  <>
+    {/* Translation Loading Indicator */}
+    {isTranslating && (
+      <View style={styles.translationLoadingBar}>
+        <ActivityIndicator size="small" color="#e16e2b" />
+        <Text style={styles.translationLoadingText}>Translating...</Text>
+      </View>
+    )}
+
     <ScrollView
       style={styles.container}
       refreshControl={
         <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
       }
     >
-     {/* Header Section */}
-<View style={styles.header}>
-  <View style={styles.profileImageContainer}>
-    {leaderImageLoading ? (
-      <View style={styles.profileImageLoadingContainer}>
-        <ActivityIndicator size="small" color="#e16e2b" />
-      </View>
-    ) : (
-      <>
-        <Image
-          source={{ 
-            uri: leaderProfileImage || 'https://tse2.mm.bing.net/th/id/OIP.7nJJBy9zWC6D4pVeQDTEqAHaHX?pid=Api&P=0&h=180' 
-          }}
-          style={styles.profileImage}
-          onError={() => {
-            console.log('Failed to load leader photo, using fallback');
-            setLeaderProfileImage(null);
-          }}
-        />
-        
-        {/* ✅ EDIT ICON BUTTON - Only show for admin */}
-        {isAdmin && (
-          <TouchableOpacity 
-            style={styles.profileImageEditButton}
-            onPress={() => setEditProfileImageModalVisible(true)}
-            activeOpacity={0.7}
-          >
-            <Icon name="edit" size={14} color="#fff" />
-          </TouchableOpacity>
-        )}
-      </>
-    )}
-  </View>
-  <Text style={styles.name}>Dr. Sanjay Jaiswal</Text>
-  <Text style={styles.degree}>MBBS, MD</Text>
-  <View style={styles.positionCard}>
-    <Text style={styles.position}>Member of Parliament</Text>
-    <Text style={styles.constituency}>Paschim Champaran (Lok Sabha), Bihar</Text>
-  </View>
-</View>
+      {/* Header Section */}
+      <View style={styles.header}>
+        <View style={styles.profileImageContainer}>
+          {leaderImageLoading ? (
+            <View style={styles.profileImageLoadingContainer}>
+              <ActivityIndicator size="small" color="#e16e2b" />
+            </View>
+          ) : (
+            <>
+              <Image
+                source={{ 
+                  uri: leaderProfileImage || 'https://tse2.mm.bing.net/th/id/OIP.7nJJBy9zWC6D4pVeQDTEqAHaHX?pid=Api&P=0&h=180' 
+                }}
+                style={styles.profileImage}
+                onError={() => {
+                  console.log('Failed to load leader photo, using fallback');
+                  setLeaderProfileImage(null);
+                }}
+              />
+              
+              {isAdmin && (
+                <TouchableOpacity 
+                  style={styles.profileImageEditButton}
+                  onPress={() => setEditProfileImageModalVisible(true)}
+                  activeOpacity={0.7}
+                >
+                  <Icon name="edit" size={14} color="#fff" />
+                </TouchableOpacity>
+              )}
+            </>
+          )}
+        </View>
 
-       {renderDashboardBannerGallery()}
+        {/* ✅ UPDATED - Using TranslatableText */}
+        <TranslatableText style={[styles.name, { fontSize: fontSize + 12 }]}>
+          Dr. Sanjay Jaiswal
+        </TranslatableText>
+        <TranslatableText style={[styles.degree, { fontSize: fontSize }]}>
+          MBBS, MD
+        </TranslatableText>
+        
+        <View style={styles.positionCard}>
+          <TranslatableText style={[styles.position, { fontSize: fontSize }]}>
+            Member of Parliament
+          </TranslatableText>
+          <TranslatableText style={[styles.constituency, { fontSize: fontSize - 2 }]}>
+            Paschim Champaran (Lok Sabha), Bihar
+          </TranslatableText>
+        </View>
+      </View>
+
+      {renderDashboardBannerGallery()}
 
       {/* Dashboard Action Boxes */}
-     
-<View style={styles.gridContainer}>
-  <View style={styles.row}>
-    {renderGridItem(
-      'APPEAL', 
-      counts.APPEAL, 
-      () => handleGridItemPress('APPEAL')
-    )}
-    {renderGridItem(
-      'APPOINTMENT', 
-      counts.APPOINTMENT, 
-      () => handleGridItemPress('APPOINTMENT')
-    )}
-  </View>
+      <View style={styles.gridContainer}>
+        <View style={styles.row}>
+          {renderGridItem('APPEAL', counts.APPEAL, () => handleGridItemPress('APPEAL'))}
+          {renderGridItem('APPOINTMENT', counts.APPOINTMENT, () => handleGridItemPress('APPOINTMENT'))}
+        </View>
 
-  <View style={styles.row}>
-    {renderGridItem(
-      'GRIEVANCE', 
-      counts.GRIEVANCE, 
-      () => handleGridItemPress('GRIEVANCE')
-    )}
-    {renderGridItem(
-      'COMPLAINTS', 
-      counts.COMPLAINTS, 
-      () => handleGridItemPress('COMPLAINTS')
-    )}
-  </View>
+        <View style={styles.row}>
+          {renderGridItem('GRIEVANCE', counts.GRIEVANCE, () => handleGridItemPress('GRIEVANCE'))}
+          {renderGridItem('COMPLAINTS', counts.COMPLAINTS, () => handleGridItemPress('COMPLAINTS'))}
+        </View>
 
-  {/* ✅ ADD THIS NEW ROW */}
-  <View style={styles.row}>
-    {renderGridItem(
-      'FEEDBACK', 
-      counts.FEEDBACK, 
-      () => navigation.navigate('Feedback')
-    )}
-    {renderGridItem(
-      'ISSUES', 
-      counts.ISSUES, 
-      () => navigation.navigate('Feedback')
-    )}
-  </View>
-</View>
-
-    
+        <View style={styles.row}>
+          {renderGridItem('FEEDBACK', counts.FEEDBACK, () => navigation.navigate('Feedback'))}
+          {renderGridItem('ISSUES', counts.ISSUES, () => navigation.navigate('Feedback'))}
+        </View>
+      </View>
     </ScrollView>
-  );
+  </>
+);
 };
 
 const styles = StyleSheet.create({
@@ -2551,6 +2583,20 @@ profileImageSaveButtonText: {
   fontWeight: 'bold',
   color: '#ffffff',
 },
+ translationLoadingBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#fff3cd',
+    paddingVertical: 8,
+    paddingHorizontal: 15,
+    gap: 10,
+  },
+  translationLoadingText: {
+    fontSize: 14,
+    color: '#856404',
+    fontWeight: '500',
+  },
 });
 
 export default DashboardScreen;

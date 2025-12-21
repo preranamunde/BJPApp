@@ -20,6 +20,7 @@ import { launchImageLibrary, launchCamera } from 'react-native-image-picker';
 import AuthService from '../utils/AuthService';
 import ConfigService from '../services/ConfigService';
 import ApiService from '../services/ApiService';
+import EncryptedStorage from 'react-native-encrypted-storage';
 
 const RegistrationScreen = ({ navigation, route }) => {
   const [isEditMode, setIsEditMode] = useState(false);
@@ -250,38 +251,77 @@ const RegistrationScreen = ({ navigation, route }) => {
 
   // UPDATED EMAIL VERIFICATION USING APISERVICE
   const handleEmailVerification = async () => {
-    if (isEditMode) return; // Disabled in edit mode
+  if (isEditMode) return; // Disabled in edit mode
 
-    if (!formData.email || !validateEmail(formData.email)) {
-      Alert.alert('Error', 'Please enter a valid email address');
-      return;
-    }
+  if (!formData.email || !validateEmail(formData.email)) {
+    Alert.alert('Error', 'Please enter a valid email address');
+    return;
+  }
 
-    if (!apiEndpoints) {
-      Alert.alert('Error', 'API configuration not loaded');
-      return;
-    }
+  if (!apiEndpoints) {
+    Alert.alert('Error', 'API configuration not loaded');
+    return;
+  }
 
-    setEmailVerificationState('loading');
+  setEmailVerificationState('loading');
 
-    try {
-      const result = await ApiService.post(apiEndpoints.auth.verifyEmail, {
-        email: formData.email,
-      });
-
-      if (result.success) {
-        setEmailVerificationState('verify');
-        // Removed: Alert for "You can now send OTP"
-        // Instead, enable OTP input/button in UI
-      } else {
-        setEmailVerificationState('input');
-        Alert.alert('Error', result.message || 'Failed to verify email. Please try again.');
+  try {
+    // ✅ GET LEADER MOBILE NUMBER from storage
+    const getMobileNumberFromStorage = async () => {
+      try {
+        const appOwnerInfoStr = await EncryptedStorage.getItem('AppOwnerInfo');
+        if (appOwnerInfoStr) {
+          const appOwnerInfo = JSON.parse(appOwnerInfoStr);
+          const memberIdentifier = appOwnerInfo.mobile_no || 
+                                  appOwnerInfo.regdMobileNo || 
+                                  appOwnerInfo.mobile_number || 
+                                  '7702000725';
+          return memberIdentifier;
+        }
+        
+        const storedMemberId = await EncryptedStorage.getItem('MOBILE_NUMBER') || 
+                              await EncryptedStorage.getItem('OWNER_MOBILE') ||
+                              '7702000725';
+        return storedMemberId;
+      } catch (error) {
+        console.error('Error retrieving mobile number:', error);
+        return '7702000725';
       }
-    } catch (error) {
+    };
+
+    const leaderMobileNo = await getMobileNumberFromStorage();
+    console.log('📱 Leader Mobile No for registration email verification:', leaderMobileNo);
+
+    // ✅ PREPARE REQUEST BODY
+    const requestBody = {
+      leader_regd_mobile_no: leaderMobileNo,
+      user_email_id: formData.email.trim().toLowerCase(), // ✅ CHANGED: email -> user_email_id
+    };
+
+    console.log('📡 Registration Email Verification Request:', requestBody);
+
+    // ✅ Use authPost instead of post
+    const result = await ApiService.authPost(
+      apiEndpoints.auth.verifyEmail, 
+      requestBody
+    );
+
+    console.log('✅ Registration Email Verification Response:', result);
+
+    if (result.success) {
+      setEmailVerificationState('verify');
+      // Removed: Alert for "You can now send OTP"
+      // Instead, enable OTP input/button in UI
+    } else {
       setEmailVerificationState('input');
-      Alert.alert('Error', 'Failed to verify email. Please try again.');
+      Alert.alert('Error', result.message || 'Failed to verify email. Please try again.');
     }
-  };
+  } catch (error) {
+    console.error('❌ Registration Email Verification Error:', error);
+    setEmailVerificationState('input');
+    Alert.alert('Error', 'Failed to verify email. Please try again.');
+  }
+};
 
   const validateEmail = (email) => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
@@ -289,79 +329,150 @@ const RegistrationScreen = ({ navigation, route }) => {
   };
 
   // UPDATED SEND EMAIL OTP USING APISERVICE
-  const sendEmailOTP = async () => {
-    if (isEditMode) return; // Disabled in edit mode
+ const sendEmailOTP = async () => {
+  if (isEditMode) return; // Disabled in edit mode
 
-    if (!apiEndpoints) {
-      Alert.alert('Error', 'API configuration not loaded');
-      return;
-    }
+  if (!apiEndpoints) {
+    Alert.alert('Error', 'API configuration not loaded');
+    return;
+  }
 
-    try {
-      setEmailVerificationState('loading');
+  try {
+    setEmailVerificationState('loading');
 
-      const result = await ApiService.post(apiEndpoints.auth.sendOTP, {
-        email: formData.email,
-      });
-
-      console.log('OTP Send API response:', result);
-
-      if (result.success && (result.data?.message === 'OTP sent to email successfully' || result.message === 'OTP sent to email successfully')) {
-        setVerificationToken('dummy-token');
-        setEmailVerificationState('otp');
-        setOtpTimer(300);
-        Alert.alert('OTP Sent', `Verification code has been sent to ${formData.email}.`);
-      } else {
-        throw new Error(result.message || 'Unexpected response');
+    // ✅ GET LEADER MOBILE NUMBER from storage
+    const getMobileNumberFromStorage = async () => {
+      try {
+        const appOwnerInfoStr = await EncryptedStorage.getItem('AppOwnerInfo');
+        if (appOwnerInfoStr) {
+          const appOwnerInfo = JSON.parse(appOwnerInfoStr);
+          const memberIdentifier = appOwnerInfo.mobile_no || 
+                                  appOwnerInfo.regdMobileNo || 
+                                  appOwnerInfo.mobile_number || 
+                                  '7702000725';
+          return memberIdentifier;
+        }
+        
+        const storedMemberId = await EncryptedStorage.getItem('MOBILE_NUMBER') || 
+                              await EncryptedStorage.getItem('OWNER_MOBILE') ||
+                              '7702000725';
+        return storedMemberId;
+      } catch (error) {
+        console.error('Error retrieving mobile number:', error);
+        return '7702000725';
       }
-    } catch (error) {
-      console.log('OTP send error:', error);
-      setEmailVerificationState('verify');
-      Alert.alert('Error', 'Failed to send OTP. Please try again.');
+    };
+
+    const leaderMobileNo = await getMobileNumberFromStorage();
+    console.log('📱 Leader Mobile No for registration OTP:', leaderMobileNo);
+
+    // ✅ PREPARE REQUEST BODY
+    const requestBody = {
+      leader_regd_mobile_no: leaderMobileNo,
+      user_email_id: formData.email.trim().toLowerCase(), // ✅ CHANGED: email -> user_email_id
+    };
+
+    console.log('📡 Registration Send OTP Request:', requestBody);
+
+    // ✅ Use authPost instead of post
+    const result = await ApiService.authPost(
+      apiEndpoints.auth.sendOTP, 
+      requestBody
+    );
+
+    console.log('✅ OTP Send API response:', result);
+
+    if (result.success && (result.data?.message === 'OTP sent to email successfully' || result.message === 'OTP sent to email successfully')) {
+      setVerificationToken('dummy-token');
+      setEmailVerificationState('otp');
+      setOtpTimer(300);
+      Alert.alert('OTP Sent', `Verification code has been sent to ${formData.email}.`);
+    } else {
+      throw new Error(result.message || 'Unexpected response');
     }
-  };
+  } catch (error) {
+    console.error('❌ OTP send error:', error);
+    setEmailVerificationState('verify');
+    Alert.alert('Error', 'Failed to send OTP. Please try again.');
+  }
+};
 
   // UPDATED VERIFY EMAIL OTP USING APISERVICE
   const verifyEmailOTP = async () => {
-    if (isEditMode) return; // Disabled in edit mode
+  if (isEditMode) return; // Disabled in edit mode
 
-    if (!emailOtp || emailOtp.length !== 6) {
-      Alert.alert('Error', 'Please enter the 6-digit OTP');
-      return;
-    }
+  if (!emailOtp || emailOtp.length !== 6) {
+    Alert.alert('Error', 'Please enter the 6-digit OTP');
+    return;
+  }
 
-    if (!apiEndpoints) {
-      Alert.alert('Error', 'API configuration not loaded');
-      return;
-    }
+  if (!apiEndpoints) {
+    Alert.alert('Error', 'API configuration not loaded');
+    return;
+  }
 
-    try {
-      setEmailVerificationState('loading');
+  try {
+    setEmailVerificationState('loading');
 
-      const result = await ApiService.post(apiEndpoints.auth.verifyEmailOTP, {
-        email: formData.email,
-        otp: emailOtp,
-        verificationToken: verificationToken,
-      });
-
-      console.log('Verification response:', result);
-
-      if (result.success && (result.data?.message === 'Email verified and greeted!' || result.message === 'Email verified and greeted!')) {
-        setIsEmailVerified(true);
-        setEmailVerificationState('verified');
-        Alert.alert('Success', 'Email verified successfully!');
-        setEmailOtp('');
-        setVerificationToken('');
-      } else {
-        setEmailVerificationState('otp');
-        Alert.alert('Error', result.message || 'OTP verification failed. Please try again.');
+    // ✅ GET LEADER MOBILE NUMBER from storage
+    const getMobileNumberFromStorage = async () => {
+      try {
+        const appOwnerInfoStr = await EncryptedStorage.getItem('AppOwnerInfo');
+        if (appOwnerInfoStr) {
+          const appOwnerInfo = JSON.parse(appOwnerInfoStr);
+          const memberIdentifier = appOwnerInfo.mobile_no || 
+                                  appOwnerInfo.regdMobileNo || 
+                                  appOwnerInfo.mobile_number || 
+                                  '7702000725';
+          return memberIdentifier;
+        }
+        
+        const storedMemberId = await EncryptedStorage.getItem('MOBILE_NUMBER') || 
+                              await EncryptedStorage.getItem('OWNER_MOBILE') ||
+                              '7702000725';
+        return storedMemberId;
+      } catch (error) {
+        console.error('Error retrieving mobile number:', error);
+        return '7702000725';
       }
-    } catch (error) {
-      console.log('Verification error:', error);
+    };
+
+    const leaderMobileNo = await getMobileNumberFromStorage();
+    console.log('📱 Leader Mobile No for registration OTP verification:', leaderMobileNo);
+
+    // ✅ PREPARE REQUEST BODY (removed verificationToken)
+    const requestBody = {
+      leader_regd_mobile_no: leaderMobileNo,
+      user_email_id: formData.email.trim().toLowerCase(), // ✅ CHANGED: email -> user_email_id
+      otp: emailOtp,
+    };
+
+    console.log('📡 Registration Verify OTP Request:', requestBody);
+
+    // ✅ Use authPost instead of post
+    const result = await ApiService.authPost(
+      apiEndpoints.auth.verifyEmailOTP, 
+      requestBody
+    );
+
+    console.log('✅ Verification response:', result);
+
+    if (result.success && (result.data?.message === 'Email verified and greeted!' || result.message === 'Email verified and greeted!')) {
+      setIsEmailVerified(true);
+      setEmailVerificationState('verified');
+      Alert.alert('Success', 'Email verified successfully!');
+      setEmailOtp('');
+      setVerificationToken('');
+    } else {
       setEmailVerificationState('otp');
-      Alert.alert('Error', 'Failed to verify OTP. Please try again.');
+      Alert.alert('Error', result.message || 'OTP verification failed. Please try again.');
     }
-  };
+  } catch (error) {
+    console.error('❌ Verification error:', error);
+    setEmailVerificationState('otp');
+    Alert.alert('Error', 'Failed to verify OTP. Please try again.');
+  }
+};
 
   const resendEmailOTP = () => {
     if (isEditMode) return; // Disabled in edit mode
@@ -549,137 +660,289 @@ const RegistrationScreen = ({ navigation, route }) => {
 
   // UPDATED EDIT PROFILE HANDLER USING AUTHSERVICE
   // UPDATED EDIT PROFILE HANDLER USING APISERVICE WITH PROPER HEADERS
-  const handleEditProfile = async () => {
+ // ✅ REPLACE your handleEditProfile function in RegistrationScreen.js
+
+const handleEditProfile = async () => {
+  try {
+    console.log('📝 Starting profile edit...');
+    
+    const userData = await AsyncStorage.getItem('userData');
+    if (!userData) {
+      Alert.alert('Error', 'User session not found. Please login again.');
+      return;
+    }
+
+    const parsedUserData = JSON.parse(userData);
+    console.log('👤 User data:', parsedUserData);
+    
+    // ✅ Get user email for authentication
+    const userEmail = parsedUserData.email || parsedUserData.user_email_id;
+
+    if (!userEmail) {
+      console.error('❌ Missing user email:', { userEmail });
+      Alert.alert('Error', 'User session incomplete. Please login again.');
+      return;
+    }
+
+    console.log('📧 User email:', userEmail);
+
+    // ✅ CRITICAL FIX: Get OWNER mobile number (not user's mobile)
+    let ownerMobile = '';
     try {
-      const userData = await AsyncStorage.getItem('userData');
-      if (!userData) {
-        Alert.alert('Error', 'User session not found. Please login again.');
-        return;
-      }
-
-      const parsedUserData = JSON.parse(userData);
-      const userId = parsedUserData.id || parsedUserData.userId;
-      const userEmail = parsedUserData.email;
-      const userMobile = parsedUserData.mobile;
-
-      if (!userEmail || !userMobile) {
-        Alert.alert('Error', 'User session incomplete. Please login again.');
-        return;
-      }
-
-      const endpoints = await ConfigService.getApiEndpoints();
-
-      if (isProfileImageChanged && formData.profile_image) {
-        // POST with FormData (when image is updated)
-        console.log('🔄 Updating profile with image...');
-
-        const formDataToSend = new FormData();
-        formDataToSend.append('leader_regd_mobile_no', userMobile);
-        formDataToSend.append('user_email_id', userEmail);
-        formDataToSend.append('name', formData.name);
-        formDataToSend.append('mobile', formData.mobile);
-        formDataToSend.append('address', formData.address);
-        formDataToSend.append('city', formData.city);
-        formDataToSend.append('state', formData.state);
-        formDataToSend.append('pincode', formData.pincode);
-        formDataToSend.append('district', formData.district);
-        formDataToSend.append('facebook', formData.facebook || '');
-        formDataToSend.append('instagram', formData.instagram || '');
-        formDataToSend.append('twitter', formData.twitter || '');
-
-        if (formData.profile_image && typeof formData.profile_image === 'object') {
-          formDataToSend.append('profile_image', {
-            uri: formData.profile_image.uri,
-            type: formData.profile_image.type || 'image/jpeg',
-            name: formData.profile_image.fileName || `profile-${Date.now()}.jpg`,
-          });
-        }
-
-        // Use ApiService.authPost for FormData with proper headers
-        const result = await ApiService.authPost(
-          endpoints.user.updateProfile || `${await ConfigService.getBaseUrl()}/api/profile/`,
-          formDataToSend,
-          {}, // Additional headers (ApiService will add auth headers automatically)
-          true // isFormData = true
-        );
-
-        if (result.success) {
-          Alert.alert('Success!', 'Profile updated successfully!', [
-            {
-              text: 'OK',
-              onPress: () => navigation.goBack(),
-            },
-          ]);
-        } else {
-          throw new Error(result.message || 'Failed to update profile');
-        }
-      } else {
-        // PUT with JSON (when no image is updated)
-        console.log('🔄 Updating profile without image...');
-
-        const updateData = {
-          leader_regd_mobile_no: userMobile,
-          user_email_id: userEmail,
-          name: formData.name,
-          mobile: formData.mobile,
-          address: formData.address,
-          city: formData.city,
-          state: formData.state,
-          pincode: formData.pincode,
-          district: formData.district,
-          facebook: formData.facebook || '',
-          instagram: formData.instagram || '',
-          twitter: formData.twitter || '',
-        };
-
-        // Use ApiService.authPut for JSON data with proper headers
-        const result = await ApiService.authPut(
-          endpoints.user.updateProfile || `${await ConfigService.getBaseUrl()}/api/profile/`,
-          updateData
-        );
-
-        if (result.success) {
-          // Update local storage with new user data if returned
-          if (result.data && result.data.user) {
-            await AsyncStorage.setItem('userData', JSON.stringify(result.data.user));
-          }
-
-          Alert.alert('Success!', 'Profile updated successfully!', [
-            {
-              text: 'OK',
-              onPress: () => navigation.goBack(),
-            },
-          ]);
-        } else {
-          throw new Error(result.message || 'Failed to update profile');
+      // First try EncryptedStorage
+      ownerMobile = await EncryptedStorage.getItem('OWNER_MOBILE');
+      
+      // Fallback: Try AppOwnerInfo
+      if (!ownerMobile) {
+        const appOwnerInfoStr = await EncryptedStorage.getItem('AppOwnerInfo');
+        if (appOwnerInfoStr) {
+          const appOwnerInfo = JSON.parse(appOwnerInfoStr);
+          ownerMobile = appOwnerInfo.mobile_no || 
+                       appOwnerInfo.regdMobileNo || 
+                       appOwnerInfo.mobile_number || 
+                       appOwnerInfo.client_mobile ||
+                       '';
         }
       }
     } catch (error) {
-      console.error('❌ Edit Profile Error:', error);
+      console.error('Error getting owner mobile:', error);
+    }
 
-      if (error.message.includes('Session expired') || error.message.includes('Authentication failed')) {
-        // Handle session expiration
-        Alert.alert('Session Expired', 'Your session has expired. Please login again.', [
+    if (!ownerMobile) {
+      console.error('❌ Owner mobile not found in storage');
+      Alert.alert(
+        'Configuration Error', 
+        'Owner mobile number not found. Please restart the app or contact support.'
+      );
+      return;
+    }
+
+    console.log('📱 Owner mobile (for leader_regd_mobile_no):', ownerMobile);
+    console.log('📱 User mobile (for profile update):', formData.mobile);
+
+    const baseUrl = await ConfigService.getBaseUrl();
+    console.log('🌐 Base URL:', baseUrl);
+
+    if (isProfileImageChanged && formData.profile_image) {
+      // ✅ POST with FormData (when image is updated)
+      console.log('🖼️ Updating profile with image...');
+
+      const formDataToSend = new FormData();
+      formDataToSend.append('leader_regd_mobile_no', ownerMobile); // ✅ OWNER mobile
+      formDataToSend.append('user_email_id', userEmail);
+      formDataToSend.append('name', formData.name);
+      formDataToSend.append('mobile', formData.mobile); // ✅ USER mobile for profile
+      formDataToSend.append('address', formData.address);
+      formDataToSend.append('city', formData.city);
+      formDataToSend.append('state', formData.state);
+      formDataToSend.append('pincode', formData.pincode);
+      formDataToSend.append('district', formData.district);
+      formDataToSend.append('facebook', formData.facebook || '');
+      formDataToSend.append('instagram', formData.instagram || '');
+      formDataToSend.append('twitter', formData.twitter || '');
+
+      if (formData.profile_image && typeof formData.profile_image === 'object') {
+        formDataToSend.append('profile_image', {
+          uri: formData.profile_image.uri,
+          type: formData.profile_image.type || 'image/jpeg',
+          name: formData.profile_image.fileName || `profile-${Date.now()}.jpg`,
+        });
+      }
+
+      console.log('📤 Sending POST request with FormData...');
+      console.log('📱 Using owner mobile for leader_regd_mobile_no:', ownerMobile);
+      console.log('📱 Using user mobile for profile mobile field:', formData.mobile);
+      
+      // ✅ Use authPost for FormData
+      const result = await ApiService.authPost(
+        `${baseUrl}/api/profile/`,
+        formDataToSend,
+        {}, 
+        true // isFormData = true
+      );
+
+      console.log('📥 POST Response:', result);
+
+      if (result.success) {
+        // Update local storage with new user data if returned
+        if (result.data && result.data.user) {
+          await AsyncStorage.setItem('userData', JSON.stringify(result.data.user));
+          
+          // ✅ Update global variables
+          global.currentUser = result.data.user;
+          global.currentUserName = result.data.user.name;
+          global.currentUserMobile = result.data.user.mobile;
+          
+          // Trigger drawer refresh if available
+          if (global.refreshDrawer) {
+            global.refreshDrawer();
+          }
+        }
+        
+        Alert.alert('Success!', 'Profile updated successfully!', [
           {
             text: 'OK',
-            onPress: () => {
+            onPress: () => navigation.goBack(),
+          },
+        ]);
+      } else {
+        throw new Error(result.message || 'Failed to update profile');
+      }
+    } else {
+      // ✅ PUT with JSON (when no image is updated)
+      console.log('📝 Updating profile without image...');
+
+      const updateData = {
+        leader_regd_mobile_no: ownerMobile, // ✅ OWNER mobile
+        user_email_id: userEmail,
+        name: formData.name,
+        mobile: formData.mobile, // ✅ USER mobile for profile
+        address: formData.address,
+        city: formData.city,
+        state: formData.state,
+        pincode: formData.pincode,
+        district: formData.district,
+        facebook: formData.facebook || '',
+        instagram: formData.instagram || '',
+        twitter: formData.twitter || '',
+      };
+
+      console.log('📤 Sending PUT request with JSON:', updateData);
+      console.log('📱 Using owner mobile for leader_regd_mobile_no:', ownerMobile);
+      console.log('📱 Using user mobile for profile mobile field:', formData.mobile);
+
+      // ✅ Use authPut for JSON data
+      const result = await ApiService.authPut(
+        `${baseUrl}/api/profile/`,
+        updateData
+      );
+
+      console.log('📥 PUT Response:', result);
+
+      if (result.success) {
+        // Update local storage with new user data if returned
+        if (result.data && result.data.user) {
+          await AsyncStorage.setItem('userData', JSON.stringify(result.data.user));
+          
+          // ✅ Update global variables
+          global.currentUser = result.data.user;
+          global.currentUserName = result.data.user.name;
+          global.currentUserMobile = result.data.user.mobile;
+          
+          // Trigger drawer refresh if available
+          if (global.refreshDrawer) {
+            global.refreshDrawer();
+          }
+        }
+
+        Alert.alert('Success!', 'Profile updated successfully!', [
+          {
+            text: 'OK',
+            onPress: () => navigation.goBack(),
+          },
+        ]);
+      } else {
+        throw new Error(result.message || 'Failed to update profile');
+      }
+    }
+  } catch (error) {
+    console.error('❌ Edit Profile Error:', error);
+    console.error('❌ Error details:', {
+      message: error.message,
+      name: error.name,
+      stack: error.stack
+    });
+
+    // ✅ IMPROVED ERROR HANDLING
+    if (error.message && (
+      error.message.includes('Session expired') || 
+      error.message.includes('Authentication failed') ||
+      error.message.includes('401') ||
+      error.message.includes('Token')
+    )) {
+      // Handle session expiration
+      Alert.alert(
+        'Session Expired', 
+        'Your session has expired. Please login again.', 
+        [
+          {
+            text: 'OK',
+            onPress: async () => {
+              // Clear all stored data
+              try {
+                await AsyncStorage.multiRemove([
+                  'jwt_token',
+                  'refresh_token',
+                  'userData',
+                  'isLoggedin'
+                ]);
+                global.isUserLoggedin = false;
+              } catch (clearError) {
+                console.error('Error clearing storage:', clearError);
+              }
+              
+              // Navigate to login
               navigation.reset({
                 index: 0,
                 routes: [{ name: 'Login' }],
               });
             }
           }
-        ]);
-      } else if (error.message.includes('Network request failed') || error.name === 'TypeError') {
-        Alert.alert('Network Error', 'Unable to connect to server. Please check your internet connection and try again.');
-      } else {
-        Alert.alert('Error', error.message || 'Failed to update profile. Please try again.');
-      }
+        ],
+        { cancelable: false }
+      );
+    } else if (error.message && error.message.includes('Leader mobile number mismatch')) {
+      // ✅ HANDLE SPECIFIC MOBILE MISMATCH ERROR
+      Alert.alert(
+        'Configuration Error',
+        'There was an issue with the app configuration. Please try restarting the app.\n\nIf the issue persists, please contact support.',
+        [
+          {
+            text: 'Restart App',
+            onPress: async () => {
+              try {
+                // Force app to re-bootstrap
+                await EncryptedStorage.removeItem('APP_KEY');
+                await EncryptedStorage.removeItem('OWNER_MOBILE');
+                
+                // Restart the app (navigate to splash or reload)
+                navigation.reset({
+                  index: 0,
+                  routes: [{ name: 'Splash' }],
+                });
+              } catch (err) {
+                console.error('Error restarting app:', err);
+              }
+            }
+          },
+          {
+            text: 'Cancel',
+            style: 'cancel'
+          }
+        ]
+      );
+    } else if (error.message && (
+      error.message.includes('Network request failed') || 
+      error.name === 'TypeError' ||
+      error.message.includes('fetch')
+    )) {
+      Alert.alert(
+        'Network Error', 
+        'Unable to connect to server. Please check your internet connection and try again.'
+      );
+    } else {
+      Alert.alert(
+        'Error', 
+        error.message || 'Failed to update profile. Please try again.'
+      );
     }
-  };
+  }
+};
 
   // UPDATED REGISTRATION HANDLER USING APISERVICE
 // UPDATED REGISTRATION HANDLER USING APISERVICE
+// ✅ UPDATED REGISTRATION HANDLER - Replace your handleRegistration function
+
 const handleRegistration = async () => {
   if (!apiEndpoints) {
     Alert.alert('Error', 'API configuration not loaded');
@@ -687,10 +950,40 @@ const handleRegistration = async () => {
   }
 
   try {
+    // ✅ GET LEADER MOBILE NUMBER from storage
+    const getMobileNumberFromStorage = async () => {
+      try {
+        const appOwnerInfoStr = await EncryptedStorage.getItem('AppOwnerInfo');
+        if (appOwnerInfoStr) {
+          const appOwnerInfo = JSON.parse(appOwnerInfoStr);
+          const memberIdentifier = appOwnerInfo.mobile_no || 
+                                  appOwnerInfo.regdMobileNo || 
+                                  appOwnerInfo.mobile_number || 
+                                  '7702000725';
+          return memberIdentifier;
+        }
+        
+        const storedMemberId = await EncryptedStorage.getItem('MOBILE_NUMBER') || 
+                              await EncryptedStorage.getItem('OWNER_MOBILE') ||
+                              '7702000725';
+        return storedMemberId;
+      } catch (error) {
+        console.error('Error retrieving mobile number:', error);
+        return '7702000725';
+      }
+    };
+
+    const leaderMobileNo = await getMobileNumberFromStorage();
+    console.log('📱 Leader Mobile No for registration:', leaderMobileNo);
+
     const formDataToSend = new FormData();
 
+    // ✅ ADD THESE TWO REQUIRED FIELDS FIRST
+    formDataToSend.append('leader_regd_mobile_no', leaderMobileNo);
+    formDataToSend.append('user_email_id', formData.email.trim().toLowerCase()); // ✅ CHANGED: email -> user_email_id
+
+    // ✅ REST OF THE FIELDS
     formDataToSend.append('name', formData.name);
-    formDataToSend.append('email', formData.email);
     formDataToSend.append('mobile', formData.mobile);
     formDataToSend.append('password', formData.password);
     formDataToSend.append('address', formData.address);
@@ -702,6 +995,7 @@ const handleRegistration = async () => {
     formDataToSend.append('instagram', formData.instagram || '');
     formDataToSend.append('twitter', formData.twitter || '');
 
+    // ✅ PROFILE IMAGE
     if (formData.profile_image) {
       formDataToSend.append('profile_image', {
         uri: formData.profile_image.uri,
@@ -710,9 +1004,22 @@ const handleRegistration = async () => {
       });
     }
 
-    const result = await ApiService.post(apiEndpoints.auth.register, formDataToSend, {}, true);
+    console.log('📡 Registration Request - Form Data Fields:');
+    console.log('  - leader_regd_mobile_no:', leaderMobileNo);
+    console.log('  - user_email_id:', formData.email.trim().toLowerCase());
+    console.log('  - name:', formData.name);
+    console.log('  - mobile:', formData.mobile);
+    console.log('  - Has profile_image:', !!formData.profile_image);
 
-    console.log('Registration Response:', result);
+    // ✅ USE authPost (not post) for authenticated request
+    const result = await ApiService.authPost(
+      apiEndpoints.auth.register, 
+      formDataToSend, 
+      {}, 
+      true // isFormData = true
+    );
+
+    console.log('✅ Registration Response:', result);
 
     if (result.success) {
       Alert.alert(
@@ -732,7 +1039,7 @@ const handleRegistration = async () => {
       throw new Error(result.message || 'Registration failed');
     }
   } catch (error) {
-    console.error('Registration Error:', error);
+    console.error('❌ Registration Error:', error);
     console.error('Error message:', error.message);
     
     // ✅ GET THE ERROR MESSAGE
@@ -745,30 +1052,28 @@ const handleRegistration = async () => {
       errorMessage.includes('Email already exists') ||
       errorMessage.includes('already registered');
     
- if (isEmailAlreadyRegistered) {
-  console.log('✅ Email already registered detected!');
-  
-  // ✅ FIXED: Direct navigation in Alert onPress
-  Alert.alert(
-    'Already Registered',
-    'This email is already registered. Please proceed to Login.',
-    [
-      {
-        text: 'Go to Login',  // 👈 Button text changed
-        onPress: () => {
-          console.log('🚀 Navigating to Login with email:', formData.email);
-          
-          // 👈 This navigates to Login screen when clicked
-          navigation.navigate('Login', {
-            email: formData.email,
-            message: 'This email is already registered. Please login with your credentials.'
-          });
-        }
-      }
-    ],
-    { cancelable: false }
-  );
-}else {
+    if (isEmailAlreadyRegistered) {
+      console.log('✅ Email already registered detected!');
+      
+      Alert.alert(
+        'Already Registered',
+        'This email is already registered. Please proceed to Login.',
+        [
+          {
+            text: 'Go to Login',
+            onPress: () => {
+              console.log('🚀 Navigating to Login with email:', formData.email);
+              
+              navigation.navigate('Login', {
+                email: formData.email,
+                message: 'This email is already registered. Please login with your credentials.'
+              });
+            }
+          }
+        ],
+        { cancelable: false }
+      );
+    } else {
       // ✅ SHOW GENERIC ERROR FOR OTHER CASES
       Alert.alert('Error', errorMessage);
     }

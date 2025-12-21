@@ -887,6 +887,20 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
   },
+  translationLoadingBar: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  justifyContent: 'center',
+  backgroundColor: '#fff3cd',
+  paddingVertical: 8,
+  paddingHorizontal: 15,
+  gap: 10,
+},
+translationLoadingText: {
+  fontSize: 14,
+  color: '#856404',
+  fontWeight: '500',
+},
 });
 
 export default styles;

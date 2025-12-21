@@ -22,10 +22,22 @@ import ApiService from '../services/ApiService';
 import { getCurrentUserRole } from '../../App';
 import { launchImageLibrary } from 'react-native-image-picker';
 import { checkIfCurrentUserIsAdmin } from '../../App';
+import Video from 'react-native-video';
+import { useTranslation } from '../context/TranslationContext';
+import TranslatableText from '../components/TranslatableText';
+import landscapeLogo from '../assets/landscapelogo.png';
 
 const { width, height } = Dimensions.get('window');
 
 const DevelopmentLandscapeScreen = () => {
+
+  const { 
+    currentLanguage, 
+    changeLanguage, 
+    isTranslating, 
+    setIsTranslating,
+    availableLanguages 
+  } = useTranslation();
   const [landscapeData, setLandscapeData] = useState([]);
   const [loading, setLoading] = useState(false);
   const [regdMobileNo, setRegdMobileNo] = useState(null);
@@ -42,28 +54,97 @@ const [userEmail, setUserEmail] = useState(null);
     initializeData();
   }, []);
   
-
-  const getMobileNumberFromStorage = async () => {
-    try {
-      const appOwnerInfoStr = await EncryptedStorage.getItem('AppOwnerInfo');
-      if (appOwnerInfoStr) {
-        const appOwnerInfo = JSON.parse(appOwnerInfoStr);
-        const memberIdentifier = appOwnerInfo.mobile_no || 
-                                appOwnerInfo.regdMobileNo || 
-                                appOwnerInfo.mobile_number || 
-                                '7702000725';
-        return memberIdentifier;
+const getMobileNumberFromStorage = async () => {
+  try {
+    console.log('📱 Fetching owner mobile number...');
+    
+    // Method 1: Try to get from OWNER_MOBILE (set during bootstrap)
+    const ownerMobile = await EncryptedStorage.getItem('OWNER_MOBILE');
+    if (ownerMobile && ownerMobile.trim() !== '') {
+      console.log('✅ Found owner mobile from OWNER_MOBILE:', ownerMobile);
+      return ownerMobile;
+    }
+    
+    // Method 2: Try to get from AppOwnerInfo
+    const appOwnerInfoStr = await EncryptedStorage.getItem('AppOwnerInfo');
+    if (appOwnerInfoStr) {
+      const appOwnerInfo = JSON.parse(appOwnerInfoStr);
+      console.log('📋 AppOwnerInfo keys:', Object.keys(appOwnerInfo));
+      
+      // Try multiple possible field names for mobile number
+      const possibleMobileFields = [
+        'mobile_no',
+        'regdMobileNo', 
+        'mobile_number',
+        'client_mobile',  // ✅ Added this
+        'owner_mobile',
+        'Mobile',
+        'MobileNo',
+        'phone',
+        'phoneNumber'
+      ];
+      
+      for (const field of possibleMobileFields) {
+        if (appOwnerInfo[field]) {
+          const mobileValue = String(appOwnerInfo[field]).trim();
+          console.log(`✅ Found owner mobile in field '${field}':`, mobileValue);
+          
+          // Store it for future use
+          await EncryptedStorage.setItem('OWNER_MOBILE', mobileValue);
+          
+          return mobileValue;
+        }
       }
       
-      const storedMemberId = await EncryptedStorage.getItem('MOBILE_NUMBER') || 
-                            await EncryptedStorage.getItem('OWNER_MOBILE') ||
-                            '7702000725';
-      return storedMemberId;
-    } catch (error) {
-      console.error('Error retrieving mobile number:', error);
-      return '7702000725';
+      console.warn('⚠️ No mobile field found in AppOwnerInfo');
     }
-  };
+    
+    // Method 3: Fallback - Get from global variable (set during bootstrap)
+    if (global.owner_mobile && global.owner_mobile.trim() !== '') {
+      console.log('✅ Found owner mobile from global variable:', global.owner_mobile);
+      return global.owner_mobile;
+    }
+    
+    // Method 4: Last resort - use default
+    console.warn('⚠️ No owner mobile found, using default: 7702000725');
+    return '7702000725';
+    
+  } catch (error) {
+    console.error('❌ Error retrieving mobile number:', error);
+    return '7702000725';
+  }
+};
+
+// ✅ STEP 2: Add this debug function to verify mobile number
+const debugMobileNumber = async () => {
+  try {
+    console.log('🔍 === DEBUGGING MOBILE NUMBER ===');
+    
+    // Check all possible sources
+    const ownerMobile = await EncryptedStorage.getItem('OWNER_MOBILE');
+    const appOwnerInfoStr = await EncryptedStorage.getItem('AppOwnerInfo');
+    
+    console.log('📱 OWNER_MOBILE storage:', ownerMobile);
+    console.log('🌍 global.owner_mobile:', global.owner_mobile);
+    
+    if (appOwnerInfoStr) {
+      const appOwnerInfo = JSON.parse(appOwnerInfoStr);
+      console.log('📋 AppOwnerInfo mobile fields:');
+      ['mobile_no', 'regdMobileNo', 'mobile_number', 'client_mobile'].forEach(field => {
+        if (appOwnerInfo[field]) {
+          console.log(`   ${field}:`, appOwnerInfo[field]);
+        }
+      });
+    }
+    
+    const finalMobile = await getMobileNumberFromStorage();
+    console.log('✅ Final mobile number being used:', finalMobile);
+    
+    return finalMobile;
+  } catch (error) {
+    console.error('❌ Debug error:', error);
+  }
+};
   const checkAdminRole = async () => {
   try {
     const adminCheck = await checkIfCurrentUserIsAdmin();
@@ -126,18 +207,22 @@ const [userEmail, setUserEmail] = useState(null);
     }
   };
 
-  const initializeData = async () => {
+const initializeData = async () => {
   try {
     setLoading(true);
     
-    await checkAdminRole(); // ADD THIS
+    await checkAdminRole();
     
-    const mobileNo = await getMobileNumberFromStorage();
+    // Debug mobile number before using it
+    const mobileNo = await debugMobileNumber();
     setRegdMobileNo(mobileNo);
     
-    const currentUserInfo = await getCurrentUserRole(); // ADD THIS
-    const email = currentUserInfo.loggedin_email || 'default@email.com'; // ADD THIS
-    setUserEmail(email); // ADD THIS
+    const currentUserInfo = await getCurrentUserRole();
+    const email = currentUserInfo.loggedin_email || 'default@email.com';
+    setUserEmail(email);
+    
+    console.log('📞 Using mobile for API call:', mobileNo);
+    console.log('📧 Using email for API call:', email);
     
     const landscape = await fetchDevelopmentLandscape(mobileNo);
     
@@ -169,7 +254,7 @@ const handleCreateNew = async (newData) => {
     const apiUrl = `${baseUrl}/api/mediacorner`;
 
     const formData = new FormData();
-    formData.append('regd_mobile_no', regdMobileNo);
+    formData.append('leader_regd_mobile_no', regdMobileNo);
     formData.append('user_email_id', userEmail);
     formData.append('media_header', newData.media_header);
     formData.append('media_narration', newData.media_narration);
@@ -212,7 +297,7 @@ const handleSave = async (updatedData) => {
     const apiUrl = `${baseUrl}/api/mediacorner`;
 
     const formData = new FormData();
-    formData.append('regd_mobile_no', regdMobileNo);
+    formData.append('leader_regd_mobile_no', regdMobileNo);
     formData.append('user_email_id', userEmail);
     formData.append('media_header', updatedData.media_header);
     formData.append('media_narration', updatedData.media_narration);
@@ -296,7 +381,9 @@ const ThreeDotMenu = ({ visible, position, onEdit, onDelete, onDismiss }) => {
             activeOpacity={0.7}
           >
             <Text style={styles.dropdownItemIcon}>✏️</Text>
-            <Text style={styles.dropdownItemText}>Edit</Text>
+            <TranslatableText style={styles.dropdownItemText} cacheKey="edit_btn">
+  Edit
+</TranslatableText>
           </TouchableOpacity>
           
           <View style={styles.dropdownSeparator} />
@@ -307,7 +394,9 @@ const ThreeDotMenu = ({ visible, position, onEdit, onDelete, onDismiss }) => {
             activeOpacity={0.7}
           >
             <Text style={styles.dropdownItemIcon}>🗑️</Text>
-            <Text style={[styles.dropdownItemText, styles.dropdownDeleteText]}>Delete</Text>
+            <TranslatableText style={[styles.dropdownItemText, styles.dropdownDeleteText]} cacheKey="delete_btn">
+  Delete
+</TranslatableText>
           </TouchableOpacity>
         </View>
       </TouchableOpacity>
@@ -389,14 +478,18 @@ const AddMediaModal = ({ visible, onClose, onSave, regdMobileNo, userEmail }) =>
       <View style={styles.modalOverlay}>
         <View style={styles.modalContainer}>
           <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>Add Party Update</Text>
+            <TranslatableText style={styles.modalTitle} cacheKey="add_party_update">
+  Add Party Update
+</TranslatableText>
             <TouchableOpacity onPress={onClose}>
               <Text style={styles.closeButton}>✕</Text>
             </TouchableOpacity>
           </View>
 
           <ScrollView style={styles.modalContent} showsVerticalScrollIndicator={false}>
-            <Text style={styles.label}>Header *</Text>
+            <TranslatableText style={styles.label} cacheKey="header_label">
+  Header *
+</TranslatableText>
             <TextInput
               style={styles.input}
               value={header}
@@ -405,7 +498,9 @@ const AddMediaModal = ({ visible, onClose, onSave, regdMobileNo, userEmail }) =>
               placeholderTextColor="#999"
             />
 
-            <Text style={styles.label}>Description</Text>
+            <TranslatableText style={styles.label} cacheKey="description_label">
+  Description
+</TranslatableText>
             <TextInput
               style={[styles.input, styles.textArea]}
               value={narration}
@@ -416,7 +511,9 @@ const AddMediaModal = ({ visible, onClose, onSave, regdMobileNo, userEmail }) =>
               numberOfLines={4}
             />
 
-            <Text style={styles.label}>URL</Text>
+           <TranslatableText style={styles.label} cacheKey="url_label">
+  URL
+</TranslatableText>
             <TextInput
               style={styles.input}
               value={url}
@@ -426,15 +523,17 @@ const AddMediaModal = ({ visible, onClose, onSave, regdMobileNo, userEmail }) =>
               autoCapitalize="none"
             />
 
-            <Text style={styles.label}>Image *</Text>
+            <TranslatableText style={styles.label} cacheKey="image_label">
+  Image *
+</TranslatableText>
             <TouchableOpacity 
               style={styles.imagePickerButton}
               onPress={handlePickImage}
             >
               <Text style={styles.imagePickerIcon}>📷</Text>
-              <Text style={styles.imagePickerText}>
-                {selectedImage ? 'Change Image' : 'Choose Image'}
-              </Text>
+             <TranslatableText style={styles.imagePickerText} cacheKey="choose_image">
+  {selectedImage ? 'Change Image' : 'Choose Image'}
+</TranslatableText>
             </TouchableOpacity>
 
             {selectedImage && (
@@ -444,14 +543,16 @@ const AddMediaModal = ({ visible, onClose, onSave, regdMobileNo, userEmail }) =>
                   style={styles.previewImage}
                   resizeMode="cover"
                 />
-                <Text style={styles.imageInfoText}>
-                  {selectedImage.fileName || 'Image selected'}
-                </Text>
+                <TranslatableText style={styles.imageInfoText}>
+  {selectedImage.fileName || 'Image selected'}
+</TranslatableText>
                 <TouchableOpacity 
                   style={styles.removeImageButton}
                   onPress={() => setSelectedImage(null)}
                 >
-                  <Text style={styles.removeImageText}>✕ Remove</Text>
+                  <TranslatableText style={styles.removeImageText} cacheKey="remove_btn">
+  ✕ Remove
+</TranslatableText>
                 </TouchableOpacity>
               </View>
             )}
@@ -462,7 +563,9 @@ const AddMediaModal = ({ visible, onClose, onSave, regdMobileNo, userEmail }) =>
               style={[styles.modalButton, styles.cancelButton]}
               onPress={onClose}
             >
-              <Text style={styles.cancelButtonText}>Cancel</Text>
+              <TranslatableText style={styles.cancelButtonText} cacheKey="cancel_btn">
+  Cancel
+</TranslatableText>
             </TouchableOpacity>
             
             <TouchableOpacity 
@@ -473,7 +576,9 @@ const AddMediaModal = ({ visible, onClose, onSave, regdMobileNo, userEmail }) =>
               {saving ? (
                 <ActivityIndicator color="#fff" />
               ) : (
-                <Text style={styles.saveButtonText}>Create</Text>
+                <TranslatableText style={styles.saveButtonText} cacheKey="create_btn">
+  Create
+</TranslatableText>
               )}
             </TouchableOpacity>
           </View>
@@ -554,7 +659,9 @@ const EditMediaModal = ({ visible, item, onClose, onSave }) => {
       <View style={styles.modalOverlay}>
         <View style={styles.modalContainer}>
           <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>Edit Party Update</Text>
+            <TranslatableText style={styles.modalTitle} cacheKey="edit_party_update">
+  Edit Party Update
+</TranslatableText>
             <TouchableOpacity onPress={onClose}>
               <Text style={styles.closeButton}>✕</Text>
             </TouchableOpacity>
@@ -591,15 +698,17 @@ const EditMediaModal = ({ visible, item, onClose, onSave }) => {
               autoCapitalize="none"
             />
 
-            <Text style={styles.label}>Update Image (Optional)</Text>
+            <TranslatableText style={styles.label} cacheKey="update_image_optional">
+  Update Image (Optional)
+</TranslatableText>
             <TouchableOpacity 
               style={styles.imagePickerButton}
               onPress={handlePickImage}
             >
               <Text style={styles.imagePickerIcon}>📷</Text>
-              <Text style={styles.imagePickerText}>
-                {selectedImage ? 'Change Image' : 'Choose New Image'}
-              </Text>
+              <TranslatableText style={styles.imagePickerText}>
+  {selectedImage ? 'Change Image' : 'Choose New Image'}
+</TranslatableText>
             </TouchableOpacity>
 
             {selectedImage && (
@@ -609,9 +718,9 @@ const EditMediaModal = ({ visible, item, onClose, onSave }) => {
                   style={styles.previewImage}
                   resizeMode="cover"
                 />
-                <Text style={styles.imageInfoText}>
-                  {selectedImage.fileName || 'New image selected'}
-                </Text>
+                <TranslatableText style={styles.imageInfoText}>
+  {selectedImage.fileName || 'New image selected'}
+</TranslatableText>
                 <TouchableOpacity 
                   style={styles.removeImageButton}
                   onPress={() => setSelectedImage(null)}
@@ -623,9 +732,9 @@ const EditMediaModal = ({ visible, item, onClose, onSave }) => {
 
             {!selectedImage && item?.media_file && (
               <View style={styles.currentImageInfo}>
-                <Text style={styles.currentImageText}>
-                  Current image will be kept if no new image is selected
-                </Text>
+                <TranslatableText style={styles.currentImageText} cacheKey="keep_current_image">
+  Current image will be kept if no new image is selected
+</TranslatableText>
               </View>
             )}
           </ScrollView>
@@ -646,7 +755,9 @@ const EditMediaModal = ({ visible, item, onClose, onSave }) => {
               {saving ? (
                 <ActivityIndicator color="#fff" />
               ) : (
-                <Text style={styles.saveButtonText}>Save Changes</Text>
+                <TranslatableText style={styles.saveButtonText} cacheKey="save_changes_btn">
+  Save Changes
+</TranslatableText>
               )}
             </TouchableOpacity>
           </View>
@@ -672,102 +783,127 @@ const AddMediaFAB = ({ onPress, visible }) => {
 
   // Development Card Component (similar to PartyUpdateItem)
 const DevelopmentCard = React.memo(({ item, index, memberId, isAdmin, onEdit, onDelete }) => {
-    const [imageUri, setImageUri] = useState(null);
-    const [imageLoading, setImageLoading] = useState(true);
-    const [imageError, setImageError] = useState(false);
-    const [menuVisible, setMenuVisible] = useState(false);  // ✅ ADD THIS
-  const [menuPosition, setMenuPosition] = useState({ x: 0, y: 0 });  // ✅ ADD THIS
+  const [mediaUri, setMediaUri] = useState(null);
+  const [mediaLoading, setMediaLoading] = useState(true);
+  const [mediaError, setMediaError] = useState(false);
+  const [menuVisible, setMenuVisible] = useState(false);
+  const [menuPosition, setMenuPosition] = useState({ x: 0, y: 0 });
+  const [isVideo, setIsVideo] = useState(false); // ✅ NEW: Track if media is video
+  const [videoPaused, setVideoPaused] = useState(true); // ✅ NEW: Video playback control
 
-
-    useEffect(() => {
-      let mounted = true;
+  useEffect(() => {
+    let mounted = true;
+    
+    const loadMedia = async () => {
+      if (!item.media_file) {
+        setMediaLoading(false);
+        return;
+      }
       
-      const loadImage = async () => {
-        if (!item.media_file) {
-          setImageLoading(false);
-          return;
-        }
+      setMediaLoading(true);
+      setMediaError(false);
+      
+      try {
+        const currentUserInfo = await getCurrentUserRole();
+        const userEmailId = currentUserInfo.loggedin_email || '';
         
-        setImageLoading(true);
-        setImageError(false);
+        let mediaUrl = item.media_file;
         
-        try {
-          const currentUserInfo = await getCurrentUserRole();
-          const userEmailId = currentUserInfo.loggedin_email || '';
-          
-          let mediaUrl = item.media_file;
-          
-          if (mediaUrl.startsWith('http://') || mediaUrl.startsWith('https://')) {
-            if (mediaUrl.includes('ngrok-free.app:')) {
-              mediaUrl = mediaUrl.replace(/:(\d+)\//, '/');
-            }
-            
-            if (mediaUrl.includes('localhost:5000') || mediaUrl.includes('localhost:')) {
-              const baseUrl = await ConfigService.getBaseUrl();
-              mediaUrl = mediaUrl.replace(/http:\/\/localhost:\d+/, baseUrl);
-            }
-          } else {
-            const baseUrl = await ConfigService.getBaseUrl();
-            const cleanMediaFile = mediaUrl.replace(/^[\\\/]+/, '');
-            const encodedMediaFile = encodeURIComponent(cleanMediaFile);
-            const encodedEmail = encodeURIComponent(userEmailId);
-            
-            mediaUrl = `${baseUrl}/api/mediacorner/asset/?leader_regd_mobile_no=${memberId}&user_email_id=${encodedEmail}&media_file=${encodedMediaFile}`;
+        // ✅ DETECT IF FILE IS VIDEO
+        const videoExtensions = ['.mp4', '.mov', '.avi', '.mkv', '.webm', '.3gp'];
+        const isVideoFile = videoExtensions.some(ext => 
+          mediaUrl.toLowerCase().includes(ext)
+        );
+        setIsVideo(isVideoFile);
+        
+        if (mediaUrl.startsWith('http://') || mediaUrl.startsWith('https://')) {
+          if (mediaUrl.includes('ngrok-free.app:')) {
+            mediaUrl = mediaUrl.replace(/:(\d+)\//, '/');
           }
           
+          if (mediaUrl.includes('localhost:5000') || mediaUrl.includes('localhost:')) {
+            const baseUrl = await ConfigService.getBaseUrl();
+            mediaUrl = mediaUrl.replace(/http:\/\/localhost:\d+/, baseUrl);
+          }
+        } else {
+          const baseUrl = await ConfigService.getBaseUrl();
+          const cleanMediaFile = mediaUrl.replace(/^[\\\/]+/, '');
+          const encodedMediaFile = encodeURIComponent(cleanMediaFile);
+          const encodedEmail = encodeURIComponent(userEmailId);
+          
+          mediaUrl = `${baseUrl}/api/mediacorner/asset/?leader_regd_mobile_no=${memberId}&user_email_id=${encodedEmail}&media_file=${encodedMediaFile}`;
+        }
+        
+        // ✅ FOR VIDEOS: Just set the URL directly (no blob conversion needed)
+        if (isVideoFile) {
           const appKey = await EncryptedStorage.getItem('APP_KEY');
           const accessToken = await EncryptedStorage.getItem('accessToken');
           
-          const response = await fetch(mediaUrl, {
-            method: 'GET',
-            headers: {
-              'x-app-key': appKey || '',
-              'Authorization': `Bearer ${accessToken || ''}`,
-              'ngrok-skip-browser-warning': 'true',
-              'Accept': 'image/*',
-            },
-          });
-
-          if (!response.ok) {
-            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-          }
-
-          const blob = await response.blob();
-          const reader = new FileReader();
+          // Add headers to URL for video playback
+          const videoUrl = mediaUrl;
           
-          reader.onloadend = () => {
-            if (mounted) {
-              setImageUri(reader.result);
-              setImageLoading(false);
-            }
-          };
-          
-          reader.onerror = (error) => {
-            console.error('❌ FileReader error:', error);
-            if (mounted) {
-              setImageError(true);
-              setImageLoading(false);
-            }
-          };
-          
-          reader.readAsDataURL(blob);
-          
-        } catch (error) {
-          console.error('❌ Error loading image:', error);
           if (mounted) {
-            setImageError(true);
-            setImageLoading(false);
+            setMediaUri(videoUrl);
+            setMediaLoading(false);
           }
+          return;
         }
-      };
-      
-      loadImage();
-      
-      return () => {
-        mounted = false;
-      };
-    }, [item.media_file, memberId]);
-    const handleMenuPress = (event) => {
+        
+        // ✅ FOR IMAGES: Use blob conversion (existing code)
+        const appKey = await EncryptedStorage.getItem('APP_KEY');
+        const accessToken = await EncryptedStorage.getItem('accessToken');
+        
+        const response = await fetch(mediaUrl, {
+          method: 'GET',
+          headers: {
+            'x-app-key': appKey || '',
+            'Authorization': `Bearer ${accessToken || ''}`,
+            'ngrok-skip-browser-warning': 'true',
+            'Accept': 'image/*',
+          },
+        });
+
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+
+        const blob = await response.blob();
+        const reader = new FileReader();
+        
+        reader.onloadend = () => {
+          if (mounted) {
+            setMediaUri(reader.result);
+            setMediaLoading(false);
+          }
+        };
+        
+        reader.onerror = (error) => {
+          console.error('❌ FileReader error:', error);
+          if (mounted) {
+            setMediaError(true);
+            setMediaLoading(false);
+          }
+        };
+        
+        reader.readAsDataURL(blob);
+        
+      } catch (error) {
+        console.error('❌ Error loading media:', error);
+        if (mounted) {
+          setMediaError(true);
+          setMediaLoading(false);
+        }
+      }
+    };
+    
+    loadMedia();
+    
+    return () => {
+      mounted = false;
+    };
+  }, [item.media_file, memberId]);
+
+  const handleMenuPress = (event) => {
     const { pageX, pageY } = event.nativeEvent;
     setMenuPosition({ x: pageX, y: pageY + 10 });
     setMenuVisible(true);
@@ -794,10 +930,9 @@ const DevelopmentCard = React.memo(({ item, index, memberId, isAdmin, onEdit, on
     );
   };
 
-
-    return (
-      <View style={styles.developmentCard}>
-        {isAdmin && (
+  return (
+    <View style={styles.developmentCard}>
+      {isAdmin && (
         <TouchableOpacity 
           style={styles.menuButton}
           onPress={handleMenuPress}
@@ -807,7 +942,6 @@ const DevelopmentCard = React.memo(({ item, index, memberId, isAdmin, onEdit, on
         </TouchableOpacity>
       )}
 
-      {/* ✅ ADD THREE DOT MENU */}
       <ThreeDotMenu
         visible={menuVisible}
         position={menuPosition}
@@ -816,62 +950,117 @@ const DevelopmentCard = React.memo(({ item, index, memberId, isAdmin, onEdit, on
         onDismiss={() => setMenuVisible(false)}
       />
 
-        {imageLoading && (
-          <View style={styles.imageLoadingContainer}>
-            <ActivityIndicator size="large" color="#e16e2b" />
-          </View>
-        )}
+      {/* ✅ LOADING STATE */}
+      {mediaLoading && (
+        <View style={styles.imageLoadingContainer}>
+          <ActivityIndicator size="large" color="#e16e2b" />
+         <TranslatableText style={styles.loadingMediaText} cacheKey="loading_video">
+  {isVideo ? 'Loading video...' : 'Loading image...'}
+</TranslatableText>
+        </View>
+      )}
 
-        {!imageLoading && imageError && (
-          <View style={styles.imageErrorContainer}>
-            <Text style={styles.imageErrorIcon}>🏗️</Text>
-            <Text style={styles.imageErrorText}>Image unavailable</Text>
-          </View>
-        )}
-
-        {!imageLoading && !imageError && imageUri && (
-          <TouchableOpacity
-            activeOpacity={0.8}
-            onPress={() => {
-              if (item.media_url && item.media_url.trim() !== '') {
-                Linking.openURL(item.media_url).catch(err => {
-                  console.error('Failed to open URL:', err);
-                  Alert.alert('Error', 'Could not open the link');
-                });
-              }
-            }}
-          >
-            <Image 
-              source={{ uri: imageUri }}
-              style={styles.cardImage} 
-              resizeMode="cover"
-            />
-          </TouchableOpacity>
-        )}
-
-        {item.media_header && (
-          <Text style={styles.cardTitle}>{item.media_header}</Text>
-        )}
-
-        {item.media_narration && (
-          <Text style={styles.cardDescription}>{item.media_narration}</Text>
-        )}
-
-        {item.created_at && (
-          <Text style={styles.cardDate}>
-            {new Date(item.created_at).toLocaleDateString('en-IN', {
-              day: '2-digit',
-              month: 'short',
-              year: 'numeric'
-            })}
+      {/* ✅ ERROR STATE */}
+      {!mediaLoading && mediaError && (
+        <View style={styles.imageErrorContainer}>
+          <Text style={styles.imageErrorIcon}>
+            {isVideo ? '🎥' : '🏗️'}
           </Text>
-        )}
-      </View>
-    );
-  });
+         <TranslatableText style={styles.imageErrorText} cacheKey="video_unavailable">
+  {isVideo ? 'Video unavailable' : 'Image unavailable'}
+</TranslatableText>
+        </View>
+      )}
+
+      {/* ✅ VIDEO PLAYER */}
+      {!mediaLoading && !mediaError && mediaUri && isVideo && (
+        <View style={styles.videoContainer}>
+          <Video
+            source={{ uri: mediaUri }}
+            style={styles.videoPlayer}
+            resizeMode="contain"
+            paused={videoPaused}
+            controls={false}
+            repeat={false}
+            onError={(error) => {
+              console.error('Video playback error:', error);
+              setMediaError(true);
+            }}
+          />
+          
+          {/* ✅ PLAY/PAUSE OVERLAY */}
+          <TouchableOpacity 
+            style={styles.videoOverlay}
+            onPress={() => setVideoPaused(!videoPaused)}
+            activeOpacity={0.8}
+          >
+            {videoPaused && (
+              <View style={styles.playButton}>
+                <Icon name="play-arrow" size={48} color="#fff" />
+              </View>
+            )}
+          </TouchableOpacity>
+
+          {/* ✅ VIDEO INDICATOR */}
+          <View style={styles.videoIndicator}>
+            <Icon name="videocam" size={16} color="#fff" />
+            <TranslatableText style={styles.videoIndicatorText} cacheKey="video_label">
+  VIDEO
+</TranslatableText>
+          </View>
+        </View>
+      )}
+
+      {/* ✅ IMAGE DISPLAY (Existing) */}
+      {!mediaLoading && !mediaError && mediaUri && !isVideo && (
+        <TouchableOpacity
+          activeOpacity={0.8}
+          onPress={() => {
+            if (item.media_url && item.media_url.trim() !== '') {
+              Linking.openURL(item.media_url).catch(err => {
+                console.error('Failed to open URL:', err);
+                Alert.alert('Error', 'Could not open the link');
+              });
+            }
+          }}
+        >
+          <Image 
+            source={{ uri: mediaUri }}
+            style={styles.cardImage} 
+            resizeMode="cover"
+          />
+        </TouchableOpacity>
+      )}
+
+      {item.media_header && (
+        <TranslatableText style={styles.cardTitle}>
+  {item.media_header}
+</TranslatableText>
+      )}
+
+      {item.media_narration && (
+        <TranslatableText style={styles.cardDescription}>
+  {item.media_narration}
+</TranslatableText>
+      )}
+
+      {item.created_at && (
+        <Text style={styles.cardDate}>
+          {new Date(item.created_at).toLocaleDateString('en-IN', {
+            day: '2-digit',
+            month: 'short',
+            year: 'numeric'
+          })}
+        </Text>
+      )}
+    </View>
+  );
+});
+
   
 
   return (
+    
     <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#e16e2b" />
       
@@ -881,41 +1070,67 @@ const DevelopmentCard = React.memo(({ item, index, memberId, isAdmin, onEdit, on
         contentContainerStyle={styles.scrollContent}
       >
         {/* Header Section */}
-        <View style={styles.header}>
-          <View style={styles.headerContent}>
-            <View style={styles.headerIcon}>
-              <Icon name="trending-up" size={32} color="#fff" />
-            </View>
-            <Text style={styles.pageTitle}>Development Landscape</Text>
-            <Text style={styles.pageSubtitle}>
-              Transforming Communities Through Strategic Development
-            </Text>
-          </View>
-          
-          {/* Header Decorative Elements */}
-          <View style={styles.headerDecoration1} />
-          <View style={styles.headerDecoration2} />
-          <View style={styles.headerDecoration3} />
+       {/* Header Section */}
+<View style={styles.header}>
+  <View style={styles.headerContent}>
+    <View style={styles.headerIcon}>
+      <Image 
+        source={landscapeLogo}
+        style={styles.headerLogoImage}
+        resizeMode="contain"
+      />
+    </View>
+    <TranslatableText style={styles.pageTitle} cacheKey="dev_landscape_title">
+      Development Landscape
+    </TranslatableText>
+    <TranslatableText style={styles.pageSubtitle} cacheKey="dev_landscape_subtitle">
+      Transforming Communities Through Strategic Development
+    </TranslatableText>
+  </View>
+  
+  {/* Header Decorative Elements */}
+  <View style={styles.headerDecoration1} />
+  <View style={styles.headerDecoration2} />
+  <View style={styles.headerDecoration3} />
+</View>
+
+         {isTranslating && (
+        <View style={styles.translationLoadingBar}>
+          <ActivityIndicator size="small" color="#e16e2b" />
+          <Text style={styles.translationLoadingText}>Translating...</Text>
         </View>
+      )}
 
         {/* Stats Overview - Always visible */}
         <View style={styles.statsContainer}>
           <View style={styles.statsCard}>
             <View style={styles.statsIndicator} />
-            <Text style={styles.statsTitle}>Local</Text>
-            <Text style={styles.statsSubtitle}>Constituency Focus</Text>
+            <TranslatableText style={styles.statsTitle} cacheKey="local_title">
+  Local
+</TranslatableText>
+<TranslatableText style={styles.statsSubtitle} cacheKey="constituency_focus">
+  Constituency Focus
+</TranslatableText>
           </View>
           
           <View style={styles.statsCard}>
             <View style={styles.statsIndicator} />
-            <Text style={styles.statsTitle}>State</Text>
-            <Text style={styles.statsSubtitle}>Regional Impact</Text>
+            <TranslatableText style={styles.statsTitle} cacheKey="state_title">
+  State
+</TranslatableText>
+<TranslatableText style={styles.statsSubtitle} cacheKey="regional_impact">
+  Regional Impact
+</TranslatableText>
           </View>
           
           <View style={styles.statsCard}>
             <View style={styles.statsIndicator} />
-            <Text style={styles.statsTitle}>National</Text>
-            <Text style={styles.statsSubtitle}>Country-wide</Text>
+            <TranslatableText style={styles.statsTitle} cacheKey="national_title">
+  National
+</TranslatableText>
+<TranslatableText style={styles.statsSubtitle} cacheKey="country_wide">
+  Country-wide
+</TranslatableText>
           </View>
         </View>
 
@@ -923,12 +1138,16 @@ const DevelopmentCard = React.memo(({ item, index, memberId, isAdmin, onEdit, on
         {loading ? (
           <View style={styles.loadingContainer}>
             <ActivityIndicator size="large" color="#e16e2b" />
-            <Text style={styles.loadingText}>Loading development data...</Text>
+            <TranslatableText style={styles.loadingText} cacheKey="loading_dev_data">
+  Loading development data...
+</TranslatableText>
           </View>
         ) : landscapeData.length === 0 ? (
           <View style={styles.emptyContainer}>
             <Text style={styles.emptyIcon}>🏗️</Text>
-            <Text style={styles.emptyText}>No development data available</Text>
+            <TranslatableText style={styles.emptyText} cacheKey="no_dev_data">
+  No development data available
+</TranslatableText>
           </View>
         ) : (
           <View style={styles.dataContainer}>
@@ -949,13 +1168,17 @@ const DevelopmentCard = React.memo(({ item, index, memberId, isAdmin, onEdit, on
               <View style={styles.ctaIconContainer}>
                 <Icon name="rocket-launch" size={28} color="#e16e2b" />
               </View>
-              <Text style={styles.ctaTitle}>Building Tomorrow, Today</Text>
-              <Text style={styles.ctaSubtitle}>
-                Every initiative contributes to a stronger, more prosperous future for our communities.
-              </Text>
+             <TranslatableText style={styles.ctaTitle} cacheKey="cta_title">
+  Building Tomorrow, Today
+</TranslatableText>
+<TranslatableText style={styles.ctaSubtitle} cacheKey="cta_subtitle">
+  Every initiative contributes to a stronger, more prosperous future for our communities.
+</TranslatableText>
               <View style={styles.ctaButton}>
                 <View style={styles.ctaButtonContent}>
-                  <Text style={styles.ctaButtonText}>Learn More</Text>
+                  <TranslatableText style={styles.ctaButtonText} cacheKey="learn_more_btn">
+  Learn More
+</TranslatableText>
                   <Icon name="arrow-forward" size={20} color="#fff" />
                 </View>
               </View>
@@ -1021,17 +1244,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     zIndex: 1,
   },
-  headerIcon: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 16,
-    borderWidth: 2,
-    borderColor: 'rgba(255, 255, 255, 0.3)',
-  },
+
   pageTitle: {
     fontSize: 28,
     fontWeight: 'bold',
@@ -1520,6 +1733,99 @@ fabIcon: {
   color: '#fff',
   fontWeight: 'bold',
   lineHeight: 32,
+},
+videoContainer: {
+    width: '100%',
+    height: 250,
+    backgroundColor: '#000',
+    position: 'relative',
+  },
+  videoPlayer: {
+    width: '100%',
+    height: '100%',
+  },
+  videoOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.2)',
+  },
+  playButton: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: 'rgba(225, 110, 43, 0.9)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    elevation: 5,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+  },
+  videoIndicator: {
+    position: 'absolute',
+    top: 10,
+    left: 10,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  videoIndicatorText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: 'bold',
+    marginLeft: 5,
+  },
+  loadingMediaText: {
+    marginTop: 10,
+    fontSize: 14,
+    color: '#666',
+  },
+  translationLoadingBar: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  justifyContent: 'center',
+  backgroundColor: '#fff3cd',
+  paddingVertical: 8,
+  paddingHorizontal: 15,
+  gap: 10,
+  marginHorizontal: 15,
+  marginBottom: 10,
+  borderRadius: 8,
+},
+translationLoadingText: {
+  fontSize: 14,
+  color: '#856404',
+  fontWeight: '500',
+},
+headerIcon: {
+  width: 100,
+  height: 100,
+  borderRadius: 60,     // MUST be exactly width/2
+  backgroundColor: '#fff',
+  justifyContent: 'center',
+  alignItems: 'center',
+  marginBottom: 16,
+  overflow: 'hidden',   // THIS IS CRITICAL
+  elevation: 4,
+  shadowColor: '#000',
+  shadowOffset: { width: 0, height: 2 },
+  shadowOpacity: 0.2,
+  shadowRadius: 4,
+},
+
+headerLogoImage: {
+  width: 120,
+  height: 120,
+  borderRadius: 60,
 },
 });
 

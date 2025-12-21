@@ -211,70 +211,135 @@ class ApiService {
   }
 
   // ENHANCED: Refresh token method with better error handling
-  static async refreshToken() {
+  // REPLACE the refreshToken method in ApiService.js with this:
+
+// ✅ FINAL SOLUTION: Replace refreshToken() method in ApiService.js
+
+// ✅ REPLACE refreshToken method in ApiService.js
+static async refreshToken() {
+  try {
+    const refreshToken = await AsyncStorage.getItem('refresh_token');
+    if (!refreshToken) {
+      throw new Error('No refresh token available');
+    }
+
+    // ✅ Get user info for refresh request
+    let userEmail = '';
+    let leaderMobile = '';
     try {
-      const refreshToken = await AsyncStorage.getItem('refresh_token');
-      if (!refreshToken) {
-        throw new Error('No refresh token available');
+      const userData = await AsyncStorage.getItem('userData');
+      if (userData) {
+        const parsed = JSON.parse(userData);
+        userEmail = parsed.email || parsed.user_email_id || '';
       }
+      leaderMobile = await EncryptedStorage.getItem('OWNER_MOBILE') || '7702000725';
+    } catch (e) {
+      console.error('Error getting user data for refresh:', e);
+      leaderMobile = '7702000725';
+    }
 
-      const endpoints = await ConfigService.getApiEndpoints();
-      const result = await this.makeRequest(
-        endpoints.auth.refreshToken,
-        {
-          method: 'POST',
-          body: { token: refreshToken },
-        },
-        false
-      );
+    const endpoints = await ConfigService.getApiEndpoints();
+    
+    // ✅ Get access token for Authorization header
+    const accessToken = await AsyncStorage.getItem('jwt_token');
+    
+    // ✅ Get app key
+    let appKey = '';
+    try {
+      const EncryptedStorage = require('react-native-encrypted-storage').default;
+      appKey = await EncryptedStorage.getItem('APP_KEY');
+    } catch (error) {
+      console.error('❌ Error getting app key:', error);
+    }
 
-      if (result.success && (result.data.accessToken || result.data.token)) {
-        const newAccessToken = result.data.accessToken || result.data.token;
-        const newRefreshToken = result.data.refreshToken || refreshToken;
+    // ✅ Build headers manually
+    const headers = {
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+    };
+    
+    if (accessToken) {
+      headers['Authorization'] = `Bearer ${accessToken}`;
+    }
+    
+    if (appKey) {
+      headers['x-app-key'] = appKey;
+    }
 
-        // Save new tokens
-        await AsyncStorage.setItem('jwt_token', newAccessToken);
-        await AsyncStorage.setItem('refresh_token', newRefreshToken);
+    // ✅ Request body matching Postman structure
+    const requestBody = {
+      leader_regd_mobile_no: leaderMobile,
+      user_email_id: userEmail,
+      refresh_token: refreshToken
+    };
 
-        console.log('✅ Tokens refreshed successfully');
-        return { 
-          success: true, 
-          tokens: { 
-            accessToken: newAccessToken, 
-            refreshToken: newRefreshToken 
-          } 
-        };
-      } else {
-        console.error('❌ Invalid response from refresh token endpoint:', result);
+    console.log('🔄 Refresh token request:', {
+      endpoint: endpoints.auth.refreshToken,
+      hasAuth: !!accessToken,
+      hasAppKey: !!appKey
+    });
+
+    const result = await this.makeRequest(
+      endpoints.auth.refreshToken,
+      {
+        method: 'POST',
+        body: requestBody,
+        headers: headers,
+      },
+      false
+    );
+
+    if (result.success && (result.data.accessToken || result.data.token)) {
+      const newAccessToken = result.data.accessToken || result.data.token;
+      const newRefreshToken = result.data.refreshToken || refreshToken;
+
+      await AsyncStorage.setItem('jwt_token', newAccessToken);
+      await AsyncStorage.setItem('refresh_token', newRefreshToken);
+
+      console.log('✅ Tokens refreshed successfully');
+      return { 
+        success: true, 
+        tokens: { 
+          accessToken: newAccessToken, 
+          refreshToken: newRefreshToken 
+        } 
+      };
+    } else {
+      console.error('❌ Token refresh failed:', result);
+      
+      // ✅ CRITICAL: Check if refresh token expired (specific status check)
+      if (result.status === 401 && result.message && result.message.includes('expired')) {
+        console.log('🔴 REFRESH TOKEN EXPIRED - User must login again');
         
-        // IMPORTANT: Trigger session expiry when refresh fails
+        // Trigger HARD logout
         try {
           const AuthService = require('../utils/AuthService').default;
           if (AuthService && AuthService.triggerSessionExpiry) {
-            await AuthService.triggerSessionExpiry();
+            await AuthService.triggerSessionExpiry(true); // ✅ Force logout
           }
         } catch (importError) {
-          console.warn('⚠️ Could not trigger session expiry from refreshToken:', importError.message);
+          console.warn('⚠️ Could not trigger session expiry:', importError.message);
         }
-        
-        throw new Error(result.message || 'Invalid response from refresh token endpoint');
-      }
-    } catch (error) {
-      console.error('❌ Token refresh error:', error);
-      
-      // IMPORTANT: Always trigger session expiry when refresh token fails
-      try {
-        const AuthService = require('../utils/AuthService').default;
-        if (AuthService && AuthService.triggerSessionExpiry) {
-          await AuthService.triggerSessionExpiry();
-        }
-      } catch (importError) {
-        console.warn('⚠️ Could not trigger session expiry from refreshToken catch:', importError.message);
       }
       
-      return { success: false, error: error.message };
+      throw new Error(result.message || 'Token refresh failed');
     }
+  } catch (error) {
+    console.error('❌ Token refresh error:', error);
+    
+    // Always trigger session expiry when refresh fails
+    try {
+      const AuthService = require('../utils/AuthService').default;
+      if (AuthService && AuthService.triggerSessionExpiry) {
+        await AuthService.triggerSessionExpiry(true); // ✅ Force logout for refresh token errors
+      }
+    } catch (importError) {
+      console.warn('⚠️ Could not trigger session expiry:', importError.message);
+    }
+    
+    return { success: false, error: error.message };
   }
+}
 
   // Utility method for delays
   static delay(ms) {

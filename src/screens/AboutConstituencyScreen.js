@@ -22,6 +22,8 @@ import ApiService from '../services/ApiService';
 import { launchImageLibrary } from 'react-native-image-picker';
 import { getCurrentUserRole, checkIfCurrentUserIsAdmin } from '../../App';
 import styles from '../styles/AboutConstituencystyle';
+import { useTranslation } from '../context/TranslationContext';
+import TranslatableText from '../components/TranslatableText';
 
 // ✅ Three Dot Menu Component
 const ThreeDotMenu = ({ visible, position, onEdit, onDelete, onDismiss }) => {
@@ -364,6 +366,14 @@ const ACMediaImage = React.memo(({ item, index, memberId, isAdmin, onEdit, onDel
 // Handle AC Media Edit
 
 const AboutConstituencyScreen = ({ navigation }) => {
+
+  const { 
+    currentLanguage, 
+    changeLanguage, 
+    isTranslating, 
+    setIsTranslating,
+    availableLanguages 
+  } = useTranslation();
   // State management
   const [constituencyData, setConstituencyData] = useState(null);
   const [assemblyConstituencies, setAssemblyConstituencies] = useState([]);
@@ -443,7 +453,9 @@ const [addConstituencyData, setAddConstituencyData] = useState({
   polling_station_count: '',
   avg_no_electors_per_ps_data: '',
   total_no_voters_data: '',
-  voter_trunout_ratio_data: ''
+  voter_trunout_ratio_data: '',
+   wikipedia_url: '',  // ✅ ADD THIS
+  chanakya_url: ''    // ✅ ADD THIS
 });
 const [addConstituencyLoading, setAddConstituencyLoading] = useState(false);
 // Auto-scroll states for AC media banners
@@ -454,6 +466,9 @@ const acMediaAutoScrollInterval = useRef(null);
 const [editMemberImageModalVisible, setEditMemberImageModalVisible] = useState(false);
 const [selectedMemberImage, setSelectedMemberImage] = useState(null);
 const [memberImageLoading, setMemberImageLoading] = useState(false);
+// Add these with your other state declarations at the top of the component
+const [headerDropdownVisible, setHeaderDropdownVisible] = useState(false);
+const [headerDropdownPosition, setHeaderDropdownPosition] = useState({ x: 0, y: 0 });
 const handleACEdit = (item) => {
   setSelectedACItem(item);
   setEditACModalVisible(true);
@@ -469,7 +484,7 @@ const handleACSave = async (updatedData) => {
     const userEmailId = currentUserInfo.loggedin_email || '';
 
     const formData = new FormData();
-    formData.append('regd_mobile_no', regdMobileNo);
+    formData.append('leader_regd_mobile_no', regdMobileNo);  // ✅ FIXED
     formData.append('user_email_id', userEmailId);
     formData.append('media_header', updatedData.media_header);
     formData.append('media_narration', updatedData.media_narration);
@@ -550,12 +565,12 @@ const handleACAdd = async (selectedImage) => {
     });
 
     const formData = new FormData();
-    formData.append('regd_mobile_no', regdMobileNo);
+    formData.append('leader_regd_mobile_no', regdMobileNo);  // ✅ FIXED
     formData.append('user_email_id', userEmailId);
     formData.append('media_header', 'null');
     formData.append('media_narration', 'null');
     formData.append('media_url', 'null');
-    formData.append('media_type', 'AC');  // ✅ This is already correct - passing 'AC' as string
+    formData.append('media_type', 'AC');
 
     // Append the selected image file
     const fileUri = selectedImage.uri;
@@ -629,13 +644,15 @@ const handleACAdd = async (selectedImage) => {
   const [editSections, setEditSections] = useState({
     generalInfo: false,
     eciSummary: false,
-    electorsBreakdown: false
+    electorsBreakdown: false,
+    externalLinks: false
   });
 
   const [editFormSections, setEditFormSections] = useState({
     generalInfo: {},
     eciSummary: {},
-    electorsBreakdown: {}
+    electorsBreakdown: {},
+    externalLinks: {} 
   });
 
 
@@ -1051,56 +1068,65 @@ const AddACMediaModal = ({ visible, onClose, onSave }) => {
   };
 
   // Get mobile number from storage following App.js patterns
-  const getMobileNumberFromStorage = async () => {
-    try {
-      ConstituencyLoggingService.constInfo('🔍 Retrieving mobile number from storage...');
+ // Get mobile number from storage following App.js patterns
+const getMobileNumberFromStorage = async () => {
+  try {
+    ConstituencyLoggingService.constInfo('🔍 Retrieving owner mobile from storage...');
 
-      // First try to get from AppOwnerInfo (following App.js pattern)
-      const appOwnerInfoStr = await EncryptedStorage.getItem('AppOwnerInfo');
-      if (appOwnerInfoStr) {
-        const appOwnerInfo = JSON.parse(appOwnerInfoStr);
-        ConstituencyLoggingService.constDebug('AppOwnerInfo found', Object.keys(appOwnerInfo));
-
-        // Check various possible keys for mobile number (following App.js pattern)
-        const possibleMobileFields = [
-          'mobile_no', 'regdMobileNo', 'mobile_number', 'phone', 'mobileNo',
-          'Mobile', 'MobileNo', 'MOBILE', 'phoneNumber', 'contactNumber',
-          'mobile', 'cell', 'cellular', 'contact', 'phone_number'
-        ];
-
-        let extractedMobile = '';
-        for (const field of possibleMobileFields) {
-          if (appOwnerInfo[field] && (typeof appOwnerInfo[field] === 'string' || typeof appOwnerInfo[field] === 'number')) {
-            extractedMobile = String(appOwnerInfo[field]).trim();
-            ConstituencyLoggingService.constInfo(`✅ Mobile found in field '${field}': ${extractedMobile}`);
-            break;
-          }
-        }
-
-        if (extractedMobile) {
-          return extractedMobile;
-        }
-      }
-
-      // Fallback to direct storage
-      const storedMobile = await EncryptedStorage.getItem('MOBILE_NUMBER') ||
-        await EncryptedStorage.getItem('OWNER_MOBILE') ||
-        await AsyncStorage.getItem('userMobile');
-
-      if (storedMobile) {
-        ConstituencyLoggingService.constInfo('✅ Mobile found in direct storage:', storedMobile);
-        return storedMobile;
-      }
-
-      // Final fallback - ask user
-      ConstituencyLoggingService.constWarn('⚠️ No mobile number found in storage');
-      return await promptForMobileNumber();
-
-    } catch (error) {
-      ConstituencyLoggingService.constError('❌ Error retrieving mobile number', error);
-      return await promptForMobileNumber();
+    // ✅ PRIORITY 1: Get OWNER_MOBILE directly (stored during bootstrap)
+    const ownerMobile = await EncryptedStorage.getItem('OWNER_MOBILE');
+    
+    if (ownerMobile && ownerMobile.trim() !== '') {
+      ConstituencyLoggingService.constInfo('✅ Owner mobile found from OWNER_MOBILE:', ownerMobile);
+      return ownerMobile.trim();
     }
-  };
+
+    // ✅ PRIORITY 2: Get from AppOwnerInfo
+    const appOwnerInfoStr = await EncryptedStorage.getItem('AppOwnerInfo');
+    if (appOwnerInfoStr) {
+      const appOwnerInfo = JSON.parse(appOwnerInfoStr);
+      ConstituencyLoggingService.constDebug('AppOwnerInfo found', Object.keys(appOwnerInfo));
+
+      // Check various possible keys for mobile number (expanded list)
+      const possibleMobileFields = [
+        'mobile_no', 'regdMobileNo', 'mobile_number', 'phone', 'mobileNo',
+        'Mobile', 'MobileNo', 'MOBILE', 'phoneNumber', 'contactNumber',
+        'mobile', 'cell', 'cellular', 'contact', 'phone_number',
+        'client_mobile', 'regd_mobile_no', 'owner_mobile'
+      ];
+
+      let extractedMobile = '';
+      for (const field of possibleMobileFields) {
+        if (appOwnerInfo[field] && (typeof appOwnerInfo[field] === 'string' || typeof appOwnerInfo[field] === 'number')) {
+          extractedMobile = String(appOwnerInfo[field]).trim();
+          ConstituencyLoggingService.constInfo(`✅ Mobile found in field '${field}': ${extractedMobile}`);
+          break;
+        }
+      }
+
+      if (extractedMobile) {
+        return extractedMobile;
+      }
+    }
+
+    // ✅ FALLBACK 3: Try other storage keys
+    const storedMobile = await EncryptedStorage.getItem('MOBILE_NUMBER') ||
+      await AsyncStorage.getItem('userMobile');
+
+    if (storedMobile) {
+      ConstituencyLoggingService.constInfo('✅ Mobile found in fallback storage:', storedMobile);
+      return storedMobile;
+    }
+
+    // ✅ LAST RESORT: Prompt user
+    ConstituencyLoggingService.constWarn('⚠️ No mobile number found in storage');
+    return await promptForMobileNumber();
+
+  } catch (error) {
+    ConstituencyLoggingService.constError('❌ Error retrieving mobile number', error);
+    return await promptForMobileNumber();
+  }
+};
 
   // Prompt user for mobile number if not found
   const promptForMobileNumber = () => {
@@ -1145,29 +1171,33 @@ const AddACMediaModal = ({ visible, onClose, onSave }) => {
     });
   };
 
-  // Initialize data with mobile number
-  const initializeData = async () => {
-    try {
-      ConstituencyLoggingService.constInfo('📱 === INITIALIZING CONSTITUENCY DATA ===');
+ // Initialize data with mobile number
+const initializeData = async () => {
+  try {
+    ConstituencyLoggingService.constInfo('📱 === INITIALIZING CONSTITUENCY DATA ===');
 
-      // Get mobile number from storage
-      const mobileNo = await getMobileNumberFromStorage();
+    // Get mobile number from storage
+    const mobileNo = await getMobileNumberFromStorage();
 
-      if (!mobileNo) {
-        throw new Error('Mobile number is required to fetch constituency data');
-      }
-
-      setRegdMobileNo(mobileNo);
-      ConstituencyLoggingService.constInfo('📱 Using mobile number for API calls:', mobileNo);
-
-      // Fetch data with the retrieved mobile number
-      await fetchConstituencyData(mobileNo);
-
-    } catch (error) {
-      ConstituencyLoggingService.constError('❌ Data initialization error', error);
-      setError(error.message);
+    if (!mobileNo) {
+      throw new Error('Mobile number is required to fetch constituency data');
     }
-  };
+
+    setRegdMobileNo(mobileNo);
+    
+    // ✅ ADD DETAILED LOGGING
+    ConstituencyLoggingService.constInfo('📱 ===================================');
+    ConstituencyLoggingService.constInfo('📱 USING OWNER MOBILE FOR ALL APIS:', mobileNo);
+    ConstituencyLoggingService.constInfo('📱 ===================================');
+
+    // Fetch data with the retrieved mobile number
+    await fetchConstituencyData(mobileNo);
+
+  } catch (error) {
+    ConstituencyLoggingService.constError('❌ Data initialization error', error);
+    setError(error.message);
+  }
+};
 
   // Fetch constituency data from API
 const fetchConstituencyData = async (mobileNo) => {
@@ -1262,10 +1292,8 @@ const fetchConstituencyData = async (mobileNo) => {
       
       setConstituencyData(cleanedData);
     } else {
-      ConstituencyLoggingService.constWarn('⚠️ No constituency profile found, using mock data');
-      
-      // ✅ ENSURE ALL MOCK VALUES ARE STRINGS OR NULL
-    setConstituencyData(null);
+      ConstituencyLoggingService.constWarn('⚠️ No constituency profile found');
+      setConstituencyData(null);
     }
 
     // ========== PROCESS ASSEMBLY CONSTITUENCIES ==========
@@ -1280,7 +1308,6 @@ const fetchConstituencyData = async (mobileNo) => {
       } else if (Array.isArray(assemblyData)) {
         constituencies = assemblyData;
       }
-      
 
       ConstituencyLoggingService.constInfo('✅ Assembly constituencies fetched', { count: constituencies.length });
       setAssemblyConstituencies(constituencies);
@@ -1553,11 +1580,14 @@ useEffect(() => {
         { key: 'reservation_status', label: 'Reservation Status' },
         { key: 'established', label: 'Established Year' },
         { key: 'sitting_member', label: 'Current MP' },
+        
         { key: 'member_party', label: 'Member Party' },
         { key: 'assembly_segment_count', label: 'Assembly Segment Count' },
         { key: 'overview', label: 'Overview', multiline: true },
         { key: 'geography', label: 'Geography', multiline: true },
-        { key: 'eci_url', label: 'ECI URL' }
+        { key: 'eci_url', label: 'ECI URL' },
+        { key: 'wikipedia_url', label: 'Wikipedia URL' },  // ✅ ADD THIS
+      { key: 'chanakya_url', label: 'Chanakya URL' }     // ✅ ADD THIS
       ]
     },
     eciSummary: {
@@ -1593,9 +1623,20 @@ useEffect(() => {
         { key: 'electors_total_male_data', label: 'Total Male Electors' },
         { key: 'electors_total_female_data', label: 'Total Female Electors' },
         { key: 'electors_total_tg_data', label: 'Total Third Gender' },
-        { key: 'electors_grand_total_data', label: 'Grand Total Electors' }
+        { key: 'electors_grand_total_data', label: 'Grand Total Electors' },
+        
       ]
-    }
+    },
+     externalLinks: {
+    title: 'External Links',
+    icon: 'link',
+    color: '#9b59b6',
+    fields: [
+      { key: 'eci_url', label: 'ECI URL' },
+      { key: 'wikipedia_url', label: 'Wikipedia URL' },
+      { key: 'chanakya_url', label: 'Chanakya URL' }
+    ]
+  }
   });
 
   const openEditSection = (sectionKey) => {
@@ -1668,106 +1709,117 @@ useEffect(() => {
     }));
   };
 
-  const handleUpdateSection = async (sectionKey) => {
-    if (!regdMobileNo) {
-      Alert.alert('Error', 'Mobile number not found. Please refresh the screen.');
+ const handleUpdateSection = async (sectionKey) => {
+  if (!regdMobileNo) {
+    Alert.alert('Error', 'Mobile number not found. Please refresh the screen.');
+    return;
+  }
+
+  setUpdateLoading(true);
+
+  try {
+    const sections = getFieldSections();
+    const section = sections[sectionKey];
+    const sectionData = editFormSections[sectionKey];
+
+    ConstituencyLoggingService.constInfo(
+      `🔄 === UPDATING ${section.title.toUpperCase()} ===`,
+      { mobileNo: regdMobileNo }
+    );
+
+    // Clean form data - SKIP member_image field
+    const cleanedFormData = {};
+    Object.keys(sectionData).forEach((key) => {
+      // ✅ Skip member_image field - it has its own update endpoint
+      if (key === 'member_image') {
+        return;
+      }
+      
+      const value = sectionData[key];
+      if (value !== null && value !== undefined && value.toString().trim() !== '') {
+        cleanedFormData[key] = value.toString().trim();
+      }
+    });
+
+    if (Object.keys(cleanedFormData).length === 0) {
+      Alert.alert('Nothing to update', 'Please modify at least one field.');
+      setUpdateLoading(false);
       return;
     }
 
-    setUpdateLoading(true);
+    const baseUrl = await ConfigService.getBaseUrl();
 
-    try {
-      const sections = getFieldSections();
-      const section = sections[sectionKey];
-      const sectionData = editFormSections[sectionKey];
-
-      ConstituencyLoggingService.constInfo(
-        `🔄 === UPDATING ${section.title.toUpperCase()} ===`,
-        { mobileNo: regdMobileNo }
-      );
-
-      // Clean form data
-      const cleanedFormData = {};
-      Object.keys(sectionData).forEach((key) => {
-        const value = sectionData[key];
-        if (value !== null && value !== undefined && value.toString().trim() !== '') {
-          cleanedFormData[key] = value.toString().trim();
+    // Get email
+    let emailToUse = loggedInEmail || ownerEmail;
+    if (!emailToUse) {
+      try {
+        const appOwnerInfoStr = await EncryptedStorage.getItem('AppOwnerInfo');
+        if (appOwnerInfoStr) {
+          const appOwnerInfo = JSON.parse(appOwnerInfoStr);
+          emailToUse = appOwnerInfo.email || appOwnerInfo.user_email || appOwnerInfo.emailId || '';
         }
-      });
-
-      if (Object.keys(cleanedFormData).length === 0) {
-        Alert.alert('Nothing to update', 'Please modify at least one field.');
-        setUpdateLoading(false);
-        return;
+      } catch (error) {
+        ConstituencyLoggingService.constError('Error getting email', error);
       }
-
-      const baseUrl = await ConfigService.getBaseUrl();
-
-      // Get email
-      let emailToUse = loggedInEmail || ownerEmail;
-      if (!emailToUse) {
-        try {
-          const appOwnerInfoStr = await EncryptedStorage.getItem('AppOwnerInfo');
-          if (appOwnerInfoStr) {
-            const appOwnerInfo = JSON.parse(appOwnerInfoStr);
-            emailToUse = appOwnerInfo.email || appOwnerInfo.user_email || appOwnerInfo.emailId || '';
-          }
-        } catch (error) {
-          ConstituencyLoggingService.constError('Error getting email', error);
-        }
-      }
-
-      // ⚡ Corrected payload matching backend
-      const requestPayload = {
-        user_email_id: emailToUse || 'sanjay.jaiswal@gmail.com',
-        leader_regd_mobile_no: regdMobileNo,
-        constitency_profile: {  // match spelling exactly
-          regd_mobile_no: regdMobileNo,
-          ...cleanedFormData,   // flatten the section
-        },
-      };
-
-      ConstituencyLoggingService.constDebug('Section update payload prepared', {
-        section: section.title,
-        payload: requestPayload,
-      });
-
-      // PUT API call
-      const result = await ApiService.authPut(
-        `${baseUrl}/api/constituencyprofile/`,
-        requestPayload,
-        {
-          'x-user-id': emailToUse || 'admin_user',
-          'x-user-role': userRole,
-        }
-      );
-
-      console.log('PUT API Response:', result);
-
-      if (!result.success) {
-        throw new Error(result.message || `Failed to update ${section.title}`);
-      }
-
-      ConstituencyLoggingService.constInfo(`✅ ${section.title} updated successfully`);
-
-      // Update local state
-      if (result.data?.constitency_profile) {
-        setConstituencyData(result.data.constitency_profile);
-      } else if (result.data) {
-        setConstituencyData(result.data);
-      }
-
-      closeEditSection(sectionKey);
-      await fetchConstituencyData(regdMobileNo);
-
-      Alert.alert('Success', `${section.title} updated successfully!`);
-    } catch (error) {
-      ConstituencyLoggingService.constError(`❌ Error updating ${sectionKey}`, error);
-      Alert.alert('Update Failed', `Failed to update section: ${error.message}`);
-    } finally {
-      setUpdateLoading(false);
     }
-  };
+
+    // ✅ DON'T INCLUDE member_image AT ALL - let backend preserve it
+    const requestPayload = {
+      user_email_id: emailToUse || 'sanjay.jaiswal@gmail.com',
+      leader_regd_mobile_no: regdMobileNo,
+      constitency_profile: {
+        regd_mobile_no: regdMobileNo,
+        ...cleanedFormData
+        // ✅ NO member_image here - completely skipped
+      },
+    };
+
+    ConstituencyLoggingService.constDebug('Section update payload prepared', {
+      section: section.title,
+      payload: requestPayload,
+    });
+
+    const result = await ApiService.authPut(
+      `${baseUrl}/api/constituencyprofile/`,
+      requestPayload,
+      {
+        'x-user-id': emailToUse || 'admin_user',
+        'x-user-role': userRole,
+      }
+    );
+
+    console.log('PUT API Response:', result);
+
+    if (!result.success) {
+      throw new Error(result.message || `Failed to update ${section.title}`);
+    }
+
+    ConstituencyLoggingService.constInfo(`✅ ${section.title} updated successfully`);
+
+    // ✅ UPDATE: Preserve the existing member_image when updating local state
+    if (result.data?.constitency_profile) {
+      setConstituencyData(prev => ({
+        ...result.data.constitency_profile,
+        member_image: prev?.member_image || result.data.constitency_profile.member_image
+      }));
+    } else if (result.data) {
+      setConstituencyData(prev => ({
+        ...result.data,
+        member_image: prev?.member_image || result.data.member_image
+      }));
+    }
+
+    closeEditSection(sectionKey);
+    await fetchConstituencyData(regdMobileNo);
+
+    Alert.alert('Success', `${section.title} updated successfully!`);
+  } catch (error) {
+    ConstituencyLoggingService.constError(`❌ Error updating ${sectionKey}`, error);
+    Alert.alert('Update Failed', `Failed to update section: ${error.message}`);
+  } finally {
+    setUpdateLoading(false);
+  }
+};
 
 
 
@@ -2252,65 +2304,102 @@ useEffect(() => {
   };
 
   // Handle constituency update
-  const handleUpdateConstituency = async () => {
-    if (!regdMobileNo) {
-      Alert.alert('Error', 'Mobile number not found. Please refresh the screen.');
-      return;
+const handleUpdateConstituency = async () => {
+  if (!regdMobileNo) {
+    Alert.alert('Error', 'Mobile number not found. Please refresh the screen.');
+    return;
+  }
+
+  setUpdateLoading(true);
+  try {
+    ConstituencyLoggingService.constInfo('🔄 === UPDATING CONSTITUENCY PROFILE ===', { mobileNo: regdMobileNo });
+
+    // Clean form data - SKIP member_image field
+    const cleanedFormData = {};
+    Object.keys(editFormData).forEach(key => {
+      // ✅ Skip member_image field - it has its own update endpoint
+      if (key === 'member_image') {
+        return;
+      }
+      
+      const value = editFormData[key];
+      if (value !== null && value !== undefined && value.toString().trim() !== '') {
+        cleanedFormData[key] = value.toString().trim();
+      }
+    });
+
+    const baseUrl = await ConfigService.getBaseUrl();
+    
+    // Get email
+    let emailToUse = loggedInEmail || ownerEmail;
+    if (!emailToUse) {
+      try {
+        const appOwnerInfoStr = await EncryptedStorage.getItem('AppOwnerInfo');
+        if (appOwnerInfoStr) {
+          const appOwnerInfo = JSON.parse(appOwnerInfoStr);
+          emailToUse = appOwnerInfo.email || appOwnerInfo.user_email || appOwnerInfo.emailId || '';
+        }
+      } catch (error) {
+        ConstituencyLoggingService.constError('Error getting email', error);
+      }
+    }
+    
+    // ✅ DON'T INCLUDE member_image AT ALL - let backend preserve it
+    const requestPayload = {
+      user_email_id: emailToUse || 'sanjay.jaiswal@gmail.com',
+      leader_regd_mobile_no: regdMobileNo,
+      constitency_profile: {
+        regd_mobile_no: regdMobileNo,
+        ...cleanedFormData
+        // ✅ NO member_image here - completely skipped
+      }
+    };
+
+    const result = await ApiService.authPut(
+      `${baseUrl}/api/constituencyprofile`,
+      requestPayload,
+      {
+        'x-user-id': emailToUse || 'admin_user',
+        'x-user-role': userRole,
+      }
+    );
+
+    if (!result.success) {
+      throw new Error(`Failed to update constituency profile: ${result.message}`);
     }
 
-    setUpdateLoading(true);
-    try {
-      ConstituencyLoggingService.constInfo('🔄 === UPDATING CONSTITUENCY PROFILE ===', { mobileNo: regdMobileNo });
+    ConstituencyLoggingService.constInfo('✅ Constituency profile updated successfully');
 
-      const cleanedFormData = {};
-      Object.keys(editFormData).forEach(key => {
-        const value = editFormData[key];
-        if (value !== null && value !== undefined && value.toString().trim() !== '') {
-          cleanedFormData[key] = value.toString().trim();
-        }
-      });
-
-      const baseUrl = await ConfigService.getBaseUrl();
-      const requestPayload = {
-        constitency_profile: cleanedFormData
-      };
-
-      // ✅ CORRECT: No mobile number in URL path
-      const result = await ApiService.authPut(
-        `${baseUrl}/api/constituencyprofile`,  // Just the base endpoint
-        requestPayload,
-        {
-          'x-user-id': emailToUse || 'admin_user',
-          'x-user-role': userRole,
-        }
-      );
-
-      if (!result.success) {
-        throw new Error(`Failed to update constituency profile: ${result.message}`);
-      }
-
-      ConstituencyLoggingService.constInfo('✅ Constituency profile updated successfully');
-
-      if (result.data && result.data.constituency_profile) {
-        setConstituencyData(result.data.constituency_profile);
-      } else if (result.data && result.data.constitency_profile) {
-        setConstituencyData(result.data.constitency_profile);
-      } else if (result.data) {
-        setConstituencyData(result.data);
-      }
-
-      setEditModalVisible(false);
-      await fetchConstituencyData(regdMobileNo);
-
-      Alert.alert('Success', 'Constituency profile updated successfully!');
-
-    } catch (error) {
-      ConstituencyLoggingService.constError('❌ Error updating constituency profile', error);
-      Alert.alert('Update Failed', `Failed to update constituency profile: ${error.message}`);
-    } finally {
-      setUpdateLoading(false);
+    // ✅ UPDATE: Preserve member_image when updating state
+    if (result.data && result.data.constituency_profile) {
+      setConstituencyData(prev => ({
+        ...result.data.constituency_profile,
+        member_image: prev?.member_image || result.data.constituency_profile.member_image
+      }));
+    } else if (result.data && result.data.constitency_profile) {
+      setConstituencyData(prev => ({
+        ...result.data.constitency_profile,
+        member_image: prev?.member_image || result.data.constitency_profile.member_image
+      }));
+    } else if (result.data) {
+      setConstituencyData(prev => ({
+        ...result.data,
+        member_image: prev?.member_image || result.data.member_image
+      }));
     }
-  };
+
+    setEditModalVisible(false);
+    await fetchConstituencyData(regdMobileNo);
+
+    Alert.alert('Success', 'Constituency profile updated successfully!');
+
+  } catch (error) {
+    ConstituencyLoggingService.constError('❌ Error updating constituency profile', error);
+    Alert.alert('Update Failed', `Failed to update constituency profile: ${error.message}`);
+  } finally {
+    setUpdateLoading(false);
+  }
+};
 
   // Handle assembly update
   const handleUpdateAssembly = async () => {
@@ -2389,171 +2478,163 @@ useEffect(() => {
   };
 
 
-  const handleAddNewAssembly = async () => {
-    // Validate all forms in the list
-    for (let i = 0; i < assemblyFormList.length; i++) {
-      const form = assemblyFormList[i];
-      if (!form.ac_number || !form.ac_name || !form.district) {
-        Alert.alert(
-          'Validation Error',
-          `Please fill in all required fields for Constituency ${i + 1} (AC Number, AC Name, and District)`
-        );
-        return;
-      }
-    }
-
-    if (!regdMobileNo) {
-      Alert.alert('Error', 'Mobile number not found. Please refresh the screen.');
+ const handleAddNewAssembly = async () => {
+  // Validate all forms in the list
+  for (let i = 0; i < assemblyFormList.length; i++) {
+    const form = assemblyFormList[i];
+    if (!form.ac_number || !form.ac_name || !form.district) {
+      Alert.alert(
+        'Validation Error',
+        `Please fill in all required fields for Constituency ${i + 1} (AC Number, AC Name, and District)`
+      );
       return;
     }
+  }
 
-    setSaveLoading(true);
-    try {
-      ConstituencyLoggingService.constInfo('➕ === ADDING MULTIPLE ASSEMBLY CONSTITUENCIES ===', {
-        mobileNo: regdMobileNo,
-        count: assemblyFormList.length
-      });
+  if (!regdMobileNo) {
+    Alert.alert('Error', 'Mobile number not found. Please refresh the screen.');
+    return;
+  }
 
-      // Get email
-      let emailToUse = loggedInEmail || ownerEmail;
+  setSaveLoading(true);
+  try {
+    ConstituencyLoggingService.constInfo('➕ === ADDING MULTIPLE ASSEMBLY CONSTITUENCIES ===', {
+      mobileNo: regdMobileNo,
+      count: assemblyFormList.length
+    });
 
-      if (!emailToUse) {
-        try {
-          const appOwnerInfoStr = await EncryptedStorage.getItem('AppOwnerInfo');
-          if (appOwnerInfoStr) {
-            const appOwnerInfo = JSON.parse(appOwnerInfoStr);
-            emailToUse = appOwnerInfo.email || appOwnerInfo.user_email || appOwnerInfo.emailId || '';
-          }
-        } catch (error) {
-          ConstituencyLoggingService.constError('Error getting email', error);
+    // Get email
+    let emailToUse = loggedInEmail || ownerEmail;
+
+    if (!emailToUse) {
+      try {
+        const appOwnerInfoStr = await EncryptedStorage.getItem('AppOwnerInfo');
+        if (appOwnerInfoStr) {
+          const appOwnerInfo = JSON.parse(appOwnerInfoStr);
+          emailToUse = appOwnerInfo.email || appOwnerInfo.user_email || appOwnerInfo.emailId || '';
         }
+      } catch (error) {
+        ConstituencyLoggingService.constError('Error getting email', error);
       }
+    }
 
-      if (!emailToUse) {
-        throw new Error('Email is required for this operation');
-      }
+    if (!emailToUse) {
+      throw new Error('Email is required for this operation');
+    }
 
-      const baseUrl = await ConfigService.getBaseUrl();
+    const baseUrl = await ConfigService.getBaseUrl();
 
-      // Convert form list to clean assembly objects
-      const newAssemblies = assemblyFormList.map(form => {
-        const assembly = {
-          ac_number: parseInt(form.ac_number),
-          ac_name: form.ac_name.trim(),
-          district: form.district.trim()
-        };
-
-        if (form.type && form.type.trim()) {
-          assembly.type = form.type.trim();
-        }
-
-        return assembly;
-      });
-
-      // Combine existing + new assemblies
-      const allConstituencies = [
-        ...assemblyConstituencies.map(ac => ({
-          ac_number: parseInt(ac.ac_number),
-          ac_name: ac.ac_name,
-          district: ac.district,
-          ...(ac.type && { type: ac.type })
-        })),
-        ...newAssemblies
-      ];
-
-      // Prepare payload
-      const requestPayload = {
-        user_email_id: emailToUse,
-        assembly_constituencies: {
-          regd_mobile_no: regdMobileNo,
-          narration: "This PC comprises the following ACs:",
-          assembly_const_count: allConstituencies.length,
-          assembly_const: allConstituencies
-        }
+    // Convert form list to clean assembly objects
+    const newAssemblies = assemblyFormList.map(form => {
+      const assembly = {
+        ac_number: parseInt(form.ac_number),
+        ac_name: form.ac_name.trim(),
+        district: form.district.trim()
       };
 
-      ConstituencyLoggingService.constDebug('Add assemblies request payload', {
-        url: `${baseUrl}/api/assemblyconstituencies`,
-        email: emailToUse,
-        mobile: regdMobileNo,
-        totalACs: allConstituencies.length,
-        newACs: newAssemblies.length
-      });
-
-      // Check if data exists
-      const checkResult = await ApiService.authGet(
-        `${baseUrl}/api/assemblyconstituencies/?leader_regd_mobile_no=${regdMobileNo}&user_email_id=${encodeURIComponent(emailToUse)}`
-      );
-
-      let result;
-
-      if (checkResult.success && checkResult.data &&
-        (checkResult.data.assembly_constituencies || Array.isArray(checkResult.data))) {
-        // Data exists - use PUT
-        ConstituencyLoggingService.constInfo('Assembly data exists, using PUT to update');
-        result = await ApiService.authPut(
-          `${baseUrl}/api/assemblyconstituencies/`,
-          {
-            leader_regd_mobile_no: regdMobileNo,
-            user_email_id: emailToUse,
-            assembly_constituencies: {
-              narration: "This PC comprises the following ACs:",
-              assembly_const_count: allConstituencies.length,
-              assembly_const: allConstituencies
-            }
-          },
-          {
-            'x-user-id': emailToUse,
-            'x-user-role': userRole,
-          }
-        );
-      } else {
-        // No existing data - use POST
-        ConstituencyLoggingService.constInfo('No assembly data found, using POST to create');
-        result = await ApiService.authPost(
-          `${baseUrl}/api/assemblyconstituencies`,
-          requestPayload,
-          {
-            'x-user-id': emailToUse,
-            'x-user-role': userRole,
-          }
-        );
+      if (form.type && form.type.trim()) {
+        assembly.type = form.type.trim();
       }
 
-      if (!result.success) {
-        throw new Error(result.message || `Server returned status ${result.status}`);
+      return assembly;
+    });
+
+    // Combine existing + new assemblies
+    const allConstituencies = [
+      ...assemblyConstituencies.map(ac => ({
+        ac_number: parseInt(ac.ac_number),
+        ac_name: ac.ac_name,
+        district: ac.district,
+        ...(ac.type && { type: ac.type })
+      })),
+      ...newAssemblies
+    ];
+
+    // ✅ FIXED: Prepare payload with leader_regd_mobile_no at ROOT level
+    const requestPayload = {
+      leader_regd_mobile_no: regdMobileNo,  // ✅ CRITICAL: At root level
+      user_email_id: emailToUse,
+      assembly_constituencies: {
+        narration: "This PC comprises the following ACs:",
+        assembly_const_count: allConstituencies.length,
+        assembly_const: allConstituencies
       }
+    };
 
-      ConstituencyLoggingService.constInfo(
-        `✅ ${newAssemblies.length} assembly constituencies added successfully`
+    ConstituencyLoggingService.constDebug('Add assemblies request payload', {
+      url: `${baseUrl}/api/assemblyconstituencies`,
+      email: emailToUse,
+      mobile: regdMobileNo,
+      totalACs: allConstituencies.length,
+      newACs: newAssemblies.length
+    });
+
+    // Check if data exists
+    const checkResult = await ApiService.authGet(
+      `${baseUrl}/api/assemblyconstituencies/?leader_regd_mobile_no=${regdMobileNo}&user_email_id=${encodeURIComponent(emailToUse)}`
+    );
+
+    let result;
+
+    if (checkResult.success && checkResult.data &&
+      (checkResult.data.assembly_constituencies || Array.isArray(checkResult.data))) {
+      // Data exists - use PUT
+      ConstituencyLoggingService.constInfo('Assembly data exists, using PUT to update');
+      result = await ApiService.authPut(
+        `${baseUrl}/api/assemblyconstituencies/`,
+        requestPayload,  // ✅ Using fixed payload
+        {
+          'x-user-id': emailToUse,
+          'x-user-role': userRole,
+        }
       );
-
-      // Reset form list and close modal
-      setAssemblyFormList([
-        { ac_number: '', ac_name: '', district: '', type: '' }
-      ]);
-      setAddAssemblyModalVisible(false);
-
-      // Refresh data
-      await fetchConstituencyData(regdMobileNo);
-
-      Alert.alert(
-        'Success',
-        `${newAssemblies.length} assembly ${newAssemblies.length === 1 ? 'constituency' : 'constituencies'} added successfully!`
+    } else {
+      // No existing data - use POST
+      ConstituencyLoggingService.constInfo('No assembly data found, using POST to create');
+      result = await ApiService.authPost(
+        `${baseUrl}/api/assemblyconstituencies`,
+        requestPayload,  // ✅ Using fixed payload
+        {
+          'x-user-id': emailToUse,
+          'x-user-role': userRole,
+        }
       );
-
-    } catch (error) {
-      ConstituencyLoggingService.constError('❌ Error adding assembly constituencies', error);
-      Alert.alert(
-        'Add Failed',
-        `Failed to add assembly constituencies:\n\n${error.message}`
-      );
-    } finally {
-      setSaveLoading(false);
     }
-  };
 
-  const handleCreateConstituencyProfile = async () => {
+    if (!result.success) {
+      throw new Error(result.message || `Server returned status ${result.status}`);
+    }
+
+    ConstituencyLoggingService.constInfo(
+      `✅ ${newAssemblies.length} assembly constituencies added successfully`
+    );
+
+    // Reset form list and close modal
+    setAssemblyFormList([
+      { ac_number: '', ac_name: '', district: '', type: '' }
+    ]);
+    setAddAssemblyModalVisible(false);
+
+    // Refresh data
+    await fetchConstituencyData(regdMobileNo);
+
+    Alert.alert(
+      'Success',
+      `${newAssemblies.length} assembly ${newAssemblies.length === 1 ? 'constituency' : 'constituencies'} added successfully!`
+    );
+
+  } catch (error) {
+    ConstituencyLoggingService.constError('❌ Error adding assembly constituencies', error);
+    Alert.alert(
+      'Add Failed',
+      `Failed to add assembly constituencies:\n\n${error.message}`
+    );
+  } finally {
+    setSaveLoading(false);
+  }
+};
+
+const handleCreateConstituencyProfile = async () => {
   try {
     // Validate required fields
     if (!addConstituencyData.const_name.trim()) {
@@ -2591,16 +2672,17 @@ useEffect(() => {
     }
 
     if (!emailToUse) {
-      emailToUse = 'sanjay.jaiswal@gmail.com'; // fallback
+      emailToUse = 'sanjay.jaiswal@gmail.com';
     }
 
     const baseUrl = await ConfigService.getBaseUrl();
 
-    // Prepare request payload matching Postman structure
+    // ✅ FIXED: Add leader_regd_mobile_no at ROOT level
     const requestPayload = {
+      leader_regd_mobile_no: regdMobileNo,  // ✅ CRITICAL: Add at root level for authentication
       user_email_id: emailToUse,
       constitency_profile: {
-        regd_mobile_no: regdMobileNo,
+        
         const_no: addConstituencyData.const_no.trim(),
         constituency_type: addConstituencyData.constituency_type || 'LokSabha',
         const_name: addConstituencyData.const_name.trim(),
@@ -2610,7 +2692,6 @@ useEffect(() => {
         established: addConstituencyData.established.trim() || '',
         overview: addConstituencyData.overview.trim() || '',
         sitting_member: addConstituencyData.sitting_member.trim() || '',
-        member_image: 'none',
         member_party: addConstituencyData.member_party.trim() || '',
         election_year: addConstituencyData.election_year.trim() || '',
         electon_header: addConstituencyData.electon_header.trim() || '',
@@ -2652,7 +2733,9 @@ useEffect(() => {
         total_no_voters_label: 'Total Voters',
         total_no_voters_data: addConstituencyData.total_no_voters_data.trim() || '',
         voter_trunout_ratio_label: 'Turnout Ratio',
-        voter_trunout_ratio_data: addConstituencyData.voter_trunout_ratio_data.trim() || ''
+        voter_trunout_ratio_data: addConstituencyData.voter_trunout_ratio_data.trim() || '',
+        wikipedia_url: addConstituencyData.wikipedia_url.trim() || '',
+        chanakya_url: addConstituencyData.chanakya_url.trim() || ''
       }
     };
 
@@ -2662,7 +2745,6 @@ useEffect(() => {
       constName: addConstituencyData.const_name
     });
 
-    // Use authPost for POST request
     const result = await ApiService.authPost(
       `${baseUrl}/api/constituencyprofile`,
       requestPayload,
@@ -2682,7 +2764,7 @@ useEffect(() => {
           {
             text: 'OK',
             onPress: () => {
-              // Reset form
+              // Reset form and close modal
               setAddConstituencyData({
                 const_no: '',
                 constituency_type: 'LokSabha',
@@ -2718,13 +2800,11 @@ useEffect(() => {
                 polling_station_count: '',
                 avg_no_electors_per_ps_data: '',
                 total_no_voters_data: '',
-                voter_trunout_ratio_data: ''
+                voter_trunout_ratio_data: '',
+                wikipedia_url: '',
+                chanakya_url: ''
               });
-
-              // Close modal
               setAddConstituencyModalVisible(false);
-
-              // Refresh data
               fetchConstituencyData(regdMobileNo);
             }
           }
@@ -2799,6 +2879,14 @@ useEffect(() => {
 
   // Render functions
  const renderHeader = () => {
+  {isTranslating && (
+  <View style={styles.translationLoadingBar}>
+    <ActivityIndicator size="small" color="#e16e2b" />
+    <Text style={styles.translationLoadingText}>Translating...</Text>
+  </View>
+)}
+
+
   // If no constituency data exists, show "Add New Profile" button
   if (!constituencyData || !constituencyData.const_name) {
     return (
@@ -2822,6 +2910,18 @@ useEffect(() => {
     );
   }
 
+  // Handler for three-dot menu
+  const handleHeaderMenuPress = (event) => {
+    const { pageX, pageY } = event.nativeEvent;
+    setHeaderDropdownPosition({ x: pageX, y: pageY + 10 });
+    setHeaderDropdownVisible(true);
+  };
+
+  const handleHeaderEdit = () => {
+    setHeaderDropdownVisible(false);
+    openEditSection('generalInfo');
+  };
+
   // Existing header code when data exists...
   return (
     <View style={styles.header}>
@@ -2836,16 +2936,55 @@ useEffect(() => {
           </Text>
         </TouchableOpacity>
 
+        {/* ✅ CHANGED: Three-dot menu instead of direct edit button */}
         {isAdmin && (
           <TouchableOpacity
-            style={styles.headerEditButton}
-            onPress={() => openEditSection('generalInfo')}
+            style={styles.headerMenuButton}
+            onPress={handleHeaderMenuPress}
             activeOpacity={0.7}
           >
-            <Icon name="edit" size={18} color="#fff" />
+            <Text style={styles.headerMenuIcon}>⋮</Text>
           </TouchableOpacity>
         )}
       </View>
+
+      {/* ✅ Three-dot dropdown menu */}
+      {isAdmin && (
+        <ThreeDotMenu
+          visible={headerDropdownVisible}
+          position={headerDropdownPosition}
+          onEdit={handleHeaderEdit}
+          onDelete={() => {
+            setHeaderDropdownVisible(false);
+            Alert.alert(
+              'Delete Profile',
+              'Are you sure you want to delete this constituency profile?',
+              [
+                { text: 'Cancel', style: 'cancel' },
+                {
+                  text: 'Delete',
+                  style: 'destructive',
+                  onPress: async () => {
+                    try {
+                      const baseUrl = await ConfigService.getBaseUrl();
+                      const result = await ApiService.authDelete(
+                        `${baseUrl}/api/constituencyprofile?leader_regd_mobile_no=${regdMobileNo}&user_email_id=${encodeURIComponent(loggedInEmail || ownerEmail)}`
+                      );
+                      if (result.success) {
+                        Alert.alert('Success', 'Constituency profile deleted');
+                        await fetchConstituencyData(regdMobileNo);
+                      }
+                    } catch (error) {
+                      Alert.alert('Error', 'Failed to delete profile');
+                    }
+                  }
+                }
+              ]
+            );
+          }}
+          onDismiss={() => setHeaderDropdownVisible(false)}
+        />
+      )}
 
       <Text style={styles.subtitle}>
         {`${constituencyData?.constituency_type || 'Lok Sabha'} Constituency`}
@@ -3025,7 +3164,7 @@ const renderACMediaGallery = () => {
       <View style={styles.card}>
         <View style={styles.cardHeader}>
           <Icon name="description" size={20} color="#3498db" />
-          <Text style={styles.cardTitle}>Overview</Text>
+          <TranslatableText style={styles.cardTitle}>Overview</TranslatableText>
         </View>
         <View style={styles.cardContent}>
           <Text style={styles.overviewText}>
@@ -3038,7 +3177,7 @@ const renderACMediaGallery = () => {
       <View style={styles.infoGrid}>
         <View style={styles.infoCard}>
           <Icon name="account-balance" size={24} color="#e67e22" style={styles.infoIcon} />
-          <Text style={styles.infoLabel}>Established</Text>
+          <TranslatableText style={styles.infoLabel}>Established</TranslatableText>
           <Text style={styles.infoValue}>
             {formatEstablishedYear(constituencyData?.established)}
           </Text>
@@ -3048,34 +3187,50 @@ const renderACMediaGallery = () => {
         </View>
 
         <View style={styles.infoCard}>
-          {/* Member Image or Icon */}
-        {/* Member Image with Edit Button Container */}
+{/* Member Image with Edit Button Container */}
 <View style={styles.memberImageContainer}>
   {shouldShowImage ? (
-    <Image
-      source={{ uri: memberImageUrl }}
-      style={styles.infoCardMemberImage}
-      onError={(error) => {
-        ConstituencyLoggingService.constError('Member image load failed in card', error);
-      }}
-    />
+    <>
+      <Image
+        source={{ uri: memberImageUrl }}
+        style={styles.infoCardMemberImage}
+        onError={(error) => {
+          ConstituencyLoggingService.constError('Member image load failed in card', error);
+        }}
+      />
+      {/* ✅ EDIT BUTTON - Show when image exists */}
+
+      {isAdmin && (
+        <TouchableOpacity 
+          style={styles.memberImageEditButton}
+          onPress={() => setEditMemberImageModalVisible(true)}
+          activeOpacity={0.7}
+        >
+          <Icon name="edit" size={12} color="#fff" />
+        </TouchableOpacity>
+      )}
+    </>
   ) : (
-    <Icon name="person" size={24} color="#9b59b6" style={styles.infoIcon} />
-  )}
-  
-  {/* ✅ EDIT BUTTON - Only show for admin and when image exists */}
-  {isAdmin && shouldShowImage && (
-    <TouchableOpacity 
-      style={styles.memberImageEditButton}
-      onPress={() => setEditMemberImageModalVisible(true)}
-      activeOpacity={0.7}
-    >
-      <Icon name="edit" size={12} color="#fff" />
-    </TouchableOpacity>
+    <>
+      {/* ✅ CIRCLE PLACEHOLDER - Same style as image but with icon inside */}
+      <View style={styles.infoCardMemberImage}>
+        <Icon name="person" size={24} color="#9b59b6" />
+      </View>
+      {/* ✅ EDIT BUTTON - Show when NO image exists */}
+      {isAdmin && (
+        <TouchableOpacity 
+          style={styles.memberImageEditButton}
+          onPress={() => setEditMemberImageModalVisible(true)}
+          activeOpacity={0.7}
+        >
+          <Icon name="edit" size={12} color="#fff" />
+        </TouchableOpacity>
+      )}
+    </>
   )}
 </View>
           
-          <Text style={styles.infoLabel}>Current MP</Text>
+          <TranslatableText style={styles.infoLabel}>Current MP</TranslatableText>
           <Text style={styles.infoValue} numberOfLines={3}>
             {getCurrentMP()}
           </Text>
@@ -3194,11 +3349,11 @@ const renderACMediaGallery = () => {
         {basicInfoData.length > 0 && (
           <View style={styles.tableContainer}>
             <View style={styles.tableSubHeader}>
-              <Text style={styles.tableSubHeaderText}>BASIC INFORMATION</Text>
+              <TranslatableText style={styles.tableSubHeaderText}>BASIC INFORMATION</TranslatableText>
             </View>
             <View style={styles.tableHeader}>
-              <Text style={styles.tableHeaderText}>Parameter</Text>
-              <Text style={styles.tableHeaderText}>Value</Text>
+              <TranslatableText style={styles.tableHeaderText}>Parameter</TranslatableText>
+              <TranslatableText style={styles.tableHeaderText}>Value</TranslatableText>
             </View>
             {basicInfoData.map((item, index) => (
               <View key={index} style={[styles.tableRow, index % 2 === 0 && styles.tableRowEven]}>
@@ -3213,23 +3368,23 @@ const renderACMediaGallery = () => {
         {electorsTableData.length > 0 && (
           <View style={styles.tableContainer}>
             <View style={styles.tableSubHeader}>
-              <Text style={styles.tableSubHeaderText}>ELECTORS BREAKDOWN</Text>
-              {isAdmin && (
-                <TouchableOpacity
-                  style={styles.actionButton}
-                  onPress={(event) => showSectionDropdown('electorsBreakdown', event)}
-                  activeOpacity={0.7}
-                >
-                  <Text style={styles.actionButtonText}>⋮</Text>
-                </TouchableOpacity>
-              )}
-            </View>
+  <TranslatableText style={styles.tableSubHeaderText}>ELECTORS BREAKDOWN</TranslatableText>
+  {isAdmin && (
+    <TouchableOpacity
+      style={styles.actionButton}
+      onPress={() => openEditSection('electorsBreakdown')}
+      activeOpacity={0.7}
+    >
+      <Icon name="edit" size={18} color="#fff" />
+    </TouchableOpacity>
+  )}
+</View>
             <View style={styles.tableHeader}>
-              <Text style={[styles.tableHeaderText, { flex: 1.5 }]}>CATEGORY</Text>
-              <Text style={styles.tableHeaderText}>MEN</Text>
-              <Text style={styles.tableHeaderText}>WOMEN</Text>
-              <Text style={styles.tableHeaderText}>3RD GENDER</Text>
-              <Text style={styles.tableHeaderText}>TOTAL</Text>
+              <TranslatableText style={[styles.tableHeaderText, { flex: 1.5 }]}>CATEGORY</TranslatableText>
+              <TranslatableText style={styles.tableHeaderText}>MEN</TranslatableText>
+              <TranslatableText style={styles.tableHeaderText}>WOMEN</TranslatableText>
+              <TranslatableText style={styles.tableHeaderText}>3RD GENDER</TranslatableText>
+              <TranslatableText style={styles.tableHeaderText}>TOTAL</TranslatableText>
             </View>
             {electorsTableData.map((item, index) => {
               const isTotalRow = item.category === 'TOTAL';
@@ -3278,7 +3433,7 @@ const renderACMediaGallery = () => {
       return (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="small" color="#3498db" />
-          <Text style={styles.loadingText}>Loading assembly constituencies...</Text>
+          <TranslatableText style={styles.loadingText}>Loading assembly constituencies...</TranslatableText>
         </View>
       );
     }
@@ -3302,7 +3457,7 @@ const renderACMediaGallery = () => {
               activeOpacity={0.7}
             >
               <Icon name="add-circle" size={20} color="#fff" />
-              <Text style={styles.addAssemblyButtonText}>Add New Assembly Constituency</Text>
+              <TranslatableText style={styles.addAssemblyButtonText}>Add New Assembly Constituency</TranslatableText>
             </TouchableOpacity>
           )}
         </View>
@@ -3404,7 +3559,7 @@ const renderACMediaGallery = () => {
     <View style={styles.card}>
       <View style={styles.cardHeader}>
         <Icon name="public" size={20} color="#27ae60" />
-        <Text style={styles.cardTitle}>Geography</Text>
+        <TranslatableText style={styles.cardTitle}>Geography</TranslatableText>
       </View>
       <View style={styles.cardContent}>
         <Text style={styles.overviewText}>
@@ -3415,31 +3570,48 @@ const renderACMediaGallery = () => {
   );
 };
 
-  const renderExternalLinks = () => (
-    <View style={styles.card}>
-      <View style={styles.cardHeader}>
+ const renderExternalLinks = () => (
+  <View style={styles.card}>
+    {/* ✅ FIXED: Edit button now inside cardHeader */}
+    <View style={styles.cardHeader}>
+      <View style={styles.cardHeaderLeft}>
         <Icon name="link" size={20} color="#9b59b6" />
-        <Text style={styles.cardTitle}>External Links</Text>
+        <TranslatableText style={styles.cardTitle}>External Links</TranslatableText>
       </View>
-      <View style={styles.linksContainer}>
-        {constituencyData?.eci_url && (
-          <TouchableOpacity
-            style={styles.linkButton}
-            onPress={() => openLink(constituencyData.eci_url)}
-            activeOpacity={0.7}
-          >
-            <Icon name="account-balance" size={20} color="#e67e22" />
-            <View style={styles.linkContent}>
-              <Text style={styles.linkTitle}>Election Commission</Text>
-              <Text style={styles.linkDescription}>Official ECI information</Text>
-            </View>
-            <Icon name="open-in-new" size={16} color="#3498db" />
-          </TouchableOpacity>
-        )}
+      
+      {/* ✅ Edit button in the right corner */}
+      {isAdmin && (
+        <TouchableOpacity
+          style={styles.actionButton}
+          onPress={() => openEditSection('externalLinks')}
+          activeOpacity={0.7}
+        >
+          <Icon name="edit" size={18} color="#fff" />
+        </TouchableOpacity>
+      )}
+    </View>
 
+    <View style={styles.linksContainer}>
+      {constituencyData?.eci_url && (
         <TouchableOpacity
           style={styles.linkButton}
-          onPress={() => openLink(`https://en.wikipedia.org/wiki/${(constituencyData?.const_name || '').replace(/ /g, '_')}_Lok_Sabha_constituency`)}
+          onPress={() => openLink(constituencyData.eci_url)}
+          activeOpacity={0.7}
+        >
+          <Icon name="account-balance" size={20} color="#e67e22" />
+          <View style={styles.linkContent}>
+            <Text style={styles.linkTitle}>Election Commission</Text>
+            <Text style={styles.linkDescription}>Official ECI information</Text>
+          </View>
+          <Icon name="open-in-new" size={16} color="#3498db" />
+        </TouchableOpacity>
+      )}
+
+      {/* ✅ Wikipedia Link */}
+      {constituencyData?.wikipedia_url && (
+        <TouchableOpacity
+          style={styles.linkButton}
+          onPress={() => openLink(constituencyData.wikipedia_url)}
           activeOpacity={0.7}
         >
           <Icon name="public" size={20} color="#3498db" />
@@ -3449,10 +3621,13 @@ const renderACMediaGallery = () => {
           </View>
           <Icon name="open-in-new" size={16} color="#3498db" />
         </TouchableOpacity>
+      )}
 
+      {/* ✅ Chanakya Link */}
+      {constituencyData?.chanakya_url && (
         <TouchableOpacity
           style={styles.linkButton}
-          onPress={() => openLink(`https://chanakyya.com/Parliament-Details/${(constituencyData?.const_name || '').replace(/ /g, '_')}`)}
+          onPress={() => openLink(constituencyData.chanakya_url)}
           activeOpacity={0.7}
         >
           <Icon name="bar-chart" size={20} color="#f39c12" />
@@ -3462,9 +3637,10 @@ const renderACMediaGallery = () => {
           </View>
           <Icon name="open-in-new" size={16} color="#3498db" />
         </TouchableOpacity>
-      </View>
+      )}
     </View>
-  );
+  </View>
+);
   const renderMainEditModal = () => (
     <Modal
       visible={editModalVisible && (editingConstituency || editingAssembly)}
@@ -4435,10 +4611,11 @@ const handleUpdateMemberImage = async (selectedImage) => {
     const fileType = selectedImage.type || 'image/jpeg';
 
     formData.append('leader_image', {
-  uri: fileUri,
-  name: fileName,
-  type: fileType,
-});
+      uri: fileUri,
+      name: fileName,
+      type: fileType,
+    });
+
     console.log('📤 Sending PUT request to:', apiUrl);
 
     // Use authPut with multipart/form-data
@@ -4454,7 +4631,7 @@ const handleUpdateMemberImage = async (selectedImage) => {
             setEditMemberImageModalVisible(false);
             setSelectedMemberImage(null);
             
-            // Reload constituency data
+            // Reload constituency data to get new image URL
             await fetchConstituencyData(regdMobileNo);
             
             // Force re-render
@@ -4535,7 +4712,7 @@ const handleUpdateMemberImage = async (selectedImage) => {
         <View style={[styles.modalContent, { maxHeight: '90%' }]}>
           <View style={[styles.modalHeader, { backgroundColor: '#e16e2b' }]}>
             <Icon name="add-circle" size={18} color="#fff" />
-            <Text style={styles.modalTitle}>Add Constituency Profile</Text>
+            <TranslatableText style={styles.modalTitle}>Add Constituency Profile</TranslatableText>
             <TouchableOpacity
               onPress={() => setAddConstituencyModalVisible(false)}
               style={styles.closeButton}
@@ -4547,13 +4724,13 @@ const handleUpdateMemberImage = async (selectedImage) => {
           <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={true}>
             {/* BASIC INFORMATION SECTION */}
             <View style={[styles.tableSubHeader, { backgroundColor: '#e16e2b' }]}>
-              <Text style={styles.tableSubHeaderText}>BASIC INFORMATION</Text>
+              <TranslatableText style={styles.tableSubHeaderText}>BASIC INFORMATION</TranslatableText>
             </View>
 
             <View style={styles.formGroup}>
-              <Text style={[styles.formLabel, styles.requiredLabel]}>
+              <TranslatableText style={[styles.formLabel, styles.requiredLabel]}>
                 Constituency Number *
-              </Text>
+              </TranslatableText>
               <TextInput
                 style={styles.formInput}
                 value={addConstituencyData.const_no}
@@ -4568,9 +4745,9 @@ const handleUpdateMemberImage = async (selectedImage) => {
             </View>
 
             <View style={styles.formGroup}>
-              <Text style={[styles.formLabel, styles.requiredLabel]}>
+              <TranslatableText style={[styles.formLabel, styles.requiredLabel]}>
                 Constituency Name *
-              </Text>
+              </TranslatableText>
               <TextInput
                 style={styles.formInput}
                 value={addConstituencyData.const_name}
@@ -4584,7 +4761,7 @@ const handleUpdateMemberImage = async (selectedImage) => {
             </View>
 
             <View style={styles.formGroup}>
-              <Text style={styles.formLabel}>Constituency Type</Text>
+              <TranslatableText style={styles.formLabel}>Constituency Type</TranslatableText>
               <TextInput
                 style={styles.formInput}
                 value={addConstituencyData.constituency_type}
@@ -4598,7 +4775,7 @@ const handleUpdateMemberImage = async (selectedImage) => {
             </View>
 
             <View style={styles.formGroup}>
-              <Text style={[styles.formLabel, styles.requiredLabel]}>State *</Text>
+              <TranslatableText style={[styles.formLabel, styles.requiredLabel]}>State *</TranslatableText>
               <TextInput
                 style={styles.formInput}
                 value={addConstituencyData.state}
@@ -4612,7 +4789,7 @@ const handleUpdateMemberImage = async (selectedImage) => {
             </View>
 
             <View style={styles.formGroup}>
-              <Text style={styles.formLabel}>District</Text>
+              <TranslatableText style={styles.formLabel}>District</TranslatableText>
               <TextInput
                 style={styles.formInput}
                 value={addConstituencyData.district}
@@ -4626,7 +4803,7 @@ const handleUpdateMemberImage = async (selectedImage) => {
             </View>
 
             <View style={styles.formGroup}>
-              <Text style={styles.formLabel}>Reservation Status</Text>
+              <TranslatableText style={styles.formLabel}>Reservation Status</TranslatableText>
               <TextInput
                 style={styles.formInput}
                 value={addConstituencyData.reservation_status}
@@ -4640,7 +4817,7 @@ const handleUpdateMemberImage = async (selectedImage) => {
             </View>
 
             <View style={styles.formGroup}>
-              <Text style={styles.formLabel}>Established Year</Text>
+              <TranslatableText style={styles.formLabel}>Established Year</TranslatableText>
               <TextInput
                 style={styles.formInput}
                 value={addConstituencyData.established}
@@ -4655,7 +4832,7 @@ const handleUpdateMemberImage = async (selectedImage) => {
             </View>
 
             <View style={styles.formGroup}>
-              <Text style={styles.formLabel}>Current MP</Text>
+              <TranslatableText style={styles.formLabel}>Current MP</TranslatableText>
               <TextInput
                 style={styles.formInput}
                 value={addConstituencyData.sitting_member}
@@ -4669,7 +4846,7 @@ const handleUpdateMemberImage = async (selectedImage) => {
             </View>
 
             <View style={styles.formGroup}>
-              <Text style={styles.formLabel}>Member Party</Text>
+              <TranslatableText style={styles.formLabel}>Member Party</TranslatableText>
               <TextInput
                 style={styles.formInput}
                 value={addConstituencyData.member_party}
@@ -4683,7 +4860,7 @@ const handleUpdateMemberImage = async (selectedImage) => {
             </View>
 
             <View style={styles.formGroup}>
-              <Text style={styles.formLabel}>Assembly Segment Count</Text>
+              <TranslatableText style={styles.formLabel}>Assembly Segment Count</TranslatableText>
               <TextInput
                 style={styles.formInput}
                 value={addConstituencyData.assembly_segment_count}
@@ -4698,7 +4875,7 @@ const handleUpdateMemberImage = async (selectedImage) => {
             </View>
 
             <View style={styles.formGroup}>
-              <Text style={styles.formLabel}>Overview</Text>
+              <TranslatableText style={styles.formLabel}>Overview</TranslatableText>
               <TextInput
                 style={[styles.formInput, styles.textArea]}
                 value={addConstituencyData.overview}
@@ -4714,7 +4891,7 @@ const handleUpdateMemberImage = async (selectedImage) => {
             </View>
 
             <View style={styles.formGroup}>
-              <Text style={styles.formLabel}>Geography</Text>
+              <TranslatableText style={styles.formLabel}>Geography</TranslatableText>
               <TextInput
                 style={[styles.formInput, styles.textArea]}
                 value={addConstituencyData.geography}
@@ -4730,7 +4907,7 @@ const handleUpdateMemberImage = async (selectedImage) => {
             </View>
 
             <View style={styles.formGroup}>
-              <Text style={styles.formLabel}>ECI URL</Text>
+              <TranslatableText style={styles.formLabel}>ECI URL</TranslatableText>
               <TextInput
                 style={styles.formInput}
                 value={addConstituencyData.eci_url}
@@ -4743,13 +4920,41 @@ const handleUpdateMemberImage = async (selectedImage) => {
               />
             </View>
 
+            <View style={styles.formGroup}>
+  <TranslatableText style={styles.formLabel}>Wikipedia URL</TranslatableText>
+  <TextInput
+    style={styles.formInput}
+    value={addConstituencyData.wikipedia_url}
+    onChangeText={(text) => setAddConstituencyData({
+      ...addConstituencyData,
+      wikipedia_url: text
+    })}
+    placeholder="https://en.wikipedia.org/..."
+    placeholderTextColor="#bdc3c7"
+  />
+</View>
+
+<View style={styles.formGroup}>
+  <TranslatableText style={styles.formLabel}>Chanakya URL</TranslatableText>
+  <TextInput
+    style={styles.formInput}
+    value={addConstituencyData.chanakya_url}
+    onChangeText={(text) => setAddConstituencyData({
+      ...addConstituencyData,
+      chanakya_url: text
+    })}
+    placeholder="https://chanakyya.com/..."
+    placeholderTextColor="#bdc3c7"
+  />
+</View>
+
             {/* ECI SUMMARY DATA SECTION */}
             <View style={[styles.tableSubHeader, { backgroundColor: '#e16e2b', marginTop: 20 }]}>
-              <Text style={styles.tableSubHeaderText}>ECI SUMMARY DATA</Text>
+              <TranslatableText style={styles.tableSubHeaderText}>ECI SUMMARY DATA</TranslatableText>
             </View>
 
             <View style={styles.formGroup}>
-              <Text style={styles.formLabel}>Election Year</Text>
+              <TranslatableText style={styles.formLabel}>Election Year</TranslatableText>
               <TextInput
                 style={styles.formInput}
                 value={addConstituencyData.election_year}
@@ -4764,7 +4969,7 @@ const handleUpdateMemberImage = async (selectedImage) => {
             </View>
 
             <View style={styles.formGroup}>
-              <Text style={styles.formLabel}>Election Header</Text>
+              <TranslatableText style={styles.formLabel}>Election Header</TranslatableText>
               <TextInput
                 style={styles.formInput}
                 value={addConstituencyData.electon_header}
@@ -4778,7 +4983,7 @@ const handleUpdateMemberImage = async (selectedImage) => {
             </View>
 
             <View style={styles.formGroup}>
-              <Text style={styles.formLabel}>Total Voters</Text>
+              <TranslatableText style={styles.formLabel}>Total Voters</TranslatableText>
               <TextInput
                 style={styles.formInput}
                 value={addConstituencyData.total_no_voters_data}
@@ -4793,7 +4998,7 @@ const handleUpdateMemberImage = async (selectedImage) => {
             </View>
 
             <View style={styles.formGroup}>
-              <Text style={styles.formLabel}>Voter Turnout Ratio</Text>
+              <TranslatableText style={styles.formLabel}>Voter Turnout Ratio</TranslatableText>
               <TextInput
                 style={styles.formInput}
                 value={addConstituencyData.voter_trunout_ratio_data}
@@ -4807,7 +5012,7 @@ const handleUpdateMemberImage = async (selectedImage) => {
             </View>
 
             <View style={styles.formGroup}>
-              <Text style={styles.formLabel}>Polling Station Count</Text>
+              <TranslatableText style={styles.formLabel}>Polling Station Count</TranslatableText>
               <TextInput
                 style={styles.formInput}
                 value={addConstituencyData.polling_station_count}
@@ -4822,7 +5027,7 @@ const handleUpdateMemberImage = async (selectedImage) => {
             </View>
 
             <View style={styles.formGroup}>
-              <Text style={styles.formLabel}>Avg Electors per PS</Text>
+              <TranslatableText style={styles.formLabel}>Avg Electors per PS</TranslatableText>
               <TextInput
                 style={styles.formInput}
                 value={addConstituencyData.avg_no_electors_per_ps_data}
@@ -4838,15 +5043,15 @@ const handleUpdateMemberImage = async (selectedImage) => {
 
             {/* ELECTORS BREAKDOWN SECTION */}
             <View style={[styles.tableSubHeader, { backgroundColor: '#e16e2b', marginTop: 20 }]}>
-              <Text style={styles.tableSubHeaderText}>ELECTORS BREAKDOWN</Text>
+              <TranslatableText style={styles.tableSubHeaderText}>ELECTORS BREAKDOWN</TranslatableText>
             </View>
 
             {/* General Electors */}
-            <Text style={[styles.formLabel, { marginTop: 10, fontWeight: 'bold' }]}>
+            <TranslatableText style={[styles.formLabel, { marginTop: 10, fontWeight: 'bold' }]}>
               General Electors
-            </Text>
+            </TranslatableText>
             <View style={styles.formGroup}>
-              <Text style={styles.formLabel}>Male</Text>
+              <TranslatableText style={styles.formLabel}>Male</TranslatableText>
               <TextInput
                 style={styles.formInput}
                 value={addConstituencyData.electors_general_male_data}
@@ -4861,7 +5066,7 @@ const handleUpdateMemberImage = async (selectedImage) => {
             </View>
 
             <View style={styles.formGroup}>
-              <Text style={styles.formLabel}>Female</Text>
+              <TranslatableText style={styles.formLabel}>Female</TranslatableText>
               <TextInput
                 style={styles.formInput}
                 value={addConstituencyData.electors_general_female_data}
@@ -4876,7 +5081,7 @@ const handleUpdateMemberImage = async (selectedImage) => {
             </View>
 
             <View style={styles.formGroup}>
-              <Text style={styles.formLabel}>Third Gender</Text>
+              <TranslatableText style={styles.formLabel}>Third Gender</TranslatableText>
               <TextInput
                 style={styles.formInput}
                 value={addConstituencyData.electors_general_tg_data}
@@ -4891,7 +5096,7 @@ const handleUpdateMemberImage = async (selectedImage) => {
             </View>
 
             <View style={styles.formGroup}>
-              <Text style={styles.formLabel}>Total</Text>
+              <TranslatableText style={styles.formLabel}>Total</TranslatableText>
               <TextInput
                 style={styles.formInput}
                 value={addConstituencyData.electors_general_total_data}
@@ -4906,11 +5111,11 @@ const handleUpdateMemberImage = async (selectedImage) => {
             </View>
 
             {/* Overseas Electors */}
-            <Text style={[styles.formLabel, { marginTop: 10, fontWeight: 'bold' }]}>
+            <TranslatableText style={[styles.formLabel, { marginTop: 10, fontWeight: 'bold' }]}>
               Overseas Electors
-            </Text>
+            </TranslatableText>
             <View style={styles.formGroup}>
-              <Text style={styles.formLabel}>Male</Text>
+              <TranslatableText style={styles.formLabel}>Male</TranslatableText>
               <TextInput
                 style={styles.formInput}
                 value={addConstituencyData.electors_overseas_male_data}
@@ -4925,7 +5130,7 @@ const handleUpdateMemberImage = async (selectedImage) => {
             </View>
 
             <View style={styles.formGroup}>
-              <Text style={styles.formLabel}>Female</Text>
+              <TranslatableText style={styles.formLabel}>Female</TranslatableText>
               <TextInput
                 style={styles.formInput}
                 value={addConstituencyData.electors_overseas_female_data}
@@ -4940,7 +5145,7 @@ const handleUpdateMemberImage = async (selectedImage) => {
             </View>
 
             <View style={styles.formGroup}>
-              <Text style={styles.formLabel}>Third Gender</Text>
+              <TranslatableText style={styles.formLabel}>Third Gender</TranslatableText>
               <TextInput
                 style={styles.formInput}
                 value={addConstituencyData.electors_overseas_tg_data}
@@ -4955,7 +5160,7 @@ const handleUpdateMemberImage = async (selectedImage) => {
             </View>
 
             <View style={styles.formGroup}>
-              <Text style={styles.formLabel}>Total</Text>
+              <TranslatableText style={styles.formLabel}>Total</TranslatableText>
               <TextInput
                 style={styles.formInput}
                 value={addConstituencyData.electors_overseas_total_data}
@@ -4970,11 +5175,11 @@ const handleUpdateMemberImage = async (selectedImage) => {
             </View>
 
             {/* Service Electors */}
-            <Text style={[styles.formLabel, { marginTop: 10, fontWeight: 'bold' }]}>
+            <TranslatableText style={[styles.formLabel, { marginTop: 10, fontWeight: 'bold' }]}>
               Service Electors
-            </Text>
+            </TranslatableText>
             <View style={styles.formGroup}>
-              <Text style={styles.formLabel}>Male</Text>
+              <TranslatableText style={styles.formLabel}>Male</TranslatableText>
               <TextInput
                 style={styles.formInput}
                 value={addConstituencyData.electors_service_male_data}
@@ -4989,7 +5194,7 @@ const handleUpdateMemberImage = async (selectedImage) => {
             </View>
 
             <View style={styles.formGroup}>
-              <Text style={styles.formLabel}>Female</Text>
+              <TranslatableText style={styles.formLabel}>Female</TranslatableText>
               <TextInput
                 style={styles.formInput}
                 value={addConstituencyData.electors_service_female_data}
@@ -5004,7 +5209,7 @@ const handleUpdateMemberImage = async (selectedImage) => {
             </View>
 
             <View style={styles.formGroup}>
-              <Text style={styles.formLabel}>Third Gender</Text>
+              <TranslatableText style={styles.formLabel}>Third Gender</TranslatableText>
               <TextInput
                 style={styles.formInput}
                 value={addConstituencyData.electors_service_tg_data}
@@ -5019,7 +5224,7 @@ const handleUpdateMemberImage = async (selectedImage) => {
             </View>
 
             <View style={styles.formGroup}>
-              <Text style={styles.formLabel}>Total</Text>
+              <TranslatableText style={styles.formLabel}>Total</TranslatableText>
               <TextInput
                 style={styles.formInput}
                 value={addConstituencyData.electors_service_total_data}
@@ -5034,11 +5239,11 @@ const handleUpdateMemberImage = async (selectedImage) => {
             </View>
 
             {/* Grand Total Electors */}
-            <Text style={[styles.formLabel, { marginTop: 10, fontWeight: 'bold' }]}>
+            <TranslatableText style={[styles.formLabel, { marginTop: 10, fontWeight: 'bold' }]}>
               Grand Total
-            </Text>
+            </TranslatableText>
             <View style={styles.formGroup}>
-              <Text style={styles.formLabel}>Total Male</Text>
+              <TranslatableText style={styles.formLabel}>Total Male</TranslatableText>
               <TextInput
                 style={styles.formInput}
                 value={addConstituencyData.electors_total_male_data}
@@ -5053,7 +5258,7 @@ const handleUpdateMemberImage = async (selectedImage) => {
             </View>
 
             <View style={styles.formGroup}>
-              <Text style={styles.formLabel}>Total Female</Text>
+              <TranslatableText style={styles.formLabel}>Total Female</TranslatableText>
               <TextInput
                 style={styles.formInput}
                 value={addConstituencyData.electors_total_female_data}
@@ -5068,7 +5273,7 @@ const handleUpdateMemberImage = async (selectedImage) => {
             </View>
 
             <View style={styles.formGroup}>
-              <Text style={styles.formLabel}>Total Third Gender</Text>
+              <TranslatableText style={styles.formLabel}>Total Third Gender</TranslatableText>
               <TextInput
                 style={styles.formInput}
                 value={addConstituencyData.electors_total_tg_data}
@@ -5083,7 +5288,7 @@ const handleUpdateMemberImage = async (selectedImage) => {
             </View>
 
             <View style={styles.formGroup}>
-              <Text style={styles.formLabel}>Grand Total Electors</Text>
+              <TranslatableText style={styles.formLabel}>Grand Total Electors</TranslatableText>
               <TextInput
                 style={styles.formInput}
                 value={addConstituencyData.electors_grand_total_data}
@@ -5286,27 +5491,27 @@ const renderMemberImageEditModal = () => {
             <View style={styles.memberImageGuidelinesCard}>
               <View style={styles.memberImageGuidelinesHeader}>
                 <Icon name="lightbulb-outline" size={16} color="#f39c12" />
-                <Text style={styles.memberImageGuidelinesTitle}>Photo Tips</Text>
+                <TranslatableText style={styles.memberImageGuidelinesTitle}>Photo Tips</TranslatableText>
               </View>
               
               <View style={styles.memberImageGuidelinesList}>
                 <View style={styles.memberImageGuidelineItem}>
                   <View style={styles.memberImageGuidelineDot} />
-                  <Text style={styles.memberImageGuidelineText}>
+                  <TranslatableText style={styles.memberImageGuidelineText}>
                     Use a clear, well-lit photo with good visibility
-                  </Text>
+                  </TranslatableText>
                 </View>
                 <View style={styles.memberImageGuidelineItem}>
                   <View style={styles.memberImageGuidelineDot} />
-                  <Text style={styles.memberImageGuidelineText}>
+                  <TranslatableText style={styles.memberImageGuidelineText}>
                     Face should be clearly visible and centered
-                  </Text>
+                  </TranslatableText>
                 </View>
                 <View style={styles.memberImageGuidelineItem}>
                   <View style={styles.memberImageGuidelineDot} />
-                  <Text style={styles.memberImageGuidelineText}>
+                  <TranslatableText style={styles.memberImageGuidelineText}>
                     Square or portrait format works best
-                  </Text>
+                  </TranslatableText>
                 </View>
               </View>
             </View>
@@ -5378,22 +5583,22 @@ const renderMemberImageEditModal = () => {
       {renderSectionDropdownMenus()}
       {/* ECI Summary Data */}
       {/* ECI Summary Data onPress={() => openEditSection('eciSummary')}*/}
-      <View style={styles.card}>
-        <View style={styles.cardHeader}>
-          <View style={styles.cardHeaderLeft}>
-            <Icon name="how-to-vote" size={20} color="#e16e2b" />
-            <Text style={styles.cardTitle}>ECI Summary Data</Text>
-          </View>
-          <View style={styles.cardHeaderRight}>
-            {isAdmin && (
-              <TouchableOpacity
-                style={styles.actionButton}
-                onPress={(event) => showSectionDropdown('eciSummary', event)}
-                activeOpacity={0.7}
-              >
-                <Text style={styles.actionButtonText}>⋮</Text>
-              </TouchableOpacity>
-            )}
+     <View style={styles.card}>
+  <View style={styles.cardHeader}>
+    <View style={styles.cardHeaderLeft}>
+      <Icon name="how-to-vote" size={20} color="#e16e2b" />
+      <TranslatableText style={styles.cardTitle}>ECI Summary Data</TranslatableText>
+    </View>
+    <View style={styles.cardHeaderRight}>
+      {isAdmin && (
+        <TouchableOpacity
+          style={styles.actionButton}
+          onPress={() => openEditSection('eciSummary')}
+          activeOpacity={0.7}
+        >
+          <Icon name="edit" size={18} color="#fff" />
+        </TouchableOpacity>
+      )}
             {constituencyData?.eci_url && (
               <TouchableOpacity
                 onPress={() => openLink(constituencyData.eci_url)}
@@ -5415,7 +5620,7 @@ const renderMemberImageEditModal = () => {
       <View style={styles.card}>
         <View style={styles.cardHeader}>
           <Icon name="ballot" size={20} color="#2980b9" />
-          <Text style={styles.cardTitle}>Assembly Constituencies</Text>
+          <TranslatableText style={styles.cardTitle}>Assembly Constituencies</TranslatableText>
           <View style={styles.assemblyCountBadge}>
             <Text style={styles.assemblyCountText}>{assemblyConstituencies.length}</Text>
           </View>

@@ -19,6 +19,10 @@ import { getCurrentUserRole, checkIfCurrentUserIsAdmin } from '../../App';
 import ConfigService from '../services/ConfigService';
 import ApiService from '../services/ApiService';
 import DeviceService from '../services/DeviceService';
+import { useTranslation } from '../context/TranslationContext';
+import TranslatableText from '../components/TranslatableText';
+
+// Replace the FeedbackAttachmentImage component (lines 25-165) with this updated version:
 
 const FeedbackAttachmentImage = React.memo(({ 
   attachmentUrl, 
@@ -50,14 +54,17 @@ const FeedbackAttachmentImage = React.memo(({
           console.log('🔄 Fixed localhost URL:', mediaUrl);
         }
         
-        // Fix ngrok URLs
-        if (mediaUrl.includes('ngrok-free.app:')) {
-          mediaUrl = mediaUrl.replace(/:(\d+)\//, '/');
+        // ✅ FIX NGROK URLs - Remove port number from ngrok URLs
+        if (mediaUrl.includes('ngrok-free.app') || mediaUrl.includes('ngrok-free.dev')) {
+          // Remove any port number from ngrok URL
+          mediaUrl = mediaUrl.replace(/ngrok-free\.app:\d+/, 'ngrok-free.app');
+          mediaUrl = mediaUrl.replace(/ngrok-free\.dev:\d+/, 'ngrok-free.dev');
+          console.log('🔄 Fixed ngrok URL (removed port):', mediaUrl);
         }
         
         console.log('📥 Loading feedback image from:', mediaUrl);
         
-        // ✅ CHECK MULTIPLE STORAGE LOCATIONS (same as handleSaveFeedback)
+        // ✅ CHECK MULTIPLE STORAGE LOCATIONS
         const accessToken = await AsyncStorage.getItem('userAccessToken') ||
                            await AsyncStorage.getItem('jwt_token') ||
                            await EncryptedStorage.getItem('ACCESS_TOKEN') ||
@@ -146,7 +153,9 @@ const FeedbackAttachmentImage = React.memo(({
     return (
       <View style={styles.attachmentImageContainer}>
         <ActivityIndicator size="small" color="#e16e2b" />
-        <Text style={styles.imageLoadingText}>Loading image...</Text>
+        <TranslatableText style={styles.imageLoadingText} cacheKey="loading_image">
+          Loading image...
+        </TranslatableText>
       </View>
     );
   }
@@ -155,7 +164,9 @@ const FeedbackAttachmentImage = React.memo(({
     return (
       <View style={styles.attachmentImageContainer}>
         <Icon name="broken-image" size={24} color="#bdc3c7" />
-        <Text style={styles.imageErrorText}>Image unavailable</Text>
+        <TranslatableText style={styles.imageErrorText} cacheKey="image_unavailable">
+          Image unavailable
+        </TranslatableText>
       </View>
     );
   }
@@ -255,14 +266,18 @@ const EditFeedbackModal = ({ visible, item, ownerMobile, userEmail, onClose, onS
       <View style={styles.modalOverlay}>
         <View style={styles.modalContainer}>
           <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>Edit Feedback (Admin)</Text>
+            <TranslatableText style={styles.modalTitle} cacheKey="edit_feedback_admin">
+  Edit Feedback (Admin)
+</TranslatableText>
             <TouchableOpacity onPress={onClose}>
               <Text style={styles.closeButton}>✕</Text>
             </TouchableOpacity>
           </View>
 
           <ScrollView style={styles.modalContent}>
-            <Text style={styles.label}>Subject *</Text>
+            <TranslatableText style={styles.label} cacheKey="subject_label">
+  Subject *
+</TranslatableText>
             <TextInput
               style={styles.input}
               value={subject}
@@ -271,7 +286,9 @@ const EditFeedbackModal = ({ visible, item, ownerMobile, userEmail, onClose, onS
               placeholderTextColor="#999"
             />
 
-            <Text style={styles.label}>Description *</Text>
+            <TranslatableText style={styles.label} cacheKey="description_label">
+  Description *
+</TranslatableText>
             <TextInput
               style={[styles.input, styles.textArea]}
               value={description}
@@ -282,7 +299,9 @@ const EditFeedbackModal = ({ visible, item, ownerMobile, userEmail, onClose, onS
               numberOfLines={4}
             />
 
-            <Text style={styles.label}>Status *</Text>
+            <TranslatableText style={styles.label} cacheKey="status_label">
+  Status *
+</TranslatableText>
             <View style={styles.statusPickerContainer}>
               {['pending', 'in progress', 'completed', 'resolved'].map((statusOption) => (
                 <TouchableOpacity
@@ -293,20 +312,20 @@ const EditFeedbackModal = ({ visible, item, ownerMobile, userEmail, onClose, onS
                   ]}
                   onPress={() => setStatus(statusOption)}
                 >
-                  <Text
-                    style={[
-                      styles.statusOptionText,
-                      status === statusOption && styles.statusOptionTextSelected,
-                    ]}
-                  >
-                    {statusOption === 'in progress' ? 'In Progress' : 
-                     statusOption.charAt(0).toUpperCase() + statusOption.slice(1)}
-                  </Text>
+                 <TranslatableText style={[
+  styles.statusOptionText,
+  status === statusOption && styles.statusOptionTextSelected,
+]}>
+  {statusOption === 'in progress' ? 'In Progress' : 
+   statusOption.charAt(0).toUpperCase() + statusOption.slice(1)}
+</TranslatableText>
                 </TouchableOpacity>
               ))}
             </View>
 
-            <Text style={styles.label}>Action Taken Comments</Text>
+            <TranslatableText style={styles.label} cacheKey="action_comments_label">
+  Action Taken Comments
+</TranslatableText>
             <TextInput
               style={[styles.input, styles.textArea]}
               value={actionComments}
@@ -317,7 +336,9 @@ const EditFeedbackModal = ({ visible, item, ownerMobile, userEmail, onClose, onS
               numberOfLines={3}
             />
 
-            <Text style={styles.label}>Updated By *</Text>
+            <TranslatableText style={styles.label} cacheKey="updated_by_label">
+  Updated By *
+</TranslatableText>
             <TextInput
               style={styles.input}
               value={updatedBy}
@@ -328,9 +349,9 @@ const EditFeedbackModal = ({ visible, item, ownerMobile, userEmail, onClose, onS
 
             <View style={styles.infoBox}>
               <Icon name="info" size={16} color="#3498db" />
-              <Text style={styles.infoText}>
-                * Required fields. All changes will be logged.
-              </Text>
+              <TranslatableText style={styles.infoText} cacheKey="required_fields_info">
+  * Required fields. All changes will be logged.
+</TranslatableText>
             </View>
           </ScrollView>
 
@@ -339,7 +360,9 @@ const EditFeedbackModal = ({ visible, item, ownerMobile, userEmail, onClose, onS
               style={[styles.modalButton, styles.cancelButton]}
               onPress={onClose}
             >
-              <Text style={styles.cancelButtonText}>Cancel</Text>
+              <TranslatableText style={styles.cancelButtonText} cacheKey="cancel_btn">
+  Cancel
+</TranslatableText>
             </TouchableOpacity>
             
             <TouchableOpacity 
@@ -350,7 +373,9 @@ const EditFeedbackModal = ({ visible, item, ownerMobile, userEmail, onClose, onS
               {saving ? (
                 <ActivityIndicator color="#fff" />
               ) : (
-                <Text style={styles.saveButtonText}>Save Changes</Text>
+                <TranslatableText style={styles.saveButtonText} cacheKey="save_changes_btn">
+  Save Changes
+</TranslatableText>
               )}
             </TouchableOpacity>
           </View>
@@ -361,6 +386,13 @@ const EditFeedbackModal = ({ visible, item, ownerMobile, userEmail, onClose, onS
 };
 
 const FeedbackScreen = ({ navigation }) => {
+  const { 
+    currentLanguage, 
+    changeLanguage, 
+    isTranslating, 
+    setIsTranslating,
+    availableLanguages 
+  } = useTranslation();
   const [selectedType, setSelectedType] = useState('feedback');
   const [subject, setSubject] = useState('');
   const [description, setDescription] = useState('');
@@ -974,7 +1006,9 @@ const handleSubmit = async () => {
 const renderAdminStatusFilter = () => {
   return (
     <View style={styles.adminFilterContainer}>
-      <Text style={styles.filterLabel}>Filter by Status:</Text>
+      <TranslatableText style={styles.filterLabel} cacheKey="filter_by_status">
+  Filter by Status:
+</TranslatableText>
       
       <View style={styles.dropdownContainer}>
         <TouchableOpacity 
@@ -1036,10 +1070,14 @@ const renderAdminStatusFilter = () => {
         {fetchingSubmissions ? (
           <View style={styles.loadingButtonContent}>
             <ActivityIndicator size="small" color="#fff" />
-            <Text style={styles.filterSubmitButtonText}>Loading...</Text>
+           <TranslatableText style={styles.filterSubmitButtonText} cacheKey="loading_text">
+  Loading...
+</TranslatableText>
           </View>
         ) : (
-          <Text style={styles.filterSubmitButtonText}>Submit</Text>
+          <TranslatableText style={styles.filterSubmitButtonText} cacheKey="submit_btn">
+  Submit
+</TranslatableText>
         )}
       </TouchableOpacity>
     </View>
@@ -1055,17 +1093,19 @@ const renderViewSubmissions = () => {
         {isAdmin && renderAdminStatusFilter()}
         <View style={styles.viewHeader}>
           <View>
-            <Text style={styles.viewTitle}>
-              {adminActiveTab === 'feedback' ? 'All Feedback' : 'All Issues'}
-            </Text>
-            <Text style={styles.viewSubtitle}>
-              View and manage {adminActiveTab}
-            </Text>
+           <TranslatableText style={styles.viewTitle}>
+  {adminActiveTab === 'feedback' ? 'All Feedback' : 'All Issues'}
+</TranslatableText>
+            <TranslatableText style={styles.viewSubtitle}>
+  View and manage {adminActiveTab}
+</TranslatableText>
           </View>
         </View>
         <View style={styles.fetchingContainer}>
           <ActivityIndicator size="large" color="#e16e2b" />
-          <Text style={styles.fetchingText}>Loading submissions...</Text>
+          <TranslatableText style={styles.fetchingText} cacheKey="loading_submissions">
+  Loading submissions...
+</TranslatableText>
         </View>
       </View>
     );
@@ -1123,10 +1163,10 @@ const renderViewSubmissions = () => {
       {/* Data Info Bar */}
       {submittedItems.length > 0 && (
         <View style={styles.dataInfoBar}>
-          <Text style={styles.dataInfoText}>
-            Showing {filteredItems.length} of {submittedItems.length} items
-            {searchQuery.trim() && ` (filtered by "${searchQuery}")`}
-          </Text>
+         <TranslatableText style={styles.dataInfoText}>
+  Showing {filteredItems.length} of {submittedItems.length} items
+  {searchQuery.trim() && ` (filtered by "${searchQuery}")`}
+</TranslatableText>
         </View>
       )}
 
@@ -1138,23 +1178,29 @@ const renderViewSubmissions = () => {
             size={60} 
             color="#bdc3c7" 
           />
-          <Text style={styles.emptyText}>No submissions yet</Text>
-          <Text style={styles.emptySubtext}>
-            No {adminActiveTab} have been submitted with status: {selectedStatus}
-          </Text>
+          <TranslatableText style={styles.emptyText} cacheKey="no_submissions">
+  No submissions yet
+</TranslatableText>
+          <TranslatableText style={styles.emptySubtext}>
+  No {adminActiveTab} have been submitted with status: {selectedStatus}
+</TranslatableText>
         </View>
       ) : filteredItems.length === 0 ? (
         <View style={styles.emptyContainer}>
           <Icon name="search-off" size={60} color="#bdc3c7" />
-          <Text style={styles.emptyText}>No results found</Text>
-          <Text style={styles.emptySubtext}>
-            No matches for "{searchQuery}" in {submittedItems.length} items
-          </Text>
+          <TranslatableText style={styles.emptyText} cacheKey="no_results">
+  No results found
+</TranslatableText>
+         <TranslatableText style={styles.emptySubtext}>
+  No matches for "{searchQuery}" in {submittedItems.length} items
+</TranslatableText>
           <TouchableOpacity 
             style={styles.clearSearchButtonLarge}
             onPress={() => setSearchQuery('')}
           >
-            <Text style={styles.clearSearchButtonLargeText}>Clear Search</Text>
+            <TranslatableText style={styles.clearSearchButtonLargeText} cacheKey="clear_search">
+  Clear Search
+</TranslatableText>
           </TouchableOpacity>
         </View>
       ) : (
@@ -1192,9 +1238,9 @@ const renderViewSubmissions = () => {
                     size={20}
                     color="#e16e2b"
                   />
-                  <Text style={styles.submissionType}>
-                    {item.type === 'feedback' ? 'Feedback' : 'Issue'}
-                  </Text>
+                 <TranslatableText style={styles.submissionType}>
+  {item.type === 'feedback' ? 'Feedback' : 'Issue'}
+</TranslatableText>
                 </View>
                 <View style={[
                   styles.statusBadge,
@@ -1202,7 +1248,9 @@ const renderViewSubmissions = () => {
                   item.status === 'In Progress' && styles.statusInProgress,
                   item.status === 'Reported' && styles.statusReported,
                 ]}>
-                  <Text style={styles.statusText}>{item.status}</Text>
+                  <TranslatableText style={styles.statusText}>
+  {item.status}
+</TranslatableText>
                 </View>
               </View>
 
@@ -1222,7 +1270,9 @@ const renderViewSubmissions = () => {
 
               {item.attachment && (
                 <View style={styles.attachmentContainer}>
-                  <Text style={styles.attachmentLabel}>Attachment:</Text>
+                 <TranslatableText style={styles.attachmentLabel} cacheKey="attachment_label">
+  Attachment:
+</TranslatableText>
                   <FeedbackAttachmentImage
                     attachmentUrl={item.attachment}
                     memberId={ownerMobile}
@@ -1278,10 +1328,12 @@ const renderListView = () => {
           size={60} 
           color="#bdc3c7" 
         />
-        <Text style={styles.emptyText}>No {adminActiveTab} found</Text>
-        <Text style={styles.emptySubtext}>
-          No {adminActiveTab} have been submitted yet
-        </Text>
+        <TranslatableText style={styles.emptyText} cacheKey="no_feedback_found">
+  No {adminActiveTab} found
+</TranslatableText>
+       <TranslatableText style={styles.emptySubtext}>
+  No {adminActiveTab} have been submitted yet
+</TranslatableText>
       </View>
     );
   }
@@ -1289,12 +1341,12 @@ const renderListView = () => {
   return (
     <View style={styles.dataContainer}>
       <View style={styles.previewHeader}>
-        <Text style={styles.previewTitle}>
-          {adminActiveTab === 'feedback' ? 'FEEDBACK' : 'ISSUES'} LIST
-        </Text>
-        <Text style={styles.dataCount}>
-          ({filteredItems.length} of {submittedItems.length})
-        </Text>
+        <TranslatableText style={styles.previewTitle}>
+  {adminActiveTab === 'feedback' ? 'FEEDBACK' : 'ISSUES'} LIST
+</TranslatableText>
+        <TranslatableText style={styles.dataCount}>
+  ({filteredItems.length} of {submittedItems.length})
+</TranslatableText>
       </View>
       
       {/* Search Input */}
@@ -1387,7 +1439,9 @@ const renderListView = () => {
                   <Text style={styles.listDate}>{item.date}</Text>
                 </View>
                 <View style={styles.viewDetailsButtonSmall}>
-                  <Text style={styles.viewDetailsTextSmall}>Details</Text>
+                  <TranslatableText style={styles.viewDetailsTextSmall} cacheKey="details_btn">
+  Details
+</TranslatableText>
                   <Icon name="arrow-forward" size={12} color="#e16e2b" />
                 </View>
               </View>
@@ -1419,14 +1473,12 @@ const renderListView = () => {
           size={28}
           color={selectedType === 'feedback' ? '#fff' : '#e16e2b'}
         />
-        <Text
-          style={[
-            styles.typeBoxText,
-            selectedType === 'feedback' && styles.typeBoxTextSelected,
-          ]}
-        >
-          Feedback
-        </Text>
+        <TranslatableText style={[
+  styles.typeBoxText,
+  selectedType === 'feedback' && styles.typeBoxTextSelected,
+]} cacheKey="feedback_type">
+  Feedback
+</TranslatableText>
       </TouchableOpacity>
 
       <TouchableOpacity
@@ -1441,14 +1493,12 @@ const renderListView = () => {
           size={28}
           color={selectedType === 'complaint' ? '#fff' : '#e16e2b'}
         />
-        <Text
-          style={[
-            styles.typeBoxText,
-            selectedType === 'complaint' && styles.typeBoxTextSelected,
-          ]}
-        >
-          Report Issue
-        </Text>
+       <TranslatableText style={[
+  styles.typeBoxText,
+  selectedType === 'complaint' && styles.typeBoxTextSelected,
+]} cacheKey="report_issue_type">
+  Report Issue
+</TranslatableText>
       </TouchableOpacity>
 
       {/* ✅ ADD NEW VIEW BUTTON */}
@@ -1468,14 +1518,12 @@ const renderListView = () => {
           size={28}
           color={selectedType === 'view' ? '#fff' : '#e16e2b'}
         />
-        <Text
-          style={[
-            styles.typeBoxText,
-            selectedType === 'view' && styles.typeBoxTextSelected,
-          ]}
-        >
-          View
-        </Text>
+        <TranslatableText style={[
+  styles.typeBoxText,
+  selectedType === 'view' && styles.typeBoxTextSelected,
+]} cacheKey="view_type">
+  View
+</TranslatableText>
       </TouchableOpacity>
     </View>
   );
@@ -1493,10 +1541,12 @@ if (selectedType === 'view') {
     <View style={styles.viewContainer}>
       <View style={styles.viewHeader}>
         <View>
-          <Text style={styles.viewTitle}>My Submissions</Text>
-          <Text style={styles.viewSubtitle}>
-            View your feedback and issues
-          </Text>
+          <TranslatableText style={styles.viewTitle} cacheKey="my_submissions">
+  My Submissions
+</TranslatableText>
+          <TranslatableText style={styles.viewSubtitle} cacheKey="view_your_feedback">
+  View your feedback and issues
+</TranslatableText>
         </View>
         <TouchableOpacity 
           onPress={() => fetchUserFeedbacks('feedback')}
@@ -1547,10 +1597,12 @@ if (selectedType === 'view') {
       ) : submittedItems.length === 0 ? (
         <View style={styles.emptyContainer}>
           <Icon name="inbox" size={60} color="#bdc3c7" />
-          <Text style={styles.emptyText}>No submissions yet</Text>
-          <Text style={styles.emptySubtext}>
-            You haven't submitted any feedback or issues yet
-          </Text>
+          <TranslatableText style={styles.emptyText} cacheKey="no_submissions_user">
+  No submissions yet
+</TranslatableText>
+          <TranslatableText style={styles.emptySubtext} cacheKey="no_feedback_submitted">
+  You haven't submitted any feedback or issues yet
+</TranslatableText>
         </View>
       ) : (
         <ScrollView 
@@ -1591,7 +1643,9 @@ if (selectedType === 'view') {
       </View>
     </View>
 
-    <Text style={styles.submissionSubject}>{item.subject}</Text>
+    <TranslatableText style={styles.submissionSubject}>
+  {item.subject}
+</TranslatableText>
     <Text style={styles.submissionDescription} numberOfLines={2}>
       {item.description}
     </Text>
@@ -1621,7 +1675,9 @@ if (selectedType === 'view') {
         <Text style={styles.submissionDate}>{item.date}</Text>
       </View>
       <View style={styles.viewDetailsButton}>
-        <Text style={styles.viewDetailsText}>View Details</Text>
+        <TranslatableText style={styles.viewDetailsText} cacheKey="view_details">
+  View Details
+</TranslatableText>
         <Icon name="arrow-forward" size={14} color="#e16e2b" />
       </View>
     </View>
@@ -1657,7 +1713,9 @@ if (selectedType === 'view') {
   return (
     <View style={styles.formContainer}>
       {/* ... rest of your existing form code ... */}
-      <Text style={styles.label}>Subject *</Text>
+      <TranslatableText style={styles.label} cacheKey="subject_required">
+  Subject *
+</TranslatableText>
       <TextInput
         style={styles.input}
         value={subject}
@@ -1666,7 +1724,7 @@ if (selectedType === 'view') {
         placeholderTextColor="#999"
       />
 
-      <Text style={styles.label}>{getLabel()}</Text>
+      <TranslatableText style={styles.label}>{getLabel()}</TranslatableText>
       <TextInput
         style={[styles.input, styles.textArea]}
         value={description}
@@ -1677,7 +1735,9 @@ if (selectedType === 'view') {
         numberOfLines={6}
       />
 
-      <Text style={styles.label}>Attachments (Optional)</Text>
+      <TranslatableText style={styles.label} cacheKey="attachments_optional">
+  Attachments (Optional)
+</TranslatableText>
 
       <View style={styles.fileButtonsContainer}>
         <TouchableOpacity
@@ -1685,15 +1745,17 @@ if (selectedType === 'view') {
           onPress={handlePickImage}
         >
           <Icon name="image" size={24} color="#e16e2b" />
-          <Text style={styles.fileButtonText}>Add Images</Text>
+          <TranslatableText style={styles.fileButtonText} cacheKey="add_images">
+  Add Images
+</TranslatableText>
         </TouchableOpacity>
       </View>
 
       {selectedFiles.length > 0 && (
         <View style={styles.filesListContainer}>
-          <Text style={styles.filesListTitle}>
-            Attached Files ({selectedFiles.length})
-          </Text>
+         <TranslatableText style={styles.filesListTitle}>
+  Attached Files ({selectedFiles.length})
+</TranslatableText>
           {selectedFiles.map((file, index) => (
             <View key={index} style={styles.fileItem}>
               <View style={styles.fileInfo}>
@@ -1728,9 +1790,9 @@ if (selectedType === 'view') {
         ) : (
           <>
             <Icon name="send" size={20} color="#fff" />
-            <Text style={styles.submitButtonText}>
-              Submit {selectedType === 'feedback' ? 'Feedback' : 'Issue'}
-            </Text>
+           <TranslatableText style={styles.submitButtonText}>
+  Submit {selectedType === 'feedback' ? 'Feedback' : 'Issue'}
+</TranslatableText>
           </>
         )}
       </TouchableOpacity>
@@ -1740,13 +1802,22 @@ if (selectedType === 'view') {
 
   return (
     <View style={styles.container}>
-      {loading ? (
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#e16e2b" />
-          <Text style={styles.loadingText}>Loading...</Text>
-        </View>
-      ) : (
-        <>
+    {loading ? (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#e16e2b" />
+        <TranslatableText style={styles.loadingText} cacheKey="loading_feedback">
+          Loading...
+        </TranslatableText>
+      </View>
+    ) : (
+      <>
+        {/* ✅ ADD TRANSLATION LOADING INDICATOR HERE */}
+        {isTranslating && (
+          <View style={styles.translationLoadingBar}>
+            <ActivityIndicator size="small" color="#e16e2b" />
+            <Text style={styles.translationLoadingText}>Translating...</Text>
+          </View>
+        )}
           {/* Main Tabs - Only for Admin and always visible */}
           {isAdmin && (
             <View style={styles.mainTabContainer}>
@@ -1763,14 +1834,12 @@ if (selectedType === 'view') {
                     fetchUserFeedbacks('feedback');
                   }}
                 >
-                  <Text
-                    style={[
-                      styles.mainTabText,
-                      adminActiveTab === 'feedback' && styles.activeMainTabText,
-                    ]}
-                  >
-                    FEEDBACK
-                  </Text>
+                 <TranslatableText style={[
+  styles.mainTabText,
+  adminActiveTab === 'feedback' && styles.activeMainTabText,
+]} cacheKey="feedback_tab">
+  FEEDBACK
+</TranslatableText>
                   {adminActiveTab === 'feedback' && <View style={styles.underline} />}
                 </TouchableOpacity>
 
@@ -1786,14 +1855,12 @@ if (selectedType === 'view') {
                     fetchUserFeedbacks('bug');
                   }}
                 >
-                  <Text
-                    style={[
-                      styles.mainTabText,
-                      adminActiveTab === 'issues' && styles.activeMainTabText,
-                    ]}
-                  >
-                    ISSUES
-                  </Text>
+                  <TranslatableText style={[
+  styles.mainTabText,
+  adminActiveTab === 'issues' && styles.activeMainTabText,
+]} cacheKey="issues_tab">
+  ISSUES
+</TranslatableText>
                   {adminActiveTab === 'issues' && <View style={styles.underline} />}
                 </TouchableOpacity>
               </View>
@@ -1813,14 +1880,12 @@ if (selectedType === 'view') {
                       activeSubTab === tab && styles.activeSubTabButton,
                     ]}
                   >
-                    <Text
-                      style={[
-                        styles.subTabText,
-                        activeSubTab === tab && styles.activeSubTabText,
-                      ]}
-                    >
-                      {tab}
-                    </Text>
+                   <TranslatableText style={[
+  styles.subTabText,
+  activeSubTab === tab && styles.activeSubTabText,
+]}>
+  {tab}
+</TranslatableText>
                     {activeSubTab === tab && <View style={styles.subUnderline} />}
                   </TouchableOpacity>
                 ))}
@@ -1841,10 +1906,12 @@ if (selectedType === 'view') {
               ) : (
                 <View style={styles.emptyContainer}>
                   <Icon name="feedback" size={60} color="#bdc3c7" />
-                  <Text style={styles.emptyText}>Select a tab above</Text>
-                  <Text style={styles.emptySubtext}>
-                    Choose Feedback or Issues to view submissions
-                  </Text>
+                  <TranslatableText style={styles.emptyText} cacheKey="select_tab">
+  Select a tab above
+</TranslatableText>
+                  <TranslatableText style={styles.emptySubtext} cacheKey="choose_feedback_issues">
+  Choose Feedback or Issues to view submissions
+</TranslatableText>
                 </View>
               )
             ) : (
@@ -2682,6 +2749,23 @@ imageErrorText: {
   fontSize: 12,
   color: '#95a5a6',
   textAlign: 'center',
+},
+translationLoadingBar: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  justifyContent: 'center',
+  backgroundColor: '#fff3cd',
+  paddingVertical: 8,
+  paddingHorizontal: 15,
+  gap: 10,
+  marginHorizontal: 0,
+  borderBottomWidth: 1,
+  borderBottomColor: '#ffc107',
+},
+translationLoadingText: {
+  fontSize: 14,
+  color: '#856404',
+  fontWeight: '500',
 },
 });
 

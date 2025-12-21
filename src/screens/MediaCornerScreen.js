@@ -165,64 +165,71 @@ const handlePickImage = () => {
     });
   };
 
-  const handleSave = async () => {
-    if (!header.trim()) {
-      Alert.alert('Validation Error', 'Please enter a media header');
-      return;
+ const handleSave = async () => {
+  if (!header.trim()) {
+    Alert.alert('Validation Error', 'Please enter a media header');
+    return;
+  }
+
+  if (!selectedImage) {
+    Alert.alert('Validation Error', 'Please select an image/video file');
+    return;
+  }
+
+  setSaving(true);
+  try {
+    const baseUrl = await ConfigService.getBaseUrl();
+    const apiUrl = `${baseUrl}/api/mediacorner`;
+
+    // ✅ GET FRESH EMAIL (DON'T USE PROP)
+    const currentUserInfo = await getCurrentUserRole();
+    const freshEmail = currentUserInfo.loggedin_email || '';
+    
+    console.log('✅ Creating media with fresh email:', freshEmail);
+    console.log('📱 Using mobile:', regdMobileNo);
+
+    const formData = new FormData();
+    formData.append('leader_regd_mobile_no', regdMobileNo);
+    formData.append('user_email_id', freshEmail);  // ✅ USE FRESH EMAIL
+    formData.append('media_header', header);
+    formData.append('media_narration', narration);
+    formData.append('media_url', url);
+    formData.append('media_type', mediaType);
+
+    // Add the file
+    const fileUri = selectedImage.uri;
+    const fileName = fileUri.split('/').pop();
+    const fileType = selectedImage.type || (
+      fileName.endsWith('.mp4') ? 'video/mp4' :
+      fileName.endsWith('.jpg') || fileName.endsWith('.jpeg') ? 'image/jpeg' :
+      'image/png'
+    );
+
+    formData.append('media_file', {
+      uri: fileUri,
+      name: fileName,
+      type: fileType,
+    });
+
+    console.log('📤 Creating new media item...');
+    const result = await ApiService.authPost(apiUrl, formData, {}, true);
+
+    console.log('📥 POST Response:', result);
+
+    if (result.success) {
+      Alert.alert('✅ Success', 'Media created successfully');
+      onSave();
+      onClose();
+    } else {
+      throw new Error(result.message || 'Creation failed');
     }
-
-    if (!selectedImage) {
-      Alert.alert('Validation Error', 'Please select an image/video file');
-      return;
-    }
-
-    setSaving(true);
-    try {
-      const baseUrl = await ConfigService.getBaseUrl();
-      const apiUrl = `${baseUrl}/api/mediacorner`;
-
-      const formData = new FormData();
-      formData.append('regd_mobile_no', regdMobileNo);
-      formData.append('user_email_id', userEmail);
-      formData.append('media_header', header);
-      formData.append('media_narration', narration);
-      formData.append('media_url', url);
-      formData.append('media_type', mediaType);
-
-      // Add the file
-      const fileUri = selectedImage.uri;
-      const fileName = fileUri.split('/').pop();
-      const fileType = selectedImage.type || (
-        fileName.endsWith('.mp4') ? 'video/mp4' :
-        fileName.endsWith('.jpg') || fileName.endsWith('.jpeg') ? 'image/jpeg' :
-        'image/png'
-      );
-
-      formData.append('media_file', {
-        uri: fileUri,
-        name: fileName,
-        type: fileType,
-      });
-
-      console.log('📤 Creating new media item...');
-      const result = await ApiService.authPost(apiUrl, formData, {}, true);
-
-      console.log('📥 POST Response:', result);
-
-      if (result.success) {
-        Alert.alert('✅ Success', 'Media created successfully');
-        onSave();
-        onClose();
-      } else {
-        throw new Error(result.message || 'Creation failed');
-      }
-    } catch (error) {
-      console.error('❌ Error creating media:', error);
-      Alert.alert('Error', error.message || 'Failed to create media item');
-    } finally {
-      setSaving(false);
-    }
-  };
+  } catch (error) {
+    console.error('❌ Error creating media:', error);
+    Alert.alert('Error', error.message || 'Failed to create media item');
+  } finally {
+    setSaving(false);
+  }
+};
 
   return (
     <Modal
@@ -539,6 +546,9 @@ const EditMediaModal = ({ visible, item, onClose, onSave, mediaType }) => {
 
 
 // ✅ Improved Media Item with better menu positioning
+// ✅ PROPER MediaItem Component with Native Video Player (Like Development Landscape)
+// Replace your MediaItem component with this
+
 const MediaItem = React.memo(({ 
   item, 
   index, 
@@ -548,142 +558,128 @@ const MediaItem = React.memo(({
   onEdit,
   onDelete 
 }) => {
-  const [imageUri, setImageUri] = useState(null);
-  const [imageLoading, setImageLoading] = useState(false);
-  const [imageError, setImageError] = useState(false);
+  const [mediaUri, setMediaUri] = useState(null);
+  const [mediaLoading, setMediaLoading] = useState(false);
+  const [mediaError, setMediaError] = useState(false);
   const [menuVisible, setMenuVisible] = useState(false);
   const [menuPosition, setMenuPosition] = useState({ x: 0, y: 0 });
+  const [isVideo, setIsVideo] = useState(false);
+  const [videoPaused, setVideoPaused] = useState(true); // ✅ For video playback control
 
-useEffect(() => {
-  let mounted = true;
+  useEffect(() => {
+    let mounted = true;
 
-  const loadImage = async () => {
-    console.log('🖼️ Loading image for:', item.media_header);
-    console.log('📁 media_file:', item.media_file);
+    const loadMedia = async () => {
+      console.log('🖼️ Loading media for:', item.media_header);
+      console.log('📁 media_file:', item.media_file);
 
-    if (!item.media_file || item.media_file.trim() === '') {
-      console.log('❌ No media_file in item');
-      if (mounted) {
-        setImageError(true);
+      if (!item.media_file || item.media_file.trim() === '') {
+        console.log('❌ No media_file in item');
+        if (mounted) {
+          setMediaError(true);
+        }
+        return;
       }
-      return;
-    }
 
-    setImageLoading(true);
-    setImageError(false);
+      setMediaLoading(true);
+      setMediaError(false);
 
-    try {
-      // ✅ Use the same logic as UpcomingEventsScreen
-      let mediaUrl = item.media_file;
-      
-      // If it's already a full URL, normalize it
-      if (mediaUrl.startsWith('http://') || mediaUrl.startsWith('https://')) {
-        // Remove port from ngrok URLs
-        if (mediaUrl.includes('ngrok-free.app:')) {
-          mediaUrl = mediaUrl.replace(/:(\d+)\//, '/');
-          console.log('🔧 Fixed ngrok URL (removed port):', mediaUrl);
-        }
+      try {
+        let mediaUrl = item.media_file;
         
-        // Replace localhost with ngrok
-        if (mediaUrl.includes('localhost:5000') || mediaUrl.includes('localhost:')) {
-          const baseUrl = await ConfigService.getBaseUrl();
-          mediaUrl = mediaUrl.replace(/http:\/\/localhost:\d+/, baseUrl);
-          console.log('🔧 Replaced localhost with ngrok:', mediaUrl);
-        }
-      } else {
-        // ✅ For relative paths, construct full URL properly
+        // ✅ DETECT IF FILE IS VIDEO
+        const videoExtensions = ['.mp4', '.mov', '.avi', '.mkv', '.webm', '.3gp', '.m4v', '.flv'];
+        const isVideoFile = videoExtensions.some(ext => 
+          mediaUrl.toLowerCase().includes(ext)
+        );
+        
+        console.log('📹 Is video file?', isVideoFile);
+        setIsVideo(isVideoFile);
+        
+        // ✅ Construct proper URL
         const baseUrl = await ConfigService.getBaseUrl();
-        const cleanMediaFile = mediaUrl.replace(/^[\\\/]+/, '');
-        const encodedMediaFile = encodeURIComponent(cleanMediaFile);
-        const encodedEmail = encodeURIComponent(userEmail);
         
-        mediaUrl = `${baseUrl}/api/mediacorner/asset/?leader_regd_mobile_no=${regdMobileNo}&user_email_id=${encodedEmail}&media_file=${encodedMediaFile}`;
-      }
-
-      console.log('🔑 Fetching image from:', mediaUrl);
-      
-      // Get authentication credentials
-      const appKey = await EncryptedStorage.getItem('APP_KEY');
-      const accessToken = await EncryptedStorage.getItem('accessToken');
-      
-      console.log('🔐 Has credentials:', {
-        hasAppKey: !!appKey,
-        hasAccessToken: !!accessToken
-      });
-      
-      // ✅ Fetch image with authentication headers including ngrok header
-      const response = await fetch(mediaUrl, {
-        method: 'GET',
-        headers: {
-          'x-app-key': appKey || '',
-          'Authorization': `Bearer ${accessToken || ''}`,
-          'ngrok-skip-browser-warning': 'true', // ✅ Critical for ngrok
-          'Accept': 'image/*',
-        },
-      });
-
-      console.log('📡 Response status:', response.status);
-      console.log('📡 Content-Type:', response.headers.get('content-type'));
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('❌ Response error:', errorText.substring(0, 200));
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-
-      // Convert response to blob
-      const blob = await response.blob();
-      console.log('📦 Image blob size:', blob.size, 'bytes');
-      console.log('📦 Image blob type:', blob.type);
-      
-      // Convert blob to base64
-      const reader = new FileReader();
-      
-      reader.onloadend = () => {
-        if (mounted) {
-          console.log('✅ Image loaded as base64');
-          setImageUri(reader.result);
-          setImageError(false);
+        if (mediaUrl.startsWith('http://') || mediaUrl.startsWith('https://')) {
+          if (mediaUrl.includes('ngrok-free.app:')) {
+            mediaUrl = mediaUrl.replace(/:(\d+)\//, '/');
+          }
+          if (mediaUrl.includes('localhost')) {
+            mediaUrl = mediaUrl.replace(/http:\/\/localhost:\d+/, baseUrl);
+          }
+        } else {
+          const cleanMediaFile = mediaUrl.replace(/^[\\\/]+/, '').replace(/\\/g, '/');
+          const encodedMediaFile = encodeURIComponent(cleanMediaFile);
+          const encodedEmail = encodeURIComponent(userEmail);
+          
+          mediaUrl = `${baseUrl}/api/mediacorner/asset/?leader_regd_mobile_no=${regdMobileNo}&user_email_id=${encodedEmail}&media_file=${encodedMediaFile}`;
         }
-      };
-      
-      reader.onerror = (error) => {
-        console.error('❌ FileReader error:', error);
-        if (mounted) {
-          setImageError(true);
+
+        console.log('🔗 Media URL:', mediaUrl);
+        
+        // ✅ FOR VIDEOS: Just set URL directly (no blob needed)
+        if (isVideoFile) {
+          if (mounted) {
+            setMediaUri(mediaUrl);
+            setMediaLoading(false);
+          }
+          return;
         }
-      };
-      
-      reader.readAsDataURL(blob);
+        
+        // ✅ FOR IMAGES: Use blob conversion
+        const appKey = await EncryptedStorage.getItem('APP_KEY');
+        const accessToken = await EncryptedStorage.getItem('accessToken');
+        
+        const response = await fetch(mediaUrl, {
+          method: 'GET',
+          headers: {
+            'x-app-key': appKey || '',
+            'Authorization': `Bearer ${accessToken || ''}`,
+            'ngrok-skip-browser-warning': 'true',
+            'Accept': 'image/*',
+          },
+        });
 
-    } catch (error) {
-      console.error('❌ Error loading image:', error);
-      console.error('❌ Error message:', error.message);
-      if (mounted) {
-        setImageError(true);
-      }
-    } finally {
-      if (mounted) {
-        setImageLoading(false);
-      }
-    }
-  };
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
 
-  loadImage();
-  
-  return () => {
-    mounted = false;
-  };
-}, [item.media_file, regdMobileNo, userEmail]);
-  const handleImageError = (error) => {
-    console.error('🖼️ Image failed to load:', error.nativeEvent);
-    setImageError(true);
-    Alert.alert(
-      'Image Load Error',
-      `Could not load image for "${item.media_header}"`,
-      [{ text: 'OK' }]
-    );
-  };
+        const blob = await response.blob();
+        const reader = new FileReader();
+        
+        reader.onloadend = () => {
+          if (mounted) {
+            setMediaUri(reader.result);
+            setMediaError(false);
+          }
+        };
+        
+        reader.onerror = (error) => {
+          console.error('❌ FileReader error:', error);
+          if (mounted) {
+            setMediaError(true);
+          }
+        };
+        
+        reader.readAsDataURL(blob);
+
+      } catch (error) {
+        console.error('❌ Error loading media:', error);
+        if (mounted) {
+          setMediaError(true);
+        }
+      } finally {
+        if (mounted) {
+          setMediaLoading(false);
+        }
+      }
+    };
+
+    loadMedia();
+    
+    return () => {
+      mounted = false;
+    };
+  }, [item.media_file, regdMobileNo, userEmail]);
 
   const handleMenuPress = (event) => {
     const { pageX, pageY } = event.nativeEvent;
@@ -729,10 +725,8 @@ useEffect(() => {
             </Text>
           )}
         </View>
-
         
-        
-       {isAdmin && (
+        {isAdmin && (
           <TouchableOpacity 
             style={styles.actionButton}
             onPress={handleMenuPress}
@@ -743,7 +737,6 @@ useEffect(() => {
         )}
       </View>
       
-      {/* ✅ Only show menu dropdown for admin */}
       {isAdmin && (
         <ThreeDotMenu
           visible={menuVisible}
@@ -754,46 +747,91 @@ useEffect(() => {
         />
       )}
 
-      {/* Loading State */}
-      {imageLoading && (
+      {/* ✅ LOADING STATE */}
+      {mediaLoading && (
         <View style={[styles.postImage, styles.imageLoadingContainer]}>
           <ActivityIndicator size="large" color="#f56c3aff" />
-          <Text style={styles.loadingText}>Loading image...</Text>
+          <Text style={styles.loadingText}>
+            {isVideo ? 'Loading video...' : 'Loading image...'}
+          </Text>
         </View>
       )}
 
-      {/* Image Display */}
-      {!imageLoading && imageUri && !imageError && (
+      {/* ✅ VIDEO DISPLAY - NATIVE PLAYER (Like Development Landscape) */}
+      {!mediaLoading && mediaUri && !mediaError && isVideo && (
+        <View style={styles.videoContainer}>
+          <Video
+            source={{ uri: mediaUri }}
+            style={styles.postVideoPlayer}
+            resizeMode="contain"
+            paused={videoPaused}
+            controls={false}
+            repeat={false}
+            onError={(error) => {
+              console.error('❌ Video error:', error);
+              setMediaError(true);
+            }}
+          />
+          
+          {/* ✅ Play/Pause Overlay */}
+          <TouchableOpacity 
+            style={styles.videoOverlay}
+            onPress={() => setVideoPaused(!videoPaused)}
+            activeOpacity={0.8}
+          >
+            {videoPaused && (
+              <View style={styles.playButton}>
+                <Text style={styles.playIcon}>▶</Text>
+              </View>
+            )}
+          </TouchableOpacity>
+
+          {/* ✅ Video Indicator Badge */}
+          <View style={styles.videoIndicator}>
+            <Text style={styles.videoIndicatorText}>🎥 VIDEO</Text>
+          </View>
+        </View>
+      )}
+
+      {/* ✅ IMAGE DISPLAY */}
+      {!mediaLoading && mediaUri && !mediaError && !isVideo && (
         <Image 
-          source={{ uri: imageUri }}
+          source={{ uri: mediaUri }}
           style={styles.postImage} 
           resizeMode="cover"
-          onError={handleImageError}
+          onError={(error) => {
+            console.error('🖼️ Image failed to load:', error.nativeEvent);
+            setMediaError(true);
+          }}
           onLoad={() => console.log('✅ Image loaded successfully')}
         />
       )}
 
-      {/* Error State */}
-      {!imageLoading && (imageError || !imageUri) && item.media_file && (
+      {/* ✅ ERROR STATE */}
+      {!mediaLoading && (mediaError || !mediaUri) && item.media_file && (
         <View style={[styles.postImage, styles.imageErrorContainer]}>
-          <Text style={styles.imageErrorIcon}>📷</Text>
-          <Text style={styles.imageErrorText}>Image not available</Text>
+          <Text style={styles.imageErrorIcon}>{isVideo ? '🎥' : '📷'}</Text>
+          <Text style={styles.imageErrorText}>
+            {isVideo ? 'Video not available' : 'Image not available'}
+          </Text>
           <Text style={styles.imageErrorDetail}>{item.media_file}</Text>
         </View>
       )}
 
-      {/* No Image */}
+      {/* ✅ NO MEDIA */}
       {!item.media_file && (
         <View style={[styles.postImage, styles.imageErrorContainer]}>
           <Text style={styles.imageErrorIcon}>🖼️</Text>
-          <Text style={styles.imageErrorText}>No image attached</Text>
+          <Text style={styles.imageErrorText}>No media attached</Text>
         </View>
       )}
 
+      {/* ✅ DESCRIPTION */}
       {item.media_narration && (
         <Text style={styles.postText}>{item.media_narration}</Text>
       )}
 
+      {/* ✅ VIEW MORE BUTTON */}
       {item.media_url && (
         <TouchableOpacity 
           style={styles.linkButton}
@@ -811,6 +849,8 @@ useEffect(() => {
 
 // ✅ Improved Video Item with better menu positioning
 // ✅ Video Item Component with View More button
+// ✅ REPLACE YOUR VideoItem COMPONENT with Native Video Player
+
 const VideoItem = React.memo(({ 
   video, 
   regdMobileNo, 
@@ -822,79 +862,67 @@ const VideoItem = React.memo(({
   const [videoUri, setVideoUri] = useState(null);
   const [menuVisible, setMenuVisible] = useState(false);
   const [menuPosition, setMenuPosition] = useState({ x: 0, y: 0 });
+  const [isLoading, setIsLoading] = useState(true);
+  const [hasError, setHasError] = useState(false);
+  const [videoPaused, setVideoPaused] = useState(true); // ✅ Video playback control
 
   useEffect(() => {
     let mounted = true;
     
     const loadVideo = async () => {
       console.log('🎥 === LOADING VIDEO ===');
-      console.log('Video object:', video);
-      console.log('media_file_url:', video.media_file_url);
-      console.log('media_file:', video.media_file);
+      console.log('📦 Video object:', JSON.stringify(video, null, 2));
       
-      // Try media_file_url first
-      if (video.media_file_url) {
-        console.log('✅ Using media_file_url from API:', video.media_file_url);
-        
-        let videoUrl = video.media_file_url;
-        
-        if (videoUrl.includes('localhost:5000') || videoUrl.includes('localhost:')) {
-          const baseUrl = await ConfigService.getBaseUrl();
-          videoUrl = videoUrl.replace(/http:\/\/localhost:\d+/, baseUrl);
-          console.log('🔧 Fixed localhost URL:', videoUrl);
-        }
-        
-        if (mounted) {
-          setVideoUri(videoUrl);
-        }
-        return;
-      }
+      setIsLoading(true);
+      setHasError(false);
       
-      // Fallback to media_file
-      if (video.media_file) {
-        console.log('⚠️ No media_file_url, constructing from media_file:', video.media_file);
-        
-        // If it's already a full URL
-        if (video.media_file.startsWith('http://') || video.media_file.startsWith('https://')) {
-          let videoUrl = video.media_file;
-          
-          if (videoUrl.includes('localhost:5000') || videoUrl.includes('localhost:')) {
-            const baseUrl = await ConfigService.getBaseUrl();
-            videoUrl = videoUrl.replace(/http:\/\/localhost:\d+/, baseUrl);
-          }
-          
+      try {
+        if (!video.media_file) {
+          console.error('❌ No media_file found in video object');
           if (mounted) {
-            setVideoUri(videoUrl);
+            setHasError(true);
+            setIsLoading(false);
           }
           return;
         }
+
+        let videoUrl = video.media_file;
+        console.log('📹 Original media_file:', videoUrl);
         
-        // Construct full URL from filename
         const baseUrl = await ConfigService.getBaseUrl();
+        console.log('🔗 Base URL:', baseUrl);
         
-        // Remove any leading slashes or backslashes
-        const cleanFile = video.media_file.replace(/^[\\\/]+/, '');
-        
-        // Check if it's in uploads/media_corner folder
-        let videoUrl;
-        if (cleanFile.includes('uploads\\media_corner') || cleanFile.includes('uploads/media_corner')) {
-          // Already has full path
-          videoUrl = `${baseUrl}/${cleanFile.replace(/\\/g, '/')}`;
-        } else if (cleanFile.startsWith('media_file-')) {
-          // Just the filename, construct path
-          videoUrl = `${baseUrl}/uploads/media_corner/${cleanFile}`;
-        } else {
-          // Default fallback
-          videoUrl = `${baseUrl}/media/${cleanFile}`;
+        // ✅ Already a full URL
+        if (videoUrl.startsWith('http://') || videoUrl.startsWith('https://')) {
+          if (videoUrl.includes('ngrok-free.app:')) {
+            videoUrl = videoUrl.replace(/:(\d+)\//, '/');
+          }
+          if (videoUrl.includes('localhost')) {
+            videoUrl = videoUrl.replace(/http:\/\/localhost:\d+/, baseUrl);
+          }
+        } 
+        // ✅ Relative path
+        else {
+          let cleanPath = videoUrl.replace(/^[\\\/]+/, '').replace(/\\/g, '/');
+          const encodedMediaFile = encodeURIComponent(cleanPath);
+          const encodedEmail = encodeURIComponent(userEmail);
+          
+          videoUrl = `${baseUrl}/api/mediacorner/asset/?leader_regd_mobile_no=${regdMobileNo}&user_email_id=${encodedEmail}&media_file=${encodedMediaFile}`;
         }
         
-        console.log('🔧 Constructed video URL:', videoUrl);
+        console.log('🔗 Final video URL:', videoUrl);
         
         if (mounted) {
           setVideoUri(videoUrl);
+          setIsLoading(false);
         }
-      } else {
-        console.error('❌ No media_file or media_file_url found');
+        
+      } catch (error) {
+        console.error('❌ Error loading video:', error);
+        if (mounted) {
+          setHasError(true);
+          setIsLoading(false);
+        }
       }
     };
     
@@ -903,7 +931,7 @@ const VideoItem = React.memo(({
     return () => {
       mounted = false;
     };
-  }, [video.media_file_url, video.media_file]);
+  }, [video.media_file, regdMobileNo, userEmail]);
 
   const handleMenuPress = (event) => {
     const { pageX, pageY } = event.nativeEvent;
@@ -931,27 +959,6 @@ const VideoItem = React.memo(({
       ]
     );
   };
-
-  // ✅ Create HTML for video with custom controls
-  const videoHtml = videoUri ? `
-    <!DOCTYPE html>
-    <html>
-      <head>
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <style>
-          * { margin: 0; padding: 0; }
-          body { background: #000; display: flex; align-items: center; justify-content: center; height: 100vh; }
-          video { width: 100%; height: 100%; object-fit: contain; }
-        </style>
-      </head>
-      <body>
-        <video controls playsinline>
-          <source src="${videoUri}" type="video/mp4">
-          Your browser does not support the video tag.
-        </video>
-      </body>
-    </html>
-  ` : '';
 
   return (
     <View style={styles.videoItem}>
@@ -992,35 +999,72 @@ const VideoItem = React.memo(({
         />
       )}
 
-      {videoUri ? (
-        <WebView
-          source={{ html: videoHtml }}
-          style={styles.videoPlayer}
-          allowsInlineMediaPlayback
-          mediaPlaybackRequiresUserAction={false}
-          javaScriptEnabled
-          domStorageEnabled
-          startInLoadingState
-          renderLoading={() => (
-            <View style={[styles.videoPlayer, styles.videoLoadingContainer]}>
-              <ActivityIndicator size="large" color="#f56c3aff" />
-              <Text style={styles.loadingText}>Loading video...</Text>
-            </View>
-          )}
-        />
-      ) : (
+      {/* ✅ LOADING STATE */}
+      {isLoading && (
+        <View style={[styles.videoPlayer, styles.videoLoadingContainer]}>
+          <ActivityIndicator size="large" color="#f56c3aff" />
+          <Text style={styles.loadingText}>Loading video...</Text>
+        </View>
+      )}
+
+      {/* ✅ ERROR STATE */}
+      {!isLoading && hasError && (
         <View style={[styles.videoPlayer, styles.videoLoadingContainer]}>
           <Text style={styles.imageErrorIcon}>🎥</Text>
           <Text style={styles.imageErrorText}>Video not available</Text>
+          {video.media_file && (
+            <Text style={styles.imageErrorDetail}>{video.media_file}</Text>
+          )}
+        </View>
+      )}
+
+      {/* ✅ NATIVE VIDEO PLAYER */}
+      {!isLoading && !hasError && videoUri && (
+        <View style={styles.videoPlayerContainer}>
+          <Video
+            source={{ uri: videoUri }}
+            style={styles.videoPlayer}
+            resizeMode="contain"
+            paused={videoPaused}
+            controls={false}
+            repeat={false}
+            onError={(error) => {
+              console.error('❌ Video playback error:', error);
+              setHasError(true);
+            }}
+            onLoad={() => {
+              console.log('✅ Video loaded successfully');
+            }}
+          />
+          
+          {/* ✅ Play/Pause Overlay */}
+          <TouchableOpacity 
+            style={styles.videoOverlay}
+            onPress={() => setVideoPaused(!videoPaused)}
+            activeOpacity={0.8}
+          >
+            {videoPaused && (
+              <View style={styles.playButton}>
+                <Text style={styles.playIcon}>▶</Text>
+              </View>
+            )}
+          </TouchableOpacity>
+
+          {/* ✅ Video Indicator */}
+          <View style={styles.videoIndicator}>
+            <Text style={styles.videoIndicatorText}>🎥 VIDEO</Text>
+          </View>
         </View>
       )}
       
+      {/* ✅ DESCRIPTION */}
       {video.media_narration && (
         <Text style={styles.videoDescription}>
           {video.media_narration}
         </Text>
       )}
 
+      {/* ✅ VIEW MORE BUTTON */}
       {video.media_url && (
         <TouchableOpacity 
           style={styles.linkButton}
@@ -1205,7 +1249,7 @@ const checkUserRoleAndPermissions = async () => {
 
 
 
- const fetchMediaData = async (mediaType) => {
+const fetchMediaData = async (mediaType) => {
   console.log('🎬 === FETCHING MEDIA DATA ===');
   console.log('📋 Media Type:', mediaType);
   
@@ -1213,8 +1257,15 @@ const checkUserRoleAndPermissions = async () => {
   setError(null);
   
   try {
+    // ✅ GET FRESH EMAIL
+    const currentUserInfo = await getCurrentUserRole();
+    const freshEmail = currentUserInfo.loggedin_email || '';
+    
+    console.log('✅ Fetching with fresh email:', freshEmail);
+    console.log('📱 Using mobile:', regdMobileNo);
+    
     const baseUrl = await ConfigService.getBaseUrl();
-    const apiUrl = `${baseUrl}/api/mediacorner/?leader_regd_mobile_no=${regdMobileNo}&user_email_id=${encodeURIComponent(userEmail)}&media_type=${mediaType}`;
+    const apiUrl = `${baseUrl}/api/mediacorner/?leader_regd_mobile_no=${regdMobileNo}&user_email_id=${encodeURIComponent(freshEmail)}&media_type=${mediaType}`;
     
     console.log('🔗 API URL:', apiUrl);
     
@@ -1233,19 +1284,7 @@ const checkUserRoleAndPermissions = async () => {
         items = result.data.items;
       }
 
-      // ✅ CHECK: Log each item to see if media_file_url exists
       console.log('📊 Items count:', items.length);
-      items.forEach((item, index) => {
-        console.log(`📹 Video ${index + 1}:`, {
-          id: item._id,
-          header: item.media_header,
-          has_media_file_url: !!item.media_file_url,
-          media_file_url: item.media_file_url,
-          has_media_file: !!item.media_file,
-          media_file: item.media_file
-        });
-      });
-
       setMediaData(items);
     } else {
       console.log('⚠️ No data in response');
@@ -1266,84 +1305,101 @@ const checkUserRoleAndPermissions = async () => {
     setEditModalVisible(true);
   };
 
-  const handleSave = async (updatedData) => {
-    try {
-      const baseUrl = await ConfigService.getBaseUrl();
-      const apiUrl = `${baseUrl}/api/mediacorner`;
+ const handleSave = async (updatedData) => {
+  try {
+    const baseUrl = await ConfigService.getBaseUrl();
+    const apiUrl = `${baseUrl}/api/mediacorner`;
 
-      const appKey = await EncryptedStorage.getItem('APP_KEY');
+    // ✅ GET FRESH EMAIL FROM AppOwnerInfo (NOT from state)
+    const currentUserInfo = await getCurrentUserRole();
+    const freshEmail = currentUserInfo.loggedin_email || '';
+    
+    console.log('✅ Using fresh email for save:', freshEmail);
+    console.log('📱 Using mobile:', regdMobileNo);
 
-      console.log('🔑 App Key:', appKey ? 'Found' : 'Missing');
+    const formData = new FormData();
+    formData.append('leader_regd_mobile_no', regdMobileNo);
+    formData.append('user_email_id', freshEmail);  // ✅ USE FRESH EMAIL
+    formData.append('media_header', updatedData.media_header);
+    formData.append('media_narration', updatedData.media_narration);
+    formData.append('media_url', updatedData.media_url);
+    formData.append('media_type', updatedData.media_type);
+    formData.append('id', updatedData.id);
 
-      const formData = new FormData();
-      formData.append('regd_mobile_no', regdMobileNo);
-      formData.append('user_email_id', userEmail);
-      formData.append('media_header', updatedData.media_header);
-      formData.append('media_narration', updatedData.media_narration);
-      formData.append('media_url', updatedData.media_url);
-      formData.append('media_type', updatedData.media_type);
-      formData.append('id', updatedData.id);
+    if (updatedData.media_file && updatedData.media_file.uri) {
+      const fileUri = updatedData.media_file.uri;
+      const fileName = fileUri.split('/').pop();
+      const fileType = fileName.endsWith('.jpg') || fileName.endsWith('.jpeg')
+        ? 'image/jpeg'
+        : 'image/png';
 
-      if (updatedData.media_file && updatedData.media_file.uri) {
-        const fileUri = updatedData.media_file.uri;
-        const fileName = fileUri.split('/').pop();
-        const fileType = fileName.endsWith('.jpg') || fileName.endsWith('.jpeg')
-          ? 'image/jpeg'
-          : 'image/png';
-
-        formData.append('media_file', {
-          uri: fileUri,
-          name: fileName,
-          type: fileType,
-        });
-      } else {
-        formData.append('media_file', null);
-      }
-
-      console.log('📤 Sending PUT request to:', apiUrl);
-
-      const result = await ApiService.authPut(apiUrl, formData, {}, true);
-
-      console.log('📥 PUT Response:', result);
-
-      if (result.success) {
-        Alert.alert('✅ Success', 'Media updated successfully');
-        setEditModalVisible(false);
-        setSelectedItem(null);
-        const mediaType = MEDIA_TYPE_MAP[activeTab];
-        fetchMediaData(mediaType);
-      } else {
-        throw new Error(result.message || 'Update failed');
-      }
-    } catch (error) {
-      console.error('❌ Error updating media:', error);
-      let errorMessage = 'Something went wrong while updating media';
-      if (error?.message) {
-        errorMessage = error.message;
-      }
-      Alert.alert('Error', errorMessage);
+      formData.append('media_file', {
+        uri: fileUri,
+        name: fileName,
+        type: fileType,
+      });
+    } else {
+      formData.append('media_file', null);
     }
-  };
 
-  const handleDelete = async (item) => {
-    try {
-      const baseUrl = await ConfigService.getBaseUrl();
-      const apiUrl = `${baseUrl}/api/mediacorner/?leader_regd_mobile_no=${regdMobileNo}&user_email_id=${encodeURIComponent(userEmail)}&id=${item._id || item.id}`;
+    console.log('📤 Sending PUT request to:', apiUrl);
+
+    const result = await ApiService.authPut(apiUrl, formData, {}, true);
+
+    console.log('📥 PUT Response:', result);
+
+    if (result.success) {
+      Alert.alert('✅ Success', 'Media updated successfully');
+      setEditModalVisible(false);
+      setSelectedItem(null);
+      const mediaType = MEDIA_TYPE_MAP[activeTab];
+      fetchMediaData(mediaType);
+    } else {
+      throw new Error(result.message || 'Update failed');
+    }
+  } catch (error) {
+    console.error('❌ Error updating media:', error);
+    Alert.alert('Error', error.message || 'Failed to update media');
+  }
+};
+
+ const handleDelete = async (item) => {
+  try {
+    const baseUrl = await ConfigService.getBaseUrl();
+    
+    // ✅ GET FRESH EMAIL FROM getCurrentUserRole
+    const currentUserInfo = await getCurrentUserRole();
+    const freshEmail = currentUserInfo.loggedin_email || '';
+    
+    console.log('🗑️ === DELETING MEDIA ITEM ===');
+    console.log('📧 Using fresh email:', freshEmail);
+    console.log('📱 Using mobile:', regdMobileNo);
+    console.log('🆔 Item ID:', item._id || item.id);
+    
+    const apiUrl = `${baseUrl}/api/mediacorner/?leader_regd_mobile_no=${regdMobileNo}&user_email_id=${encodeURIComponent(freshEmail)}&id=${item._id || item.id}`;
+    
+    console.log('🔗 DELETE URL:', apiUrl);
+    
+    const result = await ApiService.authDelete(apiUrl);
+
+    console.log('📥 DELETE Response:', result);
+
+    if (result.success) {
+      Alert.alert('✅ Success', 'Media deleted successfully');
+      const mediaType = MEDIA_TYPE_MAP[activeTab];
       
-      const result = await ApiService.authDelete(apiUrl);
-
-      if (result.success) {
-        Alert.alert('Success', 'Media deleted successfully');
-        const mediaType = MEDIA_TYPE_MAP[activeTab];
-        fetchMediaData(mediaType);
-      } else {
-        throw new Error(result.message || 'Delete failed');
+      // ✅ Refresh the list after deletion
+      if (mediaType) {
+        await fetchMediaData(mediaType);
       }
-    } catch (error) {
-      console.error('Error deleting media:', error);
-      Alert.alert('Error', 'Failed to delete media item');
+    } else {
+      throw new Error(result.message || 'Delete failed');
     }
-  };
+  } catch (error) {
+    console.error('❌ Error deleting media:', error);
+    Alert.alert('Error', error.message || 'Failed to delete media item');
+  }
+};
 
   const handleAddNew = () => {
   setAddModalVisible(true);
@@ -1922,6 +1978,119 @@ fabIcon: {
   fontWeight: 'bold',
   lineHeight: 32,
 },
+videoContainer: {
+    width: '100%',
+    height: 250,
+    backgroundColor: '#000',
+    position: 'relative',
+    borderRadius: 8,
+    overflow: 'hidden',
+    marginBottom: 10,
+  },
+  
+  // ✅ Video Player
+  postVideoPlayer: {
+    width: '100%',
+    height: '100%',
+  },
+  
+  // ✅ Video Overlay (for play/pause)
+  videoOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.2)',
+  },
+  
+  // ✅ Play Button
+  playButton: {
+    width: 70,
+    height: 70,
+    borderRadius: 35,
+    backgroundColor: 'rgba(245, 108, 58, 0.9)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    elevation: 5,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+  },
+  
+  // ✅ Play Icon
+  playIcon: {
+    fontSize: 32,
+    color: '#fff',
+    marginLeft: 4, // Slight offset to center the triangle
+  },
+  
+  // ✅ Video Indicator Badge
+  videoIndicator: {
+    position: 'absolute',
+    top: 10,
+    left: 10,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  
+  videoIndicatorText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: 'bold',
+    letterSpacing: 0.5,
+  },
+  videoPlayerContainer: {
+    width: '100%',
+    height: 300, // Larger for Video tab
+    backgroundColor: '#000',
+    position: 'relative',
+    borderRadius: 8,
+    overflow: 'hidden',
+    marginBottom: 15,
+  },
+  
+  videoPlayer: {
+    width: '100%',
+    height: '100%',
+  },
+  
+  videoLoadingContainer: {
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#000',
+  },
+  
+  videoTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    marginBottom: 5,
+    color: '#333',
+    textAlign: 'left',
+  },
+  
+  videoDate: {
+    fontSize: 12,
+    color: '#888',
+    marginBottom: 10,
+    textAlign: 'left',
+  },
+  
+  videoDescription: {
+    fontSize: 14,
+    color: '#666',
+    marginTop: 10,
+    textAlign: 'left',
+    lineHeight: 20,
+    paddingHorizontal: 5,
+  },
 });
 
 export default MediaCornerScreen;

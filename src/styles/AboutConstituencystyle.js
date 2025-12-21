@@ -1466,7 +1466,95 @@ memberImageEditButton: {
   shadowOpacity: 0.4,
   shadowRadius: 4,
 },
+// Add these to your styles object
+headerMenuButton: {
+  padding: 8,
+  backgroundColor: 'rgba(255, 255, 255, 0.2)',
+  borderRadius: 20,
+  width: 36,
+  height: 36,
+  justifyContent: 'center',
+  alignItems: 'center',
+},
+headerMenuIcon: {
+  fontSize: 20,
+  fontWeight: 'bold',
+  color: '#fff',
+  letterSpacing: 1,
+},
+translationLoadingBar: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  justifyContent: 'center',
+  backgroundColor: '#fff3cd',
+  paddingVertical: 8,
+  paddingHorizontal: 15,
+  gap: 10,
+},
+translationLoadingText: {
+  fontSize: 14,
+  color: '#856404',
+  fontWeight: '500',
+},
+// ✅ ADD THESE STYLES TO YOUR STYLESHEET
 
+memberInfoCard: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  backgroundColor: 'rgba(255, 255, 255, 0.2)', // Semi-transparent white
+  padding: 15,
+  borderRadius: 12,
+  marginTop: 20,
+  marginHorizontal: 0, // Make it full width within header
+  borderWidth: 1,
+  borderColor: 'rgba(255, 255, 255, 0.3)',
+},
+
+memberImageContainer: {
+  position: 'relative',
+  marginRight: 15,
+},
+
+memberImage: {
+  width: 70,
+  height: 70,
+  borderRadius: 35,
+  borderWidth: 3,
+  borderColor: '#fff',
+  backgroundColor: '#fff',
+},
+
+memberImageEditOverlay: {
+  position: 'absolute',
+  bottom: 0,
+  right: 0,
+  backgroundColor: '#e16e2b',
+  width: 24,
+  height: 24,
+  borderRadius: 12,
+  justifyContent: 'center',
+  alignItems: 'center',
+  borderWidth: 2,
+  borderColor: '#fff',
+},
+
+memberInfoDetails: {
+  flex: 1,
+},
+
+memberName: {
+  fontSize: 20,
+  fontWeight: 'bold',
+  color: '#fff',
+  marginBottom: 4,
+},
+
+memberParty: {
+  fontSize: 16,
+  color: '#fff',
+  fontWeight: '600',
+  letterSpacing: 1,
+},
 });
 
 export default styles;

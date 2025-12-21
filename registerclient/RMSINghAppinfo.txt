@@ -1,0 +1,17 @@
+PS C:\Users\prera\BJPApp\registerclient> node registerclient.js
+[dotenv@17.2.3] injecting env (23) from .env -- tip: 🔐 prevent building .env in docker: https://dotenvx.com/prebuild
+✅ Connected to MongoDB
+📥 Invoice No: nutantek123
+📅 Invoice Date (Unix Epoch): 1765877723
+👤 Client Name: RadhaMohanSingh
+👤 Client App Name: RMSingh
+📧 Client Email: radhamohan@gmail.com
+📱 Client Mobile: 7702000726
+AppKey: Raw String Value: nutantek123|1765877723|RMSingh
+Appkey: Hash Value: 0124362dfe94e451706c399e0c312ae43aa4d79c416b38e1d5cc92aa2c92e5d3
+✅ Saved AppOwnerInfo with app_key: 0124362dfe94e451706c399e0c312ae43aa4d79c416b38e1d5cc92aa2c92e5d3
+📧 Input Email: radhamohan@gmail.com
+🔐 Encrypted Email: CYEktDzwtFYho0pQ4rxPkvFXjL4cP19FvIEtFv0siZU=
+📱 Input Mobile: 7702000726
+🔐 Encrypted Mobile: R3V7Ttnr99g8I/PK2mJzqg==
+PS C:\Users\prera\BJPApp\registerclient>

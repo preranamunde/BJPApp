@@ -18,10 +18,22 @@ import ConfigService from '../services/ConfigService';
 import ApiService from '../services/ApiService';
 import styles from '../styles/Samvadstyles';
 import DeviceService from '../services/DeviceService';
+import { useTranslation } from '../context/TranslationContext';
+import TranslatableText from '../components/TranslatableText';
 
 const { width } = Dimensions.get('window');
 
 const SamvadScreen = ({ route, navigation }) => {
+
+  const { 
+  currentLanguage, 
+  changeLanguage, 
+  isTranslating, 
+  setIsTranslating,
+  availableLanguages 
+} = useTranslation();
+
+const fontSize = 16;
   const [activeMainTab, setActiveMainTab] = useState(null);
   const [activeSubTab, setActiveSubTab] = useState(null);
   const [focusedField, setFocusedField] = useState(null);
@@ -1826,24 +1838,27 @@ Alert.alert(
   };
 
   const renderInputField = (
-    field,
-    label,
-    placeholder,
-    keyboardType = 'default',
-    multiline = false,
-    required = false,
-    note = null
-  ) => {
-    const currentFormData = getCurrentFormData();
-    const isFocused = focusedField === field;
-    const hasValue = currentFormData[field] && currentFormData[field].length > 0;
-    
-    return (
-      <View style={styles.inputContainer}>
-        <Text style={[styles.label, required && styles.requiredLabel]}>
-          {label}
-          {required && <Text style={styles.asterisk}> *</Text>}
-        </Text>
+  field,
+  label,
+  placeholder,
+  keyboardType = 'default',
+  multiline = false,
+  required = false,
+  note = null
+) => {
+  const currentFormData = getCurrentFormData();
+  const isFocused = focusedField === field;
+  const hasValue = currentFormData[field] && currentFormData[field].length > 0;
+  
+  return (
+    <View style={styles.inputContainer}>
+      <TranslatableText 
+        style={[styles.label, required && styles.requiredLabel, { fontSize: fontSize - 1 }]}
+        cacheKey={`samvad_label_${field}`}
+      >
+        {label}
+        {required && <Text style={styles.asterisk}> *</Text>}
+      </TranslatableText>
         <View style={[
           styles.inputWrapper,
           isFocused && styles.inputWrapperFocused,
@@ -2044,10 +2059,15 @@ const renderSubmittedDataList = () => {
               return (
                 <View key={`${regnNo}-${index}`} style={styles.enhancedDataCard}>
                   <View style={styles.cardHeader}>
-                    <View style={styles.regnContainer}>
-                      <Text style={styles.regnLabel}>REG NO</Text>
-                      <Text style={styles.regnNumber}>{regnNo}</Text>
-                    </View>
+                   <View style={styles.regnContainer}>
+  <TranslatableText 
+    style={[styles.regnLabel, { fontSize: fontSize - 3 }]}
+    cacheKey="samvad_regn_label"
+  >
+    REG NO
+  </TranslatableText>
+  <Text style={styles.regnNumber}>{regnNo}</Text>
+</View>
                     <View style={styles.statusContainer}>
                       <Text style={[
                         styles.statusBadge,
@@ -2065,11 +2085,16 @@ const renderSubmittedDataList = () => {
                   <View style={styles.cardDivider} />
 
                   <View style={styles.cardContent}>
-                    <View style={styles.applicantSection}>
-                      <Text style={styles.sectionLabel}>APPLICANT</Text>
-                      <Text style={styles.applicantName}>{applicantName}</Text>
-                      <Text style={styles.applicantMobile}>{mobile}</Text>
-                    </View>
+                   <View style={styles.applicantSection}>
+  <TranslatableText 
+    style={[styles.sectionLabel, { fontSize: fontSize - 3 }]}
+    cacheKey="samvad_applicant"
+  >
+    APPLICANT
+  </TranslatableText>
+  <Text style={styles.applicantName}>{applicantName}</Text>
+  <Text style={styles.applicantMobile}>{mobile}</Text>
+</View>
 
                     <View style={styles.descriptionSection}>
                       <Text style={styles.sectionLabel}>
@@ -2249,30 +2274,41 @@ const showItemDetails = (item) => {
             <Text style={styles.successSubText}>You can now access all Samvad services</Text>
           </View>
         )}
-        
-        <Text style={styles.welcomeTitle}>Welcome to Samvad</Text>
-        <Text style={styles.welcomeSubtitle}>
-          Connect with your representative through our digital platform
-        </Text>
+      <TranslatableText style={[styles.welcomeTitle, { fontSize: fontSize + 4 }]}>
+  Welcome to Samvad
+</TranslatableText>
+<TranslatableText style={[styles.welcomeSubtitle, { fontSize: fontSize }]}>
+  Connect with your representative through our digital platform
+</TranslatableText>
         <View style={styles.categoryContainer}>
           <View style={styles.categoryItem}>
-            <Text style={styles.categoryName}>APPEAL</Text>
-            <Text style={styles.categoryDescription}>Submit an appeal for review and resolution</Text>
+           <TranslatableText 
+    style={[styles.categoryName, { fontSize: fontSize }]}
+    cacheKey="samvad_appeal"
+  >
+    APPEAL
+  </TranslatableText>
+           <TranslatableText 
+    style={[styles.categoryDescription, { fontSize: fontSize - 2 }]}
+    cacheKey="samvad_appeal_desc"
+  >
+    Submit an appeal for review and resolution
+  </TranslatableText>
           </View>
           
           <View style={styles.categoryItem}>
-            <Text style={styles.categoryName}>APPOINTMENT</Text>
-            <Text style={styles.categoryDescription}>Schedule a meeting with your representative</Text>
+            <TranslatableText style={styles.categoryName}>APPOINTMENT</TranslatableText>
+            <TranslatableText style={styles.categoryDescription}>Schedule a meeting with your representative</TranslatableText>
           </View>
           
           <View style={styles.categoryItem}>
-            <Text style={styles.categoryName}>GRIEVANCE</Text>
-            <Text style={styles.categoryDescription}>Register your grievance for prompt action</Text>
+            <TranslatableText style={styles.categoryName}>GRIEVANCE</TranslatableText>
+            <TranslatableText style={styles.categoryDescription}>Register your grievance for prompt action</TranslatableText>
           </View>
           
           <View style={styles.categoryItem}>
-            <Text style={styles.categoryName}>COMPLAINTS</Text>
-            <Text style={styles.categoryDescription}>File a complaint and track its status</Text>
+            <TranslatableText style={styles.categoryName}>COMPLAINTS</TranslatableText>
+            <TranslatableText style={styles.categoryDescription}>File a complaint and track its status</TranslatableText>
           </View>
         </View>
       </View>
@@ -2298,14 +2334,15 @@ const showItemDetails = (item) => {
                   activeMainTab === tab && styles.activeMainTabButton,
                 ]}
               >
-                <Text
-                  style={[
-                    styles.mainTabText,
-                    activeMainTab === tab && styles.activeMainTabText,
-                  ]}
-                >
-                  {tab}
-                </Text>
+               <TranslatableText
+  style={[
+    styles.mainTabText,
+    activeMainTab === tab && styles.activeMainTabText,
+  ]}
+  cacheKey={`samvad_tab_${tab.toLowerCase()}`}
+>
+  {tab}
+</TranslatableText>
                 {activeMainTab === tab && <View style={styles.underline} />}
               </TouchableOpacity>
             ))}
@@ -2326,20 +2363,28 @@ const showItemDetails = (item) => {
                   activeSubTab === tab && styles.activeSubTabButton,
                 ]}
               >
-                <Text
-                  style={[
-                    styles.subTabText,
-                    activeSubTab === tab && styles.activeSubTabText,
-                  ]}
-                >
-                  {tab}
-                </Text>
+               <TranslatableText
+  style={[
+    styles.subTabText,
+    activeSubTab === tab && styles.activeSubTabText,
+  ]}
+  cacheKey={`samvad_subtab_${tab.toLowerCase()}`}
+>
+  {tab}
+</TranslatableText>
                 {activeSubTab === tab && <View style={styles.subUnderline} />}
               </TouchableOpacity>
             ))}
           </View>
         </View>
       )}
+
+      {isTranslating && (
+  <View style={styles.translationLoadingBar}>
+    <ActivityIndicator size="small" color="#e16e2b" />
+    <Text style={styles.translationLoadingText}>Translating...</Text>
+  </View>
+)}
 
       {/* Content Area */}
      {!activeMainTab ? (
@@ -2435,27 +2480,42 @@ const showItemDetails = (item) => {
             {renderCheckbox()}
 
             <View style={styles.buttonContainer}>
-              <TouchableOpacity 
-                style={styles.cancelButton} 
-                onPress={handleCancel}
-              >
-                <Text style={styles.buttonText}>Cancel</Text>
-              </TouchableOpacity>
-              
-              <TouchableOpacity 
-                style={[styles.submitButton, isSubmitting && styles.disabledButton]} 
-                onPress={handleSubmit}
-                disabled={isSubmitting}
-              >
-                {isSubmitting ? (
-                  <View style={styles.loadingButtonContent}>
-                    <ActivityIndicator size="small" color="#fff" />
-                    <Text style={styles.buttonText}>Submitting...</Text>
-                  </View>
-                ) : (
-                  <Text style={styles.buttonText}>Submit</Text>
-                )}
-              </TouchableOpacity>
+             <TouchableOpacity 
+  style={styles.cancelButton} 
+  onPress={handleCancel}
+>
+  <TranslatableText 
+    style={[styles.buttonText, { fontSize: fontSize }]}
+    cacheKey="samvad_cancel"
+  >
+    Cancel
+  </TranslatableText>
+</TouchableOpacity>
+
+<TouchableOpacity 
+  style={[styles.submitButton, isSubmitting && styles.disabledButton]} 
+  onPress={handleSubmit}
+  disabled={isSubmitting}
+>
+  {isSubmitting ? (
+    <View style={styles.loadingButtonContent}>
+      <ActivityIndicator size="small" color="#fff" />
+      <TranslatableText 
+        style={[styles.buttonText, { fontSize: fontSize }]}
+        cacheKey="samvad_submitting"
+      >
+        Submitting...
+      </TranslatableText>
+    </View>
+  ) : (
+    <TranslatableText 
+      style={[styles.buttonText, { fontSize: fontSize }]}
+      cacheKey="samvad_submit"
+    >
+      Submit
+    </TranslatableText>
+  )}
+</TouchableOpacity>
             </View>
           </View>
         </ScrollView>

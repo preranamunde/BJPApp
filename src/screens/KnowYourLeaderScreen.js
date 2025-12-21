@@ -25,7 +25,174 @@ import ApiService from '../services/ApiService';
 import styles from '../styles/KnowYourLeaderstyle';
 import { getCurrentUserRole, checkIfCurrentUserIsAdmin} from '../../App'; // Import helper functions
 import Icon from 'react-native-vector-icons/MaterialIcons';
+import { useTranslation } from '../context/TranslationContext';
+import TranslatableText from '../components/TranslatableText';
 
+// ✅ ADD THESE VALIDATION HELPER FUNCTIONS
+const validateMobileNumber = (mobile) => {
+  // Remove any spaces or special characters
+  const cleanMobile = mobile.replace(/\s+/g, '').replace(/[^0-9]/g, '');
+  
+  // Must be exactly 10 digits
+  if (cleanMobile.length !== 10) {
+    return { valid: false, message: 'Mobile number must be exactly 10 digits' };
+  }
+  
+  // First digit must be 6, 7, 8, or 9 (Indian mobile numbers)
+  const firstDigit = cleanMobile.charAt(0);
+  if (!['6', '7', '8', '9'].includes(firstDigit)) {
+    return { valid: false, message: 'Mobile number must start with 6, 7, 8, or 9' };
+  }
+  
+  return { valid: true, cleanNumber: cleanMobile };
+};
+
+const validateTelephoneNumber = (telephone) => {
+  // Remove any spaces or special characters
+  const cleanTel = telephone.replace(/\s+/g, '').replace(/[^0-9]/g, '');
+  
+  // Must be maximum 8 digits
+  if (cleanTel.length > 8) {
+    return { valid: false, message: 'Telephone number cannot exceed 8 digits' };
+  }
+  
+  // Must be at least 6 digits (typical landline length)
+  if (cleanTel.length > 0 && cleanTel.length < 6) {
+    return { valid: false, message: 'Telephone number must be at least 6 digits' };
+  }
+  
+  return { valid: true, cleanNumber: cleanTel };
+};
+
+const validateSTDCode = (stdCode) => {
+  // Remove any spaces or special characters
+  const cleanSTD = stdCode.replace(/\s+/g, '').replace(/[^0-9]/g, '');
+  
+  // Must be between 2 to 5 digits
+  if (cleanSTD.length > 0 && (cleanSTD.length < 2 || cleanSTD.length > 5)) {
+    return { valid: false, message: 'STD code must be between 2 to 5 digits' };
+  }
+  
+  return { valid: true, cleanNumber: cleanSTD };
+};
+
+const formatPhoneNumberForCall = (isd, std, telephone) => {
+  if (!telephone) return null;
+  
+  // Clean all inputs
+  const cleanISD = (isd || '').replace(/\s+/g, '').replace(/[^0-9+]/g, '');
+  const cleanSTD = (std || '').replace(/\s+/g, '').replace(/[^0-9]/g, '');
+  const cleanTel = telephone.replace(/\s+/g, '').replace(/[^0-9]/g, '');
+  
+  // Remove leading zeros from ISD (convert 0091 to 91)
+  let formattedISD = cleanISD.replace(/^0+/, '');
+  if (!formattedISD.startsWith('+')) {
+    formattedISD = '+' + formattedISD;
+  }
+  
+  // Remove leading zero from STD (convert 011 to 11, 022 to 22)
+  const formattedSTD = cleanSTD.replace(/^0+/, '');
+  
+  // Combine: +[ISD][STD][Telephone]
+  return `${formattedISD}${formattedSTD}${cleanTel}`;
+};
+
+// ✅ ADD THIS DATE FORMATTING HELPER
+const formatDateInput = (text) => {
+  // Remove all non-numeric characters
+  const cleaned = text.replace(/\D/g, '');
+  
+  // Apply formatting based on length
+  let formatted = cleaned;
+  
+  if (cleaned.length >= 2) {
+    formatted = cleaned.slice(0, 2);
+    
+    if (cleaned.length >= 3) {
+      formatted += '/' + cleaned.slice(2, 4);
+      
+      if (cleaned.length >= 5) {
+        formatted += '/' + cleaned.slice(4, 8);
+      }
+    }
+  }
+  
+  return formatted;
+};
+
+// ✅ ADD THIS DATE VALIDATION HELPER
+const validateDateFormat = (dateStr) => {
+  // Check format DD/MM/YYYY
+  const datePattern = /^(\d{2})\/(\d{2})\/(\d{4})$/;
+  const match = dateStr.match(datePattern);
+  
+  if (!match) {
+    return { valid: false, message: 'Date must be in DD/MM/YYYY format' };
+  }
+  
+  const [, day, month, year] = match;
+  const dayNum = parseInt(day, 10);
+  const monthNum = parseInt(month, 10);
+  const yearNum = parseInt(year, 10);
+  
+  // Validate month
+  if (monthNum < 1 || monthNum > 12) {
+    return { valid: false, message: 'Month must be between 01 and 12' };
+  }
+  
+  // Validate day
+  if (dayNum < 1 || dayNum > 31) {
+    return { valid: false, message: 'Day must be between 01 and 31' };
+  }
+  
+  // Validate year (reasonable range)
+  const currentYear = new Date().getFullYear();
+  if (yearNum < 1900 || yearNum > currentYear + 10) {
+    return { valid: false, message: `Year must be between 1900 and ${currentYear + 10}` };
+  }
+  
+  // Validate days in month
+  const daysInMonth = new Date(yearNum, monthNum, 0).getDate();
+  if (dayNum > daysInMonth) {
+    return { valid: false, message: `${month} can have maximum ${daysInMonth} days` };
+  }
+  
+  return { valid: true };
+};
+
+// ✅ ADD this helper function in KnowYourLeaderScreen
+const handleApiError = async (result, operationName) => {
+  if (result.shouldLogout || result.status === 401) {
+    console.log(`❌ ${operationName} failed with 401`);
+    
+    // Check if session needs renewal
+    const needsRenewal = await AuthService.doesSessionNeedRenewal();
+    
+    if (needsRenewal) {
+      Alert.alert(
+        'Session Expired',
+        'Your session has expired. Please login again to perform this action.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { 
+            text: 'Login', 
+            onPress: () => {
+              AuthService.triggerSessionExpiry(true); // Force logout
+            }
+          }
+        ]
+      );
+      return false;
+    }
+  }
+  
+  if (!result.success) {
+    Alert.alert('Error', result.message || `${operationName} failed`);
+    return false;
+  }
+  
+  return true;
+};
 
 // ✅ Three Dot Menu Component (add this before KnowYourLeaderScreen component)
 const ThreeDotMenu = ({ visible, position, onEdit, onDelete, onDismiss }) => {
@@ -264,9 +431,34 @@ const [profileImageLoading, setProfileImageLoading] = useState(false);
 const kylMediaScrollViewRef = useRef(null);
 const [currentKYLMediaIndex, setCurrentKYLMediaIndex] = useState(0);
 const kylMediaAutoScrollInterval = useRef(null);
+// Add these states with your existing state declarations (around line 100)
+const [addSocialMediaModalVisible, setAddSocialMediaModalVisible] = useState(false);
+const [addSocialMediaData, setAddSocialMediaData] = useState({
+  facebook: '',
+  twitter: '',
+  linkedin: '',
+  instagram: ''
+});
+const [addSocialMediaLoading, setAddSocialMediaLoading] = useState(false);
+// Add these states with your existing state declarations
+const [addLeaderCoordinatesModalVisible, setAddLeaderCoordinatesModalVisible] = useState(false);
+const [addLeaderCoordinatesData, setAddLeaderCoordinatesData] = useState({
+  title: '',
+  member_name: '',
+  party: '',
+  constituency: '',
+  state: '',
+  email_id: '',
+  digital_sansad_url: ''
+});
+const [addLeaderCoordinatesLoading, setAddLeaderCoordinatesLoading] = useState(false);
   useEffect(() => {
     initializeApp();
   }, []);
+
+//translation hook
+  const { isTranslating } = useTranslation();
+const fontSize = 16;
 
   // Enhanced admin role checking using App.js functions
   const checkAdminRole = async () => {
@@ -346,6 +538,7 @@ const handleKYLEdit = (item) => {
 };
 
 // Handle KYL Media Save
+// ✅ REPLACE handleKYLSave in KnowYourLeaderScreen
 const handleKYLSave = async (updatedData) => {
   try {
     const baseUrl = await ConfigService.getBaseUrl();
@@ -355,7 +548,9 @@ const handleKYLSave = async (updatedData) => {
     const userEmailId = currentUserInfo.loggedin_email || '';
 
     const formData = new FormData();
-    formData.append('regd_mobile_no', memberId);
+    // ✅ CRITICAL: Send BOTH field names for backend compatibility
+    formData.append('regd_mobile_no', memberId);          // For media corner schema
+    formData.append('leader_regd_mobile_no', memberId);   // For authentication middleware
     formData.append('user_email_id', userEmailId);
     formData.append('media_header', updatedData.media_header);
     formData.append('media_narration', updatedData.media_narration);
@@ -379,17 +574,26 @@ const handleKYLSave = async (updatedData) => {
     }
 
     console.log('📤 Sending PUT request to:', apiUrl);
+    console.log('📤 Request fields:', {
+      regd_mobile_no: memberId,
+      leader_regd_mobile_no: memberId,
+      user_email_id: userEmailId,
+      media_type: 'KYL',
+      id: updatedData.id
+    });
 
     const result = await ApiService.authPut(apiUrl, formData, {}, true);
 
-    if (result.success) {
-      Alert.alert('✅ Success', 'KYL media updated successfully');
-      setEditKYLModalVisible(false);
-      setSelectedKYLItem(null);
-      loadInitialData(memberId); // Refresh the data
-    } else {
-      throw new Error(result.message || 'Update failed');
+    // ✅ ADD ERROR HANDLER
+    const success = await handleApiError(result, 'Update KYL media');
+    if (!success) {
+      return;
     }
+
+    Alert.alert('✅ Success', 'KYL media updated successfully');
+    setEditKYLModalVisible(false);
+    setSelectedKYLItem(null);
+    loadInitialData(memberId);
   } catch (error) {
     console.error('❌ Error updating KYL media:', error);
     Alert.alert('Error', error.message || 'Failed to update KYL media');
@@ -397,22 +601,28 @@ const handleKYLSave = async (updatedData) => {
 };
 
 // Handle KYL Media Delete
+// ✅ REPLACE handleKYLDelete in KnowYourLeaderScreen
 const handleKYLDelete = async (item) => {
   try {
     const baseUrl = await ConfigService.getBaseUrl();
     const currentUserInfo = await getCurrentUserRole();
     const userEmailId = currentUserInfo.loggedin_email || '';
     
-    const apiUrl = `${baseUrl}/api/mediacorner/?leader_regd_mobile_no=${memberId}&user_email_id=${encodeURIComponent(userEmailId)}&id=${item._id || item.id}`;
+    // ✅ CRITICAL: Send BOTH field names in query parameters
+    const apiUrl = `${baseUrl}/api/mediacorner/?regd_mobile_no=${memberId}&leader_regd_mobile_no=${memberId}&user_email_id=${encodeURIComponent(userEmailId)}&id=${item._id || item.id}`;
+    
+    console.log('🗑️ Deleting KYL media:', apiUrl);
     
     const result = await ApiService.authDelete(apiUrl);
 
-    if (result.success) {
-      Alert.alert('Success', 'KYL media deleted successfully');
-      loadInitialData(memberId); // Refresh the data
-    } else {
-      throw new Error(result.message || 'Delete failed');
+    // ✅ ADD ERROR HANDLER
+    const success = await handleApiError(result, 'Delete KYL media');
+    if (!success) {
+      return;
     }
+
+    Alert.alert('Success', 'KYL media deleted successfully');
+    loadInitialData(memberId);
   } catch (error) {
     console.error('Error deleting KYL media:', error);
     Alert.alert('Error', 'Failed to delete KYL media');
@@ -420,6 +630,7 @@ const handleKYLDelete = async (item) => {
 };
 
 // Handle KYL Media Add/Create
+// ✅ REPLACE handleKYLAdd in KnowYourLeaderScreen
 const handleKYLAdd = async (selectedImage) => {
   try {
     const baseUrl = await ConfigService.getBaseUrl();
@@ -436,7 +647,9 @@ const handleKYLAdd = async (selectedImage) => {
     });
 
     const formData = new FormData();
-    formData.append('regd_mobile_no', memberId);
+    // ✅ CRITICAL: Send BOTH field names for backend compatibility
+    formData.append('regd_mobile_no', memberId);          // For media corner schema
+    formData.append('leader_regd_mobile_no', memberId);   // For authentication middleware
     formData.append('user_email_id', userEmailId);
     formData.append('media_header', 'null');
     formData.append('media_narration', 'null');
@@ -455,18 +668,26 @@ const handleKYLAdd = async (selectedImage) => {
     });
 
     console.log('📤 Sending POST request to:', apiUrl);
+    console.log('📤 Request fields:', {
+      regd_mobile_no: memberId,
+      leader_regd_mobile_no: memberId,
+      user_email_id: userEmailId,
+      media_type: 'KYL'
+    });
 
     const result = await ApiService.authPost(apiUrl, formData, {}, true);
 
     console.log('📥 POST Response:', result);
 
-    if (result.success) {
-      Alert.alert('✅ Success', 'KYL media added successfully');
-      setAddKYLModalVisible(false);
-      loadInitialData(memberId); // Refresh the data
-    } else {
-      throw new Error(result.message || 'Creation failed');
+    // ✅ ADD ERROR HANDLER
+    const success = await handleApiError(result, 'Add KYL media');
+    if (!success) {
+      return;
     }
+
+    Alert.alert('✅ Success', 'KYL media added successfully');
+    setAddKYLModalVisible(false);
+    loadInitialData(memberId);
   } catch (error) {
     console.error('❌ Error adding KYL media:', error);
     Alert.alert('Error', error.message || 'Failed to add KYL media');
@@ -484,7 +705,7 @@ const handleUpdateProfileImage = async (selectedImage) => {
     setProfileImageLoading(true);
 
     const baseUrl = await ConfigService.getBaseUrl();
-    const apiUrl = `${baseUrl}/api/leaderimage/`;
+    const apiUrl = `${baseUrl}/api/leaderimage`;  // ✅ NO TRAILING SLASH
     
     const currentUserInfo = await getCurrentUserRole();
     const userEmailId = currentUserInfo.loggedin_email || '';
@@ -492,6 +713,7 @@ const handleUpdateProfileImage = async (selectedImage) => {
     console.log('📤 Updating leader profile image:', {
       mobile: memberId,
       email: userEmailId,
+      endpoint: apiUrl,  // ✅ Log the exact endpoint
       fileName: selectedImage.fileName
     });
 
@@ -519,7 +741,7 @@ const handleUpdateProfileImage = async (selectedImage) => {
     console.log('📥 PUT Response:', result);
 
     if (result.success) {
-      // ✅ CRITICAL: Clear the old image from state first
+      // Clear old image from state
       setMemberData(prev => ({
         ...prev,
         profile_image: null,
@@ -533,12 +755,11 @@ const handleUpdateProfileImage = async (selectedImage) => {
             setEditProfileImageModalVisible(false);
             setSelectedProfileImage(null);
             
-            // ✅ FORCE RELOAD with a small delay to ensure backend has processed
+            // Force reload with delay
             setTimeout(async () => {
               console.log('🔄 Reloading profile data after image update...');
               await loadInitialData(memberId);
               
-              // ✅ DOUBLE CHECK: Force re-render by toggling state
               setRefreshing(true);
               setTimeout(() => {
                 setRefreshing(false);
@@ -600,48 +821,55 @@ const handleUpdateProfileImage = async (selectedImage) => {
 
   // Function to get member ID and role from EncryptedStorage (Enhanced)
   const getMemberInfoFromStorage = async () => {
-    try {
-      console.log('🔍 Retrieving member info from EncryptedStorage...');
-      
-      // Get AppOwnerInfo for member ID and role
-      const appOwnerInfo = await EncryptedStorage.getItem('AppOwnerInfo');
-      if (appOwnerInfo) {
-        const parsedData = JSON.parse(appOwnerInfo);
-        console.log('📱 AppOwnerInfo found:', Object.keys(parsedData));
-        
-        // Get member identifier
-        const memberIdentifier = parsedData.mobile_no || 
-                                parsedData.regdMobileNo || 
-                                parsedData.mobile_number || 
-                                parsedData.phone ||
-                                parsedData.mobileNo ||
-                                parsedData.member_id ||
-                                parsedData.user_id;
-        
-        console.log('✅ Member ID found:', memberIdentifier);
-        
-        return {
-          memberId: memberIdentifier || '7702000725'
-        };
-      }
-      
-      // Fallback: Try to get from individual storage items
-      const storedMemberId = await EncryptedStorage.getItem('MOBILE_NUMBER') || 
-                            await EncryptedStorage.getItem('OWNER_MOBILE') ||
-                            await EncryptedStorage.getItem('MEMBER_ID') || 
-                            '7702000725';
-      
+  try {
+    console.log('🔍 Retrieving owner mobile from EncryptedStorage...');
+    
+    // ✅ STEP 1: Get OWNER_MOBILE directly (stored during bootstrap)
+    const ownerMobile = await EncryptedStorage.getItem('OWNER_MOBILE');
+    
+    if (ownerMobile && ownerMobile.trim() !== '') {
+      console.log('✅ Owner mobile found from OWNER_MOBILE:', ownerMobile);
       return {
-        memberId: storedMemberId
-      };
-      
-    } catch (error) {
-      console.error('❌ Error retrieving member info from storage:', error);
-      return {
-        memberId: '7702000725'
+        memberId: ownerMobile.trim()
       };
     }
-  };
+    
+    // ✅ STEP 2: Fallback - Get from AppOwnerInfo
+    const appOwnerInfo = await EncryptedStorage.getItem('AppOwnerInfo');
+    if (appOwnerInfo) {
+      const parsedData = JSON.parse(appOwnerInfo);
+      console.log('📱 AppOwnerInfo keys:', Object.keys(parsedData));
+      
+      // Try all possible mobile field names
+      const possibleFields = [
+        'mobile_no', 'mobile_number', 'regdMobileNo', 'regd_mobile_no',
+        'owner_mobile', 'client_mobile', 'phone', 'mobileNo', 'Mobile'
+      ];
+      
+      for (const field of possibleFields) {
+        if (parsedData[field]) {
+          const mobile = String(parsedData[field]).trim();
+          console.log(`✅ Owner mobile found in AppOwnerInfo.${field}:`, mobile);
+          return {
+            memberId: mobile
+          };
+        }
+      }
+    }
+    
+    // ✅ STEP 3: Last fallback - default
+    console.error('❌ No owner mobile found - using default');
+    return {
+      memberId: '7702000726' // Your owner mobile as fallback
+    };
+    
+  } catch (error) {
+    console.error('❌ Error retrieving owner mobile:', error);
+    return {
+      memberId: '7702000726' // Your owner mobile as fallback
+    };
+  }
+};
 
   const getUserInfoForEducation = async () => {
   try {
@@ -663,31 +891,34 @@ const handleUpdateProfileImage = async (selectedImage) => {
   }
 };
 
-  const initializeApp = async () => {
-    try {
-      setLoading(true);
-      
-      // Get member info from storage
-      const memberInfo = await getMemberInfoFromStorage();
-      setMemberId(memberInfo.memberId);
-      
-      // Check admin role using enhanced App.js functions
-      const adminStatus = await checkAdminRole();
-      
-      console.log('📱 Using member ID:', memberInfo.memberId);
-      console.log('🔑 Final Admin Status:', adminStatus);
-      
-      // Load initial data
-      await loadInitialData(memberInfo.memberId);
-      
-    } catch (error) {
-      console.error('❌ App initialization error:', error);
-      Alert.alert('Initialization Error', 'Failed to initialize app. Using default settings.');
-      await loadInitialData('7702000725');
-    } finally {
-      setLoading(false);
-    }
-  };
+ const initializeApp = async () => {
+  try {
+    setLoading(true);
+    
+    // Get member info from storage
+    const memberInfo = await getMemberInfoFromStorage();
+    setMemberId(memberInfo.memberId);
+    
+    console.log('📱 ===================================');
+    console.log('📱 USING OWNER MOBILE FOR ALL APIS:', memberInfo.memberId);
+    console.log('📱 ===================================');
+    
+    // Check admin role using enhanced App.js functions
+    const adminStatus = await checkAdminRole();
+    
+    console.log('🔑 Admin Status:', adminStatus);
+    
+    // Load initial data with owner's mobile
+    await loadInitialData(memberInfo.memberId);
+    
+  } catch (error) {
+    console.error('❌ App initialization error:', error);
+    Alert.alert('Initialization Error', 'Failed to initialize app. Using default settings.');
+    await loadInitialData('7702000726'); // Use your owner mobile
+  } finally {
+    setLoading(false);
+  }
+};
 
   // Individual API calls using ApiService and ConfigService (unchanged)
 const fetchMemberCoordinates = async (memberIdentifier) => {
@@ -1022,28 +1253,25 @@ const submitEducationEntry = async () => {
     let endpoint;
     let requestPayload;
 
-    if (isFirstEntry) {
-      // ✅ FIRST ENTRY: Use POST /api/edudata (POST Create Education)
-      console.log('📤 Creating FIRST education entry (POST /api/edudata)');
-      
-      endpoint = `${baseUrl}/api/edudata`;
-      
-      requestPayload = {
-        leader_regd_mobile_no: userInfo.regdMobileNo,
-        user_email_id: userInfo.userEmailId,
-        leader_edu_data: {
-          regd_mobile_no: userInfo.regdMobileNo,
-          edu_qual: [
-            {
-              degree: addEducationData.degree.trim(),
-              college: addEducationData.college.trim(),
-              university: addEducationData.university.trim(),
-              place: addEducationData.place.trim()
-            }
-          ]
-        }
-      };
-    } else {
+ if (isFirstEntry) {
+  // ✅ FIRST ENTRY: Use POST /api/edudata (POST Create Education)
+  console.log('📤 Creating FIRST education entry (POST /api/edudata)');
+  
+  endpoint = `${baseUrl}/api/edudata`;
+  
+  requestPayload = {
+    leader_regd_mobile_no: userInfo.regdMobileNo,
+    user_email_id: userInfo.userEmailId,
+    edu_qual: [  // ✅ DIRECTLY AT ROOT LEVEL
+      {
+        degree: addEducationData.degree.trim(),
+        college: addEducationData.college.trim(),
+        university: addEducationData.university.trim(),
+        place: addEducationData.place.trim()
+      }
+    ]
+  };
+} else {
       // ✅ ADDITIONAL ENTRY: Use POST /api/edudata/entry (Add Education Entry)
       console.log('📤 Adding ADDITIONAL education entry (POST /api/edudata/entry)');
       
@@ -1191,11 +1419,18 @@ const saveCurrentTimeline = async () => {
       return;
     }
 
+    // ✅ IMPROVED DATE VALIDATION
+    const dateValidation = validateDateFormat(editingTimelineData.date.trim());
+    if (!dateValidation.valid) {
+      Alert.alert('Invalid Date', dateValidation.message);
+      return;
+    }
+
     setTimelineEditLoading(true);
 
     // Get user information
     const currentUserInfo = await getCurrentUserRole();
-    const userEmailId = currentUserInfo.loggedin_email || 'sanjay.jaiswal@gmail.com';
+    const userEmailId = currentUserInfo.loggedin_email || '';
     
     if (!memberId) {
       Alert.alert('Error', 'Member ID not available. Please try refreshing the screen.');
@@ -1212,7 +1447,6 @@ const saveCurrentTimeline = async () => {
     // Get base URL
     const baseUrl = await ConfigService.getBaseUrl();
 
-    // Prepare request payload for PUT method (matching your Postman structure)
     const requestPayload = {
       leader_regd_mobile_no: memberId,
       user_email_id: userEmailId,
@@ -1221,23 +1455,22 @@ const saveCurrentTimeline = async () => {
         date: editingTimelineData.date.trim(),
         title: editingTimelineData.title.trim(),
         title_details: editingTimelineData.title_details.trim(),
-        additional_info: editingTimelineData.additional_info.trim()
+        additional_info: editingTimelineData.additional_info.trim() || ''
       }
     };
 
     console.log('📤 Updating timeline entry:', requestPayload);
 
     const result = await ApiService.authPut(
-  `${baseUrl}/api/leadertimeline/`,  // ✅ Correct endpoint
-  requestPayload
-);
+      `${baseUrl}/api/leadertimeline/`,
+      requestPayload
+    );
 
     if (result.success) {
       Alert.alert('Success', 'Timeline entry updated successfully!', [
         {
           text: 'OK',
           onPress: () => {
-            // Refresh timeline data
             loadInitialData(memberId);
           }
         }
@@ -1796,16 +2029,31 @@ const deletePersonalDetails = async (memberIdentifier) => {
     }
   };
 
-  const deleteEducationalDetails = async (memberIdentifier) => {
+const deleteEducationalDetails = async (memberIdentifier) => {
   try {
-    console.log('🗑️ Deleting educational details as admin...');
+    console.log('🗑️ Deleting ALL educational details as admin...');
     const baseUrl = await ConfigService.getBaseUrl();
-    const endpoint = `${baseUrl}/api/edudata/${memberIdentifier}`;
     
-    const result = await ApiService.delete(endpoint);
+    // Get current user info for email parameter
+    const currentUserInfo = await getCurrentUserRole();
+    const userEmailId = currentUserInfo.loggedin_email || '';
+    
+    // ✅ CRITICAL: Build query parameters (NOT path parameter)
+    const queryParams = new URLSearchParams({
+      leader_regd_mobile_no: memberIdentifier,
+      user_email_id: userEmailId
+      // ❌ NO eduId here - we're deleting ALL education data
+    }).toString();
+    
+    const endpoint = `${baseUrl}/api/edudata/?${queryParams}`;
+    
+    console.log('🗑️ Deleting ALL education data:', endpoint);
+    
+    // ✅ Use authDelete (requires authentication)
+    const result = await ApiService.authDelete(endpoint);
     
     if (result.success) {
-      console.log('✅ Educational details deleted successfully');
+      console.log('✅ ALL Educational details deleted successfully');
       return { success: true, data: result.data, error: null };
     } else {
       let errorMessage = 'Delete failed';
@@ -1816,7 +2064,7 @@ const deletePersonalDetails = async (memberIdentifier) => {
       return { success: false, data: null, error: errorMessage };
     }
   } catch (error) {
-    console.error('❌ API Error (delete educational details):', error);
+    console.error('❌ API Error (delete ALL educational details):', error);
     return { success: false, error: error.message || 'Network error occurred' };
   }
 };
@@ -2028,16 +2276,32 @@ const deletePresentAddress = async (memberIdentifier) => {
     }
   };
 
-  const deleteTimeline = async (memberIdentifier) => {
+// ✅ REPLACE THIS ENTIRE FUNCTION:
+const deleteTimeline = async (memberIdentifier) => {
   try {
-    console.log('🗑️ Deleting timeline as admin...');
+    console.log('🗑️ Deleting ALL timeline data as admin...');
     const baseUrl = await ConfigService.getBaseUrl();
-    const endpoint = `${baseUrl}/api/leadertimeline/${memberIdentifier}`;
     
-    const result = await ApiService.delete(endpoint);
+    // Get current user info for email parameter
+    const currentUserInfo = await getCurrentUserRole();
+    const userEmailId = currentUserInfo.loggedin_email || '';
+    
+    // ✅ FIXED: Use query parameters (matching your Postman DELETE)
+    const queryParams = new URLSearchParams({
+      leader_regd_mobile_no: memberIdentifier,
+      user_email_id: userEmailId
+      // ❌ NO timelineId here - we're deleting ALL timeline data
+    }).toString();
+    
+    const endpoint = `${baseUrl}/api/leadertimeline/?${queryParams}`;
+    
+    console.log('🗑️ Deleting ALL timeline data:', endpoint);
+    
+    // Use authDelete (requires authentication)
+    const result = await ApiService.authDelete(endpoint);
     
     if (result.success) {
-      console.log('✅ Timeline deleted successfully');
+      console.log('✅ ALL Timeline data deleted successfully');
       return { success: true, data: result.data, error: null };
     } else {
       let errorMessage = 'Delete failed';
@@ -2048,7 +2312,7 @@ const deletePresentAddress = async (memberIdentifier) => {
       return { success: false, data: null, error: errorMessage };
     }
   } catch (error) {
-    console.error('❌ API Error (delete timeline):', error);
+    console.error('❌ API Error (delete ALL timeline):', error);
     return { success: false, error: error.message || 'Network error occurred' };
   }
 };
@@ -2638,7 +2902,9 @@ const renderAddEducationModal = () => {
               <Text style={styles.editModalCloseText}>✕</Text>
             </TouchableOpacity>
             <View style={styles.editModalTitleContainer}>
-              <Text style={styles.editModalTitle}>Add New Education</Text>
+             <TranslatableText style={[styles.modalTitle, { fontSize: fontSize + 4 }]}>
+  Add New Education
+</TranslatableText>
             </View>
             <TouchableOpacity
               onPress={submitEducationEntry}
@@ -2660,7 +2926,10 @@ const renderAddEducationModal = () => {
               
               {/* Degree Field */}
               <View style={styles.editInputContainer}>
-                <Text style={styles.editInputLabel}>DEGREE *</Text>
+                <TranslatableText style={[styles.editInputLabel, { fontSize: fontSize - 2 }]}>
+  DEGREE *
+</TranslatableText>
+
                 <TextInput
                   style={styles.editInput}
                   value={addEducationData.degree}
@@ -2675,7 +2944,10 @@ const renderAddEducationModal = () => {
 
               {/* College Field */}
               <View style={styles.editInputContainer}>
-                <Text style={styles.editInputLabel}>COLLEGE *</Text>
+                <TranslatableText style={[styles.editInputLabel, { fontSize: fontSize - 2 }]}>
+  COLLEGE *
+</TranslatableText>
+
                 <TextInput
                   style={styles.editInput}
                   value={addEducationData.college}
@@ -2690,7 +2962,10 @@ const renderAddEducationModal = () => {
 
               {/* University Field */}
               <View style={styles.editInputContainer}>
-                <Text style={styles.editInputLabel}>UNIVERSITY *</Text>
+                <TranslatableText style={[styles.editInputLabel, { fontSize: fontSize - 2 }]}>
+  UNIVERSITY *
+</TranslatableText>
+
                 <TextInput
                   style={styles.editInput}
                   value={addEducationData.university}
@@ -2705,7 +2980,10 @@ const renderAddEducationModal = () => {
 
               {/* Place Field */}
               <View style={styles.editInputContainer}>
-                <Text style={styles.editInputLabel}>PLACE *</Text>
+               <TranslatableText style={[styles.editInputLabel, { fontSize: fontSize - 2 }]}>
+  PLACE *
+</TranslatableText>
+
                 <TextInput
                   style={styles.editInput}
                   value={addEducationData.place}
@@ -2758,7 +3036,9 @@ const renderEducationEditModal = () => {
               <Text style={styles.editModalCloseText}>✕</Text>
             </TouchableOpacity>
             <View style={styles.editModalTitleContainer}>
-              <Text style={styles.editModalTitle}>Edit Education</Text>
+              <TranslatableText style={[styles.modalTitle, { fontSize: fontSize + 4 }]}>
+  Edit Education
+</TranslatableText>
             </View>
             <View style={styles.headerButtonsContainer}>
               <TouchableOpacity
@@ -2786,12 +3066,16 @@ const renderEducationEditModal = () => {
                 onPress={() => navigateEducation('previous')}
                 disabled={educationData.length <= 1 || educationEditLoading}
               >
-                <Text style={[
-                  styles.navButtonText,
-                  educationData.length <= 1 && styles.navButtonTextDisabled
-                ]}>
-                  Previous
-                </Text>
+                <TranslatableText
+  style={[
+    styles.navButtonText,
+    { fontSize: fontSize - 2 },
+    educationData.length <= 1 && styles.navButtonTextDisabled
+  ]}
+>
+  Previous
+</TranslatableText>
+
               </TouchableOpacity>
 
               <View style={styles.navIndicator}>
@@ -2808,12 +3092,16 @@ const renderEducationEditModal = () => {
                 onPress={() => navigateEducation('next')}
                 disabled={educationData.length <= 1 || educationEditLoading}
               >
-                <Text style={[
-                  styles.navButtonText,
-                  educationData.length <= 1 && styles.navButtonTextDisabled
-                ]}>
-                  Next
-                </Text>
+               <TranslatableText
+  style={[
+    styles.navButtonText,
+    { fontSize: fontSize - 2 },
+    educationData.length <= 1 && styles.navButtonTextDisabled
+  ]}
+>
+  Next
+</TranslatableText>
+
               </TouchableOpacity>
             </View>
           </View>
@@ -2880,9 +3168,9 @@ const renderEducationEditModal = () => {
                   onPress={deleteCurrentEducation}
                   disabled={educationEditLoading}
                 >
-                  <Text style={styles.deleteEducationButtonText}>
-                    Delete This Entry
-                  </Text>
+                 <TranslatableText style={[styles.deleteEducationButtonText, { fontSize: fontSize }]}>
+  Delete This Entry
+</TranslatableText>
                 </TouchableOpacity>
               </View>
 
@@ -2927,7 +3215,9 @@ const renderTimelineEditModal = () => {
               <Text style={styles.editModalCloseText}>✕</Text>
             </TouchableOpacity>
             <View style={styles.editModalTitleContainer}>
-              <Text style={styles.editModalTitle}>Edit Timeline</Text>
+              <TranslatableText style={[styles.modalTitle, { fontSize: fontSize + 4 }]}>
+  Edit Timeline
+</TranslatableText>
             </View>
             <View style={styles.headerButtonsContainer}>
               <TouchableOpacity
@@ -2994,21 +3284,32 @@ const renderTimelineEditModal = () => {
                 Timeline Entry {currentTimelineIndex + 1}
               </Text>
               
-              {/* Date Field */}
-              <View style={styles.editInputContainer}>
-                <Text style={styles.editInputLabel}>DATE *</Text>
-                <TextInput
-                  style={styles.editInput}
-                  value={editingTimelineData.date}
-                  onChangeText={(text) => handleTimelineInputChange('date', text)}
-                  placeholder="e.g., 25/05/2024"
-                  multiline={false}
-                />
-              </View>
+{/* Date Field */}
+<View style={styles.editInputContainer}>
+  <Text style={styles.editInputLabel}>DATE *</Text>
+  <TextInput
+    style={styles.editInput}
+    value={editingTimelineData.date}
+    onChangeText={(text) => {
+      // ✅ AUTO-FORMAT DATE AS USER TYPES
+      const formatted = formatDateInput(text);
+      handleTimelineInputChange('date', formatted);
+    }}
+    placeholder="DD/MM/YYYY (e.g., 25/05/2024)"
+    keyboardType="numeric"
+    maxLength={10}  // ✅ DD/MM/YYYY = 10 characters
+    multiline={false}
+  />
+  <Text style={styles.inputHelperText}>
+    Enter date in DD/MM/YYYY format (slashes will be added automatically)
+  </Text>
+</View>
 
               {/* Title Field */}
               <View style={styles.editInputContainer}>
-                <Text style={styles.editInputLabel}>TITLE *</Text>
+                <TranslatableText style={[styles.editInputLabel, { fontSize: fontSize - 2 }]}>
+  TITLE *
+</TranslatableText>
                 <TextInput
                   style={styles.editInput}
                   value={editingTimelineData.title}
@@ -3020,7 +3321,9 @@ const renderTimelineEditModal = () => {
 
               {/* Title Details Field */}
               <View style={styles.editInputContainer}>
-                <Text style={styles.editInputLabel}>TITLE DETAILS *</Text>
+                <TranslatableText style={[styles.editInputLabel, { fontSize: fontSize - 2 }]}>
+  TITLE DETAILS *
+</TranslatableText>
                 <TextInput
                   style={[styles.editInput, { height: 80 }]}
                   value={editingTimelineData.title_details}
@@ -3033,7 +3336,9 @@ const renderTimelineEditModal = () => {
 
               {/* Additional Info Field */}
               <View style={styles.editInputContainer}>
-                <Text style={styles.editInputLabel}>ADDITIONAL INFO</Text>
+                <TranslatableText style={[styles.editInputLabel, { fontSize: fontSize - 2 }]}>
+  ADDITIONAL INFO
+</TranslatableText>
                 <TextInput
                   style={[styles.editInput, { height: 80 }]}
                   value={editingTimelineData.additional_info}
@@ -3191,7 +3496,38 @@ const renderTimelineEditModal = () => {
   }
 
 const renderModernHeader = () => {
-  // ✅ ADD CACHE BUSTER - forces image reload
+  // If no member data exists, show "Add Leader Coordinates" button
+  if (!memberData && isAdmin) {
+    return (
+      <View style={styles.modernHeader}>
+        <View style={styles.headerPattern}>
+          <View style={[styles.patternCircle, { top: -20, right: -30 }]} />
+          <View style={[styles.patternCircle, { bottom: -40, left: -20 }]} />
+        </View>
+        
+        <View style={styles.headerContent}>
+          <View style={styles.emptyState}>
+            <Text style={styles.emptyStateIcon}>👤</Text>
+            <TranslatableText style={[styles.emptyStateText, { fontSize: fontSize - 2 }]}>
+              No leader coordinates available
+            </TranslatableText>
+            
+            <TouchableOpacity
+              style={styles.addEducationButton}
+              onPress={() => setAddLeaderCoordinatesModalVisible(true)}
+            >
+              <Text style={styles.addEducationIcon}>+</Text>
+              <TranslatableText style={[styles.addEducationText, { fontSize: fontSize - 2 }]}>
+                Add Leader Coordinates
+              </TranslatableText>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    );
+  }
+
+  // Existing header code when member data exists
   const profileImageUrl = memberData?.profile_image 
     ? `${memberData.profile_image}?t=${Date.now()}` 
     : 'https://tse2.mm.bing.net/th/id/OIP.7nJJBy9zWC6D4pVeQDTEqAHaHX?pid=Api&P=0&h=180';
@@ -3214,7 +3550,6 @@ const renderModernHeader = () => {
               onError={() => console.log('Failed to load profile image')}
             />
             
-            {/* ✅ EDIT ICON BUTTON */}
             {isAdmin && (
               <TouchableOpacity 
                 style={styles.avatarEditButton}
@@ -3226,7 +3561,6 @@ const renderModernHeader = () => {
             )}
           </View>
           
-          {/* Rest of your existing header code... */}
           <View style={styles.basicInfo}>
             <View style={styles.nameRow}>
               <TouchableOpacity
@@ -3234,18 +3568,20 @@ const renderModernHeader = () => {
                 onPress={handleLeaderNamePress}
                 activeOpacity={0.8}
               >
-                <Text style={styles.leaderName}>
+                <TranslatableText style={[styles.leaderName, { fontSize: fontSize + 4 }]}>
                   {memberData ? 
                     `${memberData.title || ''} ${memberData.member_name || ''}`.trim() : 
                     'Loading...'
                   }
-                </Text>
+                </TranslatableText>
               </TouchableOpacity>
               <View style={styles.headerButtonsContainer}>
                 {renderActionDropdown('coordinates', memberData)}
               </View>
             </View>
-            <Text style={styles.designation}>Member of Parliament</Text>
+            <TranslatableText style={[styles.designation, { fontSize: fontSize }]}>
+              Member of Parliament
+            </TranslatableText>
             <View style={styles.locationRow}>
               <Text style={styles.locationText}>
                 {memberData ? 
@@ -3263,11 +3599,6 @@ const renderModernHeader = () => {
           </View>
         )}
       </View>
-      
-      {/* Quick Actions Row */}
-      <View style={styles.quickActionsRow}>
-        {/* ... existing quick actions code ... */}
-      </View>
     </View>
   );
 };
@@ -3282,12 +3613,16 @@ const renderModernHeader = () => {
           ]}
           onPress={() => setActiveTab('profile')}
         >
-          <Text style={[
-            styles.segmentText,
-            activeTab === 'profile' && styles.activeSegmentText
-          ]}>
-            Profile Details
-          </Text>
+          <TranslatableText 
+  style={[
+    styles.segmentText,
+    activeTab === 'profile' && styles.activeSegmentText,
+    { fontSize: fontSize }
+  ]}
+  cacheKey="profile_details"
+>
+  Profile Details
+</TranslatableText>
         </TouchableOpacity>
         
         <TouchableOpacity
@@ -3297,12 +3632,16 @@ const renderModernHeader = () => {
           ]}
           onPress={() => setActiveTab('timeline')}
         >
-          <Text style={[
-            styles.segmentText,
-            activeTab === 'timeline' && styles.activeSegmentText
-          ]}>
-            Career Timeline
-          </Text>
+         <TranslatableText 
+  style={[
+    styles.segmentText,
+    activeTab === 'timeline' && styles.activeSegmentText,
+    { fontSize: fontSize }
+  ]}
+  cacheKey="career_timeline"
+>
+  Career Timeline
+</TranslatableText>
         </TouchableOpacity>
       </View>
     </View>
@@ -3314,7 +3653,9 @@ const renderInfoCard = (title, icon, children, backgroundColor = '#ffffff', edit
     <View style={styles.cardHeader}>
       <View style={styles.cardTitleContainer}>
         <Text style={styles.cardIcon}>{icon}</Text>
-        <Text style={styles.cardTitle}>{title}</Text>
+        <TranslatableText style={[styles.cardTitle, { fontSize: fontSize }]}>
+  {title}
+</TranslatableText>
       </View>
       <View style={styles.cardHeaderRight}>
         <View style={styles.cardAccent} />
@@ -3334,7 +3675,9 @@ const renderPersonalInfo = () => {
     return renderInfoCard('Personal Information', '👤',
       <View style={styles.emptyState}>
         <Text style={styles.emptyStateIcon}>👤</Text>
-        <Text style={styles.emptyStateText}>No personal data available</Text>
+       <TranslatableText style={[styles.emptyStateText, { fontSize: fontSize - 2 }]}>
+  No personal data available
+</TranslatableText>
         
         {isAdmin && (
           <TouchableOpacity
@@ -3342,7 +3685,9 @@ const renderPersonalInfo = () => {
             onPress={() => setAddPersonalModalVisible(true)}
           >
             <Text style={styles.addEducationIcon}>+</Text>
-            <Text style={styles.addEducationText}>Add Personal Information</Text>
+            <TranslatableText style={[styles.modalTitle, { fontSize: fontSize + 4 }]}>
+  Add Personal Information
+</TranslatableText>
           </TouchableOpacity>
         )}
       </View>,
@@ -3355,31 +3700,41 @@ const renderPersonalInfo = () => {
     <View style={styles.infoRows}>
       {personalData.birth_place && (
         <View style={styles.infoRow}>
-          <Text style={styles.infoLabel}>Birthplace</Text>
+          <TranslatableText style={[styles.infoLabel, { fontSize: fontSize - 2 }]}>
+  Birthplace
+</TranslatableText>
           <Text style={styles.infoValue}>{personalData.birth_place}</Text>
         </View>
       )}
       {personalData.dob && (
         <View style={styles.infoRow}>
-          <Text style={styles.infoLabel}>Date of Birth</Text>
+          <TranslatableText style={[styles.infoLabel, { fontSize: fontSize - 2 }]}>
+  Date of Birth
+</TranslatableText>
           <Text style={styles.infoValue}>{personalData.dob}</Text>
         </View>
       )}
       {personalData.father_name && (
         <View style={styles.infoRow}>
-          <Text style={styles.infoLabel}>Father's Name</Text>
+          <TranslatableText style={[styles.infoLabel, { fontSize: fontSize - 2 }]}>
+  Father's Name
+</TranslatableText>
           <Text style={styles.infoValue}>{personalData.father_name}</Text>
         </View>
       )}
       {personalData.mother_name && (
         <View style={styles.infoRow}>
-          <Text style={styles.infoLabel}>Mother's Name</Text>
+          <TranslatableText style={[styles.infoLabel, { fontSize: fontSize - 2 }]}>
+  Mother's Name
+</TranslatableText>
           <Text style={styles.infoValue}>{personalData.mother_name}</Text>
         </View>
       )}
       {personalData.profession && (
         <View style={styles.infoRow}>
-          <Text style={styles.infoLabel}>Profession</Text>
+          <TranslatableText style={[styles.infoLabel, { fontSize: fontSize - 2 }]}>
+  Profession
+</TranslatableText>
           <Text style={styles.infoValue}>{personalData.profession}</Text>
         </View>
       )}
@@ -3502,15 +3857,56 @@ const submitPersonalEntry = async () => {
 };
 
 // Submit Permanent Address
-// Submit Permanent Address
-// Submit Permanent Address - FIXED VERSION
-// Submit Permanent Address - CORRECTED VERSION
+// ✅ REPLACE submitPermanentAddressEntry function
 const submitPermanentAddressEntry = async () => {
   try {
     // Validate - at least address1 should be filled
     if (!addPermanentAddressData.address1.trim()) {
       Alert.alert('Validation Error', 'Please enter at least Address Line 1');
       return;
+    }
+
+    // ✅ VALIDATE MOBILE NUMBERS
+    if (addPermanentAddressData.mobile_number1.trim()) {
+      const validation1 = validateMobileNumber(addPermanentAddressData.mobile_number1);
+      if (!validation1.valid) {
+        Alert.alert('Validation Error', `Mobile 1: ${validation1.message}`);
+        return;
+      }
+    }
+
+    if (addPermanentAddressData.mobile_number2.trim()) {
+      const validation2 = validateMobileNumber(addPermanentAddressData.mobile_number2);
+      if (!validation2.valid) {
+        Alert.alert('Validation Error', `Mobile 2: ${validation2.message}`);
+        return;
+      }
+    }
+
+    // ✅ VALIDATE TELEPHONE NUMBERS
+    if (addPermanentAddressData.tel_number1.trim()) {
+      const telValidation1 = validateTelephoneNumber(addPermanentAddressData.tel_number1);
+      if (!telValidation1.valid) {
+        Alert.alert('Validation Error', `Telephone 1: ${telValidation1.message}`);
+        return;
+      }
+    }
+
+    if (addPermanentAddressData.tel_number2.trim()) {
+      const telValidation2 = validateTelephoneNumber(addPermanentAddressData.tel_number2);
+      if (!telValidation2.valid) {
+        Alert.alert('Validation Error', `Telephone 2: ${telValidation2.message}`);
+        return;
+      }
+    }
+
+    // ✅ VALIDATE STD CODE
+    if (addPermanentAddressData.std_code.trim()) {
+      const stdValidation = validateSTDCode(addPermanentAddressData.std_code);
+      if (!stdValidation.valid) {
+        Alert.alert('Validation Error', `STD Code: ${stdValidation.message}`);
+        return;
+      }
     }
 
     setAddPermanentAddressLoading(true);
@@ -3527,34 +3923,19 @@ const submitPermanentAddressEntry = async () => {
     // Get base URL
     const baseUrl = await ConfigService.getBaseUrl();
 
-    // ✅ CORRECTED: Use 'jwt_token' key (matches AuthService)
     let accessToken = await AsyncStorage.getItem('jwt_token');
     let appKey = await EncryptedStorage.getItem('APP_KEY');
-    
-    console.log('🔍 Token check:', {
-      hasAccessToken: !!accessToken,
-      hasAppKey: !!appKey,
-      tokenLength: accessToken?.length || 0
-    });
 
     if (!accessToken || !appKey) {
-      console.error('❌ Missing credentials:', {
-        hasAccessToken: !!accessToken,
-        hasAppKey: !!appKey
-      });
       Alert.alert('Authentication Error', 'Missing authentication credentials. Please log in again.');
       return;
     }
 
-    console.log('✅ Authentication OK');
-    console.log('📧 User Email:', userEmailId);
-    console.log('📱 Member ID:', memberId);
-
-    // Prepare request payload matching Postman structure
+    // Prepare request payload
     const requestPayload = {
+      leader_regd_mobile_no: memberId,
       user_email_id: userEmailId,
       perm_address: {
-        regd_mobile_no: memberId,
         address1: addPermanentAddressData.address1.trim(),
         address2: addPermanentAddressData.address2.trim() || '',
         address3: addPermanentAddressData.address3.trim() || '',
@@ -3569,15 +3950,10 @@ const submitPermanentAddressEntry = async () => {
       }
     };
 
-    console.log('📤 Submitting permanent address');
-
-    // Use authPost which includes Authorization + x-app-key headers
     const result = await ApiService.authPost(
       `${baseUrl}/api/permaddress/`,
       requestPayload
     );
-
-    console.log('📥 API Response:', result.success);
 
     if (result.success) {
       Alert.alert(
@@ -3602,10 +3978,8 @@ const submitPermanentAddressEntry = async () => {
                 mobile_number2: ''
               });
               
-              // Close modal
               setAddPermanentAddressModalVisible(false);
               
-              // Refresh data
               if (memberId) {
                 loadInitialData(memberId);
               }
@@ -3624,19 +3998,60 @@ const submitPermanentAddressEntry = async () => {
     setAddPermanentAddressLoading(false);
   }
 };
-
 // Submit Present Address - CORRECTED VERSION
+// ✅ REPLACE submitPresentAddressEntry function
 const submitPresentAddressEntry = async () => {
   try {
-    // Validate - at least address1 should be filled
     if (!addPresentAddressData.address1.trim()) {
       Alert.alert('Validation Error', 'Please enter at least Address Line 1');
       return;
     }
 
+    // ✅ VALIDATE MOBILE NUMBERS
+    if (addPresentAddressData.mobile_number1.trim()) {
+      const validation1 = validateMobileNumber(addPresentAddressData.mobile_number1);
+      if (!validation1.valid) {
+        Alert.alert('Validation Error', `Mobile 1: ${validation1.message}`);
+        return;
+      }
+    }
+
+    if (addPresentAddressData.mobile_number2.trim()) {
+      const validation2 = validateMobileNumber(addPresentAddressData.mobile_number2);
+      if (!validation2.valid) {
+        Alert.alert('Validation Error', `Mobile 2: ${validation2.message}`);
+        return;
+      }
+    }
+
+    // ✅ VALIDATE TELEPHONE NUMBERS
+    if (addPresentAddressData.tel_number1.trim()) {
+      const telValidation1 = validateTelephoneNumber(addPresentAddressData.tel_number1);
+      if (!telValidation1.valid) {
+        Alert.alert('Validation Error', `Telephone 1: ${telValidation1.message}`);
+        return;
+      }
+    }
+
+    if (addPresentAddressData.tel_number2.trim()) {
+      const telValidation2 = validateTelephoneNumber(addPresentAddressData.tel_number2);
+      if (!telValidation2.valid) {
+        Alert.alert('Validation Error', `Telephone 2: ${telValidation2.message}`);
+        return;
+      }
+    }
+
+    // ✅ VALIDATE STD CODE
+    if (addPresentAddressData.std_code.trim()) {
+      const stdValidation = validateSTDCode(addPresentAddressData.std_code);
+      if (!stdValidation.valid) {
+        Alert.alert('Validation Error', `STD Code: ${stdValidation.message}`);
+        return;
+      }
+    }
+
     setAddPresentAddressLoading(true);
 
-    // Get user information
     const currentUserInfo = await getCurrentUserRole();
     const userEmailId = currentUserInfo.loggedin_email || '';
     
@@ -3645,37 +4060,20 @@ const submitPresentAddressEntry = async () => {
       return;
     }
 
-    // Get base URL
     const baseUrl = await ConfigService.getBaseUrl();
 
-    // ✅ CORRECTED: Use 'jwt_token' key (matches AuthService)
     let accessToken = await AsyncStorage.getItem('jwt_token');
     let appKey = await EncryptedStorage.getItem('APP_KEY');
-    
-    console.log('🔍 Token check:', {
-      hasAccessToken: !!accessToken,
-      hasAppKey: !!appKey,
-      tokenLength: accessToken?.length || 0
-    });
 
     if (!accessToken || !appKey) {
-      console.error('❌ Missing credentials:', {
-        hasAccessToken: !!accessToken,
-        hasAppKey: !!appKey
-      });
       Alert.alert('Authentication Error', 'Missing authentication credentials. Please log in again.');
       return;
     }
 
-    console.log('✅ Authentication OK');
-    console.log('📧 User Email:', userEmailId);
-    console.log('📱 Member ID:', memberId);
-
-    // Prepare request payload matching Postman structure
     const requestPayload = {
+      leader_regd_mobile_no: memberId,
       user_email_id: userEmailId,
       present_address: {
-        regd_mobile_no: memberId,
         address1: addPresentAddressData.address1.trim(),
         address2: addPresentAddressData.address2.trim() || '',
         address3: addPresentAddressData.address3.trim() || '',
@@ -3690,15 +4088,10 @@ const submitPresentAddressEntry = async () => {
       }
     };
 
-    console.log('📤 Submitting present address');
-
-    // Use authPost which includes Authorization + x-app-key headers
     const result = await ApiService.authPost(
       `${baseUrl}/api/preaddress/`,
       requestPayload
     );
-
-    console.log('📥 API Response:', result.success);
 
     if (result.success) {
       Alert.alert(
@@ -3708,7 +4101,6 @@ const submitPresentAddressEntry = async () => {
           {
             text: 'OK',
             onPress: () => {
-              // Reset form
               setAddPresentAddressData({
                 address1: '',
                 address2: '',
@@ -3723,10 +4115,8 @@ const submitPresentAddressEntry = async () => {
                 mobile_number2: ''
               });
               
-              // Close modal
               setAddPresentAddressModalVisible(false);
               
-              // Refresh data
               if (memberId) {
                 loadInitialData(memberId);
               }
@@ -3772,7 +4162,9 @@ const renderEducationInfo = () => {
       ) : (
         <View style={styles.emptyState}>
           <Text style={styles.emptyStateIcon}>🎓</Text>
-          <Text style={styles.emptyStateText}>No education data available</Text>
+         <TranslatableText style={[styles.emptyStateText, { fontSize: fontSize - 2 }]}>
+  No education data available
+</TranslatableText>
         </View>
       )}
       
@@ -3784,7 +4176,9 @@ const renderEducationInfo = () => {
     onPress={() => setAddEducationModalVisible(true)}
   >
     <Text style={styles.addEducationIcon}>+</Text>
-    <Text style={styles.addEducationText}>Add New Education</Text>
+   <TranslatableText style={[styles.addEducationText, { fontSize: fontSize - 2 }]}>
+  Add New Education
+</TranslatableText>
   </TouchableOpacity>
 )}
     </View>,
@@ -3795,6 +4189,7 @@ const renderEducationInfo = () => {
 };
 
 
+// ✅ REPLACE renderContactInfo function
 const renderContactInfo = () => {
   if (!addressData) return null;
 
@@ -3819,21 +4214,35 @@ const renderContactInfo = () => {
               {addressData.permanent.tel_number1 && (
                 <TouchableOpacity 
                   style={styles.contactBtn}
-                  onPress={() => openLink(`tel:${formatPhoneNumber(
-                    addressData.permanent.isd_code,
-                    addressData.permanent.std_code,
-                    addressData.permanent.tel_number1
-                  )}`)}
+                  onPress={() => {
+                    const formattedNumber = formatPhoneNumberForCall(
+                      addressData.permanent.isd_code,
+                      addressData.permanent.std_code,
+                      addressData.permanent.tel_number1
+                    );
+                    openLink(`tel:${formattedNumber}`);
+                  }}
                 >
-                  <Text style={styles.contactBtnText}>Call Landline</Text>
+                  <TranslatableText style={[styles.contactBtnText, { fontSize: fontSize - 2 }]}>
+                    Call Landline
+                  </TranslatableText>
                 </TouchableOpacity>
               )}
               {addressData.permanent.mobile_number1 && (
                 <TouchableOpacity 
                   style={styles.contactBtn}
-                  onPress={() => openLink(`tel:${addressData.permanent.isd_code}${addressData.permanent.mobile_number1}`)}
+                  onPress={() => {
+                    // For mobile, just use ISD + Mobile (no STD code)
+                    const isd = (addressData.permanent.isd_code || '+91').replace(/^0+/, '').replace('+', '');
+                    openLink(`tel:+${isd}${addressData.permanent.mobile_number1}`);
+                  }}
                 >
-                  <Text style={styles.contactBtnText}>Call Mobile</Text>
+                  <TranslatableText 
+                    style={[styles.contactBtnText, { fontSize: fontSize - 2 }]}
+                    cacheKey="call_mobile_permanent"
+                  >
+                    Call Mobile
+                  </TranslatableText>
                 </TouchableOpacity>
               )}
             </View>
@@ -3854,7 +4263,7 @@ const renderContactInfo = () => {
                 onPress={() => setAddPermanentAddressModalVisible(true)}
               >
                 <Text style={styles.addEducationIcon}>+</Text>
-                <Text style={styles.addEducationText}>Add Permanent Address</Text>
+                <TranslatableText style={styles.addEducationText}>Add Permanent Address</TranslatableText>
               </TouchableOpacity>
             )}
           </View>,
@@ -3881,19 +4290,28 @@ const renderContactInfo = () => {
               {addressData.present.tel_number1 && (
                 <TouchableOpacity 
                   style={styles.contactBtn}
-                  onPress={() => openLink(`tel:${formatPhoneNumber(
-                    addressData.present.isd_code,
-                    addressData.present.std_code,
-                    addressData.present.tel_number1
-                  )}`)}
+                  onPress={() => {
+                    const formattedNumber = formatPhoneNumberForCall(
+                      addressData.present.isd_code,
+                      addressData.present.std_code,
+                      addressData.present.tel_number1
+                    );
+                    openLink(`tel:${formattedNumber}`);
+                  }}
                 >
-                  <Text style={styles.contactBtnText}>Call Office</Text>
+                  <TranslatableText style={[styles.contactBtnText, { fontSize: fontSize - 2 }]}>
+                    Call Office
+                  </TranslatableText>
                 </TouchableOpacity>
               )}
               {addressData.present.mobile_number1 && (
                 <TouchableOpacity 
                   style={styles.contactBtn}
-                  onPress={() => openLink(`tel:${addressData.present.isd_code}${addressData.present.mobile_number1}`)}
+                  onPress={() => {
+                    // For mobile, just use ISD + Mobile (no STD code)
+                    const isd = (addressData.present.isd_code || '+91').replace(/^0+/, '').replace('+', '');
+                    openLink(`tel:+${isd}${addressData.present.mobile_number1}`);
+                  }}
                 >
                   <Text style={styles.contactBtnText}>Call Mobile</Text>
                 </TouchableOpacity>
@@ -3916,7 +4334,7 @@ const renderContactInfo = () => {
                 onPress={() => setAddPresentAddressModalVisible(true)}
               >
                 <Text style={styles.addEducationIcon}>+</Text>
-                <Text style={styles.addEducationText}>Add Present Address</Text>
+                <TranslatableText style={styles.addEducationText}>Add Present Address</TranslatableText>
               </TouchableOpacity>
             )}
           </View>,
@@ -3927,9 +4345,7 @@ const renderContactInfo = () => {
   );
 };
 
- const renderSocialMedia = () => {
-  if (!socialMediaData) return null;
-
+const renderSocialMedia = () => {
   const socialPlatforms = [
     { key: 'facebook', icon: '📘', name: 'Facebook' },
     { key: 'twitter', icon: '🐦', name: 'Twitter/X' },
@@ -3937,11 +4353,59 @@ const renderContactInfo = () => {
     { key: 'instagram', icon: '📸', name: 'Instagram' }
   ];
 
+  // If no social media data exists, show "Add Social Media" button
+  if (!socialMediaData) {
+    return renderInfoCard('Social Media Presence', '🌐',
+      <View style={styles.emptyState}>
+        <Text style={styles.emptyStateIcon}>🌐</Text>
+        <TranslatableText style={[styles.emptyStateText, { fontSize: fontSize - 2 }]}>
+          No social media data available
+        </TranslatableText>
+        
+        {isAdmin && (
+          <TouchableOpacity
+            style={styles.addEducationButton}
+            onPress={() => setAddSocialMediaModalVisible(true)}
+          >
+            <Text style={styles.addEducationIcon}>+</Text>
+            <TranslatableText style={[styles.addEducationText, { fontSize: fontSize - 2 }]}>
+              Add Social Media
+            </TranslatableText>
+          </TouchableOpacity>
+        )}
+      </View>,
+      '#ffffff'
+    );
+  }
+
+  // If social media data exists, show it with edit/delete options
   const activePlatforms = socialPlatforms.filter(platform => 
     socialMediaData[platform.key] && socialMediaData[platform.key].trim() !== ''
   );
 
-  if (activePlatforms.length === 0) return null;
+  if (activePlatforms.length === 0) {
+    return renderInfoCard('Social Media Presence', '🌐',
+      <View style={styles.emptyState}>
+        <Text style={styles.emptyStateIcon}>🌐</Text>
+        <TranslatableText style={[styles.emptyStateText, { fontSize: fontSize - 2 }]}>
+          No social media links added
+        </TranslatableText>
+        
+        {isAdmin && (
+          <TouchableOpacity
+            style={styles.addEducationButton}
+            onPress={() => setAddSocialMediaModalVisible(true)}
+          >
+            <Text style={styles.addEducationIcon}>+</Text>
+            <TranslatableText style={[styles.addEducationText, { fontSize: fontSize - 2 }]}>
+              Add Social Media
+            </TranslatableText>
+          </TouchableOpacity>
+        )}
+      </View>,
+      '#ffffff'
+    );
+  }
 
   return renderInfoCard('Social Media Presence', '🌐',
     <View style={styles.socialGrid}>
@@ -3963,9 +4427,222 @@ const renderContactInfo = () => {
       ))}
     </View>,
     '#ffffff',
-    'social',        // editType
-    socialMediaData  // editData
+    'social',
+    socialMediaData
   );
+};
+
+// Add this function after submitPresentAddressEntry (around line 800)
+const submitSocialMediaEntry = async () => {
+  try {
+    // Validate - at least one field should be filled
+    if (!addSocialMediaData.facebook.trim() && 
+        !addSocialMediaData.twitter.trim() && 
+        !addSocialMediaData.linkedin.trim() && 
+        !addSocialMediaData.instagram.trim()) {
+      Alert.alert('Validation Error', 'Please fill at least one social media link');
+      return;
+    }
+
+    setAddSocialMediaLoading(true);
+
+    // Get user information
+    const currentUserInfo = await getCurrentUserRole();
+    const userEmailId = currentUserInfo.loggedin_email || '';
+    
+    if (!memberId) {
+      Alert.alert('Error', 'Member ID not available. Please try refreshing the screen.');
+      return;
+    }
+
+    // Get base URL
+    const baseUrl = await ConfigService.getBaseUrl();
+
+    // Prepare request payload matching Postman structure
+    const requestPayload = {
+      leader_regd_mobile_no: memberId,
+      user_email_id: userEmailId,
+      social_media: {
+        facebook: addSocialMediaData.facebook.trim() || '',
+        twitter: addSocialMediaData.twitter.trim() || '',
+        linkedin: addSocialMediaData.linkedin.trim() || '',
+        instagram: addSocialMediaData.instagram.trim() || ''
+      }
+    };
+
+    console.log('📤 Submitting social media:', requestPayload);
+
+    // Use authPost which includes Authorization + x-app-key headers
+    const result = await ApiService.authPost(
+      `${baseUrl}/api/socialmedia/`,
+      requestPayload
+    );
+
+    console.log('📥 API Response:', result.success);
+
+    if (result.success) {
+      Alert.alert(
+        'Success', 
+        'Social media information added successfully!',
+        [
+          {
+            text: 'OK',
+            onPress: () => {
+              // Reset form
+              setAddSocialMediaData({
+                facebook: '',
+                twitter: '',
+                linkedin: '',
+                instagram: ''
+              });
+              
+              // Close modal
+              setAddSocialMediaModalVisible(false);
+              
+              // Refresh data
+              if (memberId) {
+                loadInitialData(memberId);
+              }
+            }
+          }
+        ]
+      );
+    } else {
+      throw new Error(result.message || result.error || 'Failed to add social media');
+    }
+
+  } catch (error) {
+    console.error('❌ Error submitting social media:', error);
+    Alert.alert('Error', `Failed to add social media: ${error.message}`);
+  } finally {
+    setAddSocialMediaLoading(false);
+  }
+};
+
+const submitLeaderCoordinatesEntry = async () => {
+  try {
+    // Validate form data
+    if (!addLeaderCoordinatesData.member_name.trim()) {
+      Alert.alert('Validation Error', 'Please enter member name');
+      return;
+    }
+    if (!addLeaderCoordinatesData.party.trim()) {
+      Alert.alert('Validation Error', 'Please enter party name');
+      return;
+    }
+    if (!addLeaderCoordinatesData.constituency.trim()) {
+      Alert.alert('Validation Error', 'Please enter constituency');
+      return;
+    }
+    if (!addLeaderCoordinatesData.state.trim()) {
+      Alert.alert('Validation Error', 'Please enter state');
+      return;
+    }
+
+    setAddLeaderCoordinatesLoading(true);
+
+    // Get user information
+    const currentUserInfo = await getCurrentUserRole();
+    const userEmailId = currentUserInfo.loggedin_email || '';
+    
+    if (!memberId) {
+      Alert.alert('Error', 'Member ID not available. Please try refreshing the screen.');
+      setAddLeaderCoordinatesLoading(false);
+      return;
+    }
+
+    // Get base URL
+    const baseUrl = await ConfigService.getBaseUrl();
+
+    // ✅ MATCH POSTMAN POST REQUEST - Fields at ROOT level (no leader_coordinates wrapper)
+    const requestPayload = {
+      leader_regd_mobile_no: memberId,
+      user_email_id: userEmailId,
+      title: addLeaderCoordinatesData.title.trim() || '',
+      member_name: addLeaderCoordinatesData.member_name.trim(),
+      party: addLeaderCoordinatesData.party.trim(),
+      constituency: addLeaderCoordinatesData.constituency.trim(),
+      state: addLeaderCoordinatesData.state.trim(),
+      email_id: addLeaderCoordinatesData.email_id.trim() || '',
+      digital_sansad_url: addLeaderCoordinatesData.digital_sansad_url.trim() || ''
+    };
+
+    console.log('📤 Submitting leader coordinates (matching Postman POST):');
+    console.log(JSON.stringify(requestPayload, null, 2));
+
+    // Use authPost which includes Authorization + x-app-key headers
+    const result = await ApiService.authPost(
+      `${baseUrl}/api/coordinates`,  // ✅ NO trailing slash (matching Postman)
+      requestPayload
+    );
+
+    console.log('📥 POST Response:', JSON.stringify(result, null, 2));
+
+    if (result.success) {
+      Alert.alert(
+        '✅ Success', 
+        'Leader coordinates added successfully!',
+        [
+          {
+            text: 'OK',
+            onPress: async () => {
+              // Reset form
+              setAddLeaderCoordinatesData({
+                title: '',
+                member_name: '',
+                party: '',
+                constituency: '',
+                state: '',
+                email_id: '',
+                digital_sansad_url: ''
+              });
+              
+              // Close modal
+              setAddLeaderCoordinatesModalVisible(false);
+              
+              // Clear old state
+              setMemberData(null);
+              
+              // Force reload with delay
+              setTimeout(async () => {
+                console.log('🔄 Reloading data after leader coordinates creation...');
+                await loadInitialData(memberId);
+                
+                setRefreshing(true);
+                setTimeout(() => {
+                  setRefreshing(false);
+                  console.log('✅ Data reloaded with new leader coordinates');
+                }, 500);
+              }, 500);
+            }
+          }
+        ]
+      );
+    } else {
+      throw new Error(result.message || result.error || 'Failed to add leader coordinates');
+    }
+
+  } catch (error) {
+    console.error('❌ Error submitting leader coordinates:', error);
+    
+    let errorMessage = 'Failed to add leader coordinates';
+    
+    if (error.message) {
+      if (error.message.includes('network')) {
+        errorMessage = 'Network error. Please check your internet connection.';
+      } else if (error.message.includes('401') || error.message.includes('unauthorized')) {
+        errorMessage = 'Authentication failed. Please log in again.';
+      } else if (error.message.includes('400')) {
+        errorMessage = 'Invalid data format. Please check all fields.';
+      } else {
+        errorMessage = error.message;
+      }
+    }
+    
+    Alert.alert('Error', errorMessage);
+  } finally {
+    setAddLeaderCoordinatesLoading(false);
+  }
 };
 const renderKYLMediaGallery = () => {
   if (kylMediaLoading) {
@@ -4288,47 +4965,53 @@ const submitTimelineEntry = async () => {
       return;
     }
 
+    // ✅ IMPROVED DATE VALIDATION
+    const dateValidation = validateDateFormat(addTimelineData.date.trim());
+    if (!dateValidation.valid) {
+      Alert.alert('Invalid Date', dateValidation.message);
+      return;
+    }
+
     setAddTimelineLoading(true);
 
     // Get user information
     const currentUserInfo = await getCurrentUserRole();
-    const userEmailId = currentUserInfo.loggedin_email || 'sanjay.jaiswal@gmail.com';
+    const userEmailId = currentUserInfo.loggedin_email || '';
     
     if (!memberId) {
       Alert.alert('Error', 'Member ID not available. Please try refreshing the screen.');
+      setAddTimelineLoading(false);
       return;
     }
 
     // Get base URL
     const baseUrl = await ConfigService.getBaseUrl();
 
-    // Prepare request payload matching your Postman request
     const requestPayload = {
+      leader_regd_mobile_no: memberId,
       user_email_id: userEmailId,
-      leader_timeline: {
-        regd_mobile_no: memberId,
-        timeline: [
-          {
-            date: addTimelineData.date.trim(),
-            title: addTimelineData.title.trim(),
-            title_details: addTimelineData.title_details.trim(),
-            additional_info: addTimelineData.additional_info.trim() || ''
-          }
-        ]
-      }
+      timeline: [
+        {
+          date: addTimelineData.date.trim(),
+          title: addTimelineData.title.trim(),
+          title_details: addTimelineData.title_details.trim(),
+          additional_info: addTimelineData.additional_info.trim() || ''
+        }
+      ]
     };
 
-    console.log('📤 Submitting timeline entry:', requestPayload);
+    console.log('📤 Submitting timeline entry:', JSON.stringify(requestPayload, null, 2));
 
-    // Use authPost since timeline endpoint requires authentication
     const result = await ApiService.authPost(
       `${baseUrl}/api/leadertimeline`,
       requestPayload
     );
 
+    console.log('📥 Timeline POST Response:', result);
+
     if (result.success) {
       Alert.alert(
-        'Success', 
+        '✅ Success', 
         'Timeline entry added successfully!',
         [
           {
@@ -4354,18 +5037,27 @@ const submitTimelineEntry = async () => {
         ]
       );
     } else {
-      throw new Error(result.message || 'Failed to add timeline entry');
+      throw new Error(result.message || result.error || 'Failed to add timeline entry');
     }
 
   } catch (error) {
     console.error('❌ Error submitting timeline entry:', error);
     
-    // Handle specific error cases
-    if (error.message && error.message.includes('network')) {
-      Alert.alert('Network Error', 'Please check your internet connection and try again.');
-    } else {
-      Alert.alert('Error', `Failed to add timeline entry: ${error.message}`);
+    let errorMessage = 'Failed to add timeline entry';
+    
+    if (error.message) {
+      if (error.message.includes('network')) {
+        errorMessage = 'Network error. Please check your internet connection.';
+      } else if (error.message.includes('401') || error.message.includes('unauthorized')) {
+        errorMessage = 'Authentication failed. Please log in again.';
+      } else if (error.message.includes('400')) {
+        errorMessage = 'Invalid data format. Please check all fields.';
+      } else {
+        errorMessage = error.message;
+      }
     }
+    
+    Alert.alert('Error', errorMessage);
   } finally {
     setAddTimelineLoading(false);
   }
@@ -4411,7 +5103,9 @@ const renderTimeline = () => {
       ) : (
         <View style={styles.emptyState}>
           <Text style={styles.emptyStateIcon}>📋</Text>
-          <Text style={styles.emptyStateText}>No timeline data available</Text>
+         <TranslatableText style={[styles.emptyStateText, { fontSize: fontSize - 2 }]}>
+  No timeline data available
+</TranslatableText>
         </View>
       )}
       
@@ -4423,7 +5117,9 @@ const renderTimeline = () => {
     onPress={() => setAddTimelineModalVisible(true)}
   >
     <Text style={styles.addEducationIcon}>+</Text>
-    <Text style={styles.addEducationText}>Add New Timeline Entry</Text>
+    <TranslatableText style={[styles.addEducationText, { fontSize: fontSize - 2 }]}>
+  Add New Timeline Entry
+</TranslatableText>
   </TouchableOpacity>
 )}
     </View>,
@@ -4490,19 +5186,29 @@ const renderTimeline = () => {
               <Text style={styles.editSectionTitle}>Timeline Details</Text>
               
               {/* Date Field */}
-              <View style={styles.editInputContainer}>
-                <Text style={styles.editInputLabel}>DATE *</Text>
-                <TextInput
-                  style={styles.editInput}
-                  value={addTimelineData.date}
-                  onChangeText={(text) => setAddTimelineData({
-                    ...addTimelineData,
-                    date: text
-                  })}
-                  placeholder="e.g., 25/05/2024"
-                  multiline={false}
-                />
-              </View>
+             {/* Date Field */}
+<View style={styles.editInputContainer}>
+  <Text style={styles.editInputLabel}>DATE *</Text>
+  <TextInput
+    style={styles.editInput}
+    value={addTimelineData.date}
+    onChangeText={(text) => {
+      // ✅ AUTO-FORMAT DATE AS USER TYPES
+      const formatted = formatDateInput(text);
+      setAddTimelineData({
+        ...addTimelineData,
+        date: formatted
+      });
+    }}
+    placeholder="DD/MM/YYYY (e.g., 25/05/2024)"
+    keyboardType="numeric"
+    maxLength={10}  // ✅ DD/MM/YYYY = 10 characters
+    multiline={false}
+  />
+  <Text style={styles.inputHelperText}>
+    Enter date in DD/MM/YYYY format (slashes will be added automatically)
+  </Text>
+</View>
 
               {/* Title Field */}
               <View style={styles.editInputContainer}>
@@ -4623,7 +5329,9 @@ const AddKYLMediaModal = ({ visible, onClose, onSave }) => {
       <View style={styles.modalOverlay}>
         <View style={[styles.modalContainer, { maxHeight: '80%' }]}>
           <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>Add New KYL Media</Text>
+            <TranslatableText style={[styles.modalTitle, { fontSize: fontSize + 4 }]}>
+  Add New KYL Media
+</TranslatableText>
             <TouchableOpacity onPress={onClose}>
               <Text style={styles.closeButton}>✕</Text>
             </TouchableOpacity>
@@ -4634,15 +5342,17 @@ const AddKYLMediaModal = ({ visible, onClose, onSave }) => {
             contentContainerStyle={{ paddingBottom: 20 }}
             showsVerticalScrollIndicator={true}
           >
-            <Text style={styles.label}>Select Image *</Text>
+            <TranslatableText style={[styles.label, { fontSize: fontSize - 2 }]}>
+  Select Image *
+</TranslatableText>
             <TouchableOpacity 
               style={styles.imagePickerButton}
               onPress={handlePickImage}
             >
               <Icon name="image" size={24} color="#e16e2b" />
-              <Text style={styles.imagePickerText}>
-                {selectedImage ? 'Change Image' : 'Choose Image'}
-              </Text>
+            <TranslatableText style={[styles.imagePickerText, { fontSize: fontSize - 2 }]}>
+  {selectedImage ? 'Change Image' : 'Choose Image'}
+</TranslatableText>
             </TouchableOpacity>
 
             {selectedImage && (
@@ -4750,7 +5460,9 @@ const EditKYLMediaModal = ({ visible, item, onClose, onSave }) => {
       <View style={styles.modalOverlay}>
         <View style={[styles.modalContainer, { maxHeight: '80%' }]}>
           <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>Update KYL Image</Text>
+            <TranslatableText style={[styles.modalTitle, { fontSize: fontSize + 4 }]}>
+  Update KYL Image
+</TranslatableText>
             <TouchableOpacity onPress={onClose}>
               <Text style={styles.closeButton}>✕</Text>
             </TouchableOpacity>
@@ -4849,11 +5561,15 @@ const renderAddPersonalModal = () => {
           {/* Modal Body */}
           <ScrollView style={styles.editModalBody}>
             <View style={styles.editFormContainer}>
-              <Text style={styles.editSectionTitle}>Personal Details</Text>
+              <TranslatableText style={[styles.editSectionTitle, { fontSize: fontSize + 2 }]}>
+  Personal Details
+</TranslatableText>
               
               {/* Birth Place Field */}
               <View style={styles.editInputContainer}>
-                <Text style={styles.editInputLabel}>BIRTH PLACE</Text>
+                <TranslatableText style={[styles.editInputLabel, { fontSize: fontSize - 2 }]}>
+  BIRTH PLACE
+</TranslatableText>
                 <TextInput
                   style={styles.editInput}
                   value={addPersonalData.birth_place}
@@ -4868,7 +5584,10 @@ const renderAddPersonalModal = () => {
 
               {/* Date of Birth Field */}
               <View style={styles.editInputContainer}>
-                <Text style={styles.editInputLabel}>DATE OF BIRTH</Text>
+                <TranslatableText style={[styles.editInputLabel, { fontSize: fontSize - 2 }]}>
+  DATE OF BIRTH
+</TranslatableText>
+
                 <TextInput
                   style={styles.editInput}
                   value={addPersonalData.dob}
@@ -4883,7 +5602,9 @@ const renderAddPersonalModal = () => {
 
               {/* Father's Name Field */}
               <View style={styles.editInputContainer}>
-                <Text style={styles.editInputLabel}>FATHER'S NAME</Text>
+                <TranslatableText style={[styles.editInputLabel, { fontSize: fontSize - 2 }]}>
+  FATHER'S NAME
+</TranslatableText>
                 <TextInput
                   style={styles.editInput}
                   value={addPersonalData.father_name}
@@ -4898,7 +5619,10 @@ const renderAddPersonalModal = () => {
 
               {/* Mother's Name Field */}
               <View style={styles.editInputContainer}>
-                <Text style={styles.editInputLabel}>MOTHER'S NAME</Text>
+                <TranslatableText style={[styles.editInputLabel, { fontSize: fontSize - 2 }]}>
+  MOTHER'S NAME
+</TranslatableText>
+
                 <TextInput
                   style={styles.editInput}
                   value={addPersonalData.mother_name}
@@ -4913,7 +5637,9 @@ const renderAddPersonalModal = () => {
 
               {/* Profession Field */}
               <View style={styles.editInputContainer}>
-                <Text style={styles.editInputLabel}>PROFESSION</Text>
+                <TranslatableText style={[styles.editInputLabel, { fontSize: fontSize - 2 }]}>
+  PROFESSION
+</TranslatableText>
                 <TextInput
                   style={styles.editInput}
                   value={addPersonalData.profession}
@@ -4961,7 +5687,9 @@ const renderAddPermanentAddressModal = () => {
               <Text style={styles.editModalCloseText}>✕</Text>
             </TouchableOpacity>
             <View style={styles.editModalTitleContainer}>
-              <Text style={styles.editModalTitle}>Add Permanent Address</Text>
+             <TranslatableText style={[styles.modalTitle, { fontSize: fontSize + 4 }]}>
+  Add Permanent Address
+</TranslatableText>
             </View>
             <TouchableOpacity
               onPress={submitPermanentAddressEntry}
@@ -4978,10 +5706,12 @@ const renderAddPermanentAddressModal = () => {
 
           <ScrollView style={styles.editModalBody}>
             <View style={styles.editFormContainer}>
-              <Text style={styles.editSectionTitle}>Address Details</Text>
+             <TranslatableText style={[styles.editSectionTitle, { fontSize: fontSize + 2 }]}>
+  Address Details
+</TranslatableText>
               
               <View style={styles.editInputContainer}>
-                <Text style={styles.editInputLabel}>ADDRESS LINE 1 *</Text>
+                <TranslatableText style={styles.editInputLabel}>ADDRESS LINE 1 *</TranslatableText>
                 <TextInput
                   style={styles.editInput}
                   value={addPermanentAddressData.address1}
@@ -4994,7 +5724,7 @@ const renderAddPermanentAddressModal = () => {
               </View>
 
               <View style={styles.editInputContainer}>
-                <Text style={styles.editInputLabel}>ADDRESS LINE 2</Text>
+                <TranslatableText style={styles.editInputLabel}>ADDRESS LINE 2</TranslatableText>
                 <TextInput
                   style={styles.editInput}
                   value={addPermanentAddressData.address2}
@@ -5007,7 +5737,7 @@ const renderAddPermanentAddressModal = () => {
               </View>
 
               <View style={styles.editInputContainer}>
-                <Text style={styles.editInputLabel}>ADDRESS LINE 3</Text>
+                <TranslatableText style={styles.editInputLabel}>ADDRESS LINE 3</TranslatableText>
                 <TextInput
                   style={styles.editInput}
                   value={addPermanentAddressData.address3}
@@ -5020,7 +5750,7 @@ const renderAddPermanentAddressModal = () => {
               </View>
 
               <View style={styles.editInputContainer}>
-                <Text style={styles.editInputLabel}>PINCODE</Text>
+                <TranslatableText style={styles.editInputLabel}>PINCODE</TranslatableText>
                 <TextInput
                   style={styles.editInput}
                   value={addPermanentAddressData.pincode}
@@ -5034,7 +5764,7 @@ const renderAddPermanentAddressModal = () => {
               </View>
 
               <View style={styles.editInputContainer}>
-                <Text style={styles.editInputLabel}>STATE</Text>
+                <TranslatableText style={styles.editInputLabel}>STATE</TranslatableText>
                 <TextInput
                   style={styles.editInput}
                   value={addPermanentAddressData.state}
@@ -5046,10 +5776,12 @@ const renderAddPermanentAddressModal = () => {
                 />
               </View>
 
-              <Text style={styles.editSectionTitle}>Contact Details</Text>
+              <TranslatableText style={[styles.editSectionTitle, { fontSize: fontSize + 2 }]}>
+  Contact Details
+</TranslatableText>
 
               <View style={styles.editInputContainer}>
-                <Text style={styles.editInputLabel}>ISD CODE</Text>
+                <TranslatableText style={styles.editInputLabel}>ISD CODE</TranslatableText>
                 <TextInput
                   style={styles.editInput}
                   value={addPermanentAddressData.isd_code}
@@ -5062,49 +5794,64 @@ const renderAddPermanentAddressModal = () => {
               </View>
 
               <View style={styles.editInputContainer}>
-                <Text style={styles.editInputLabel}>STD CODE</Text>
+                <TranslatableText style={styles.editInputLabel}>STD CODE</TranslatableText>
                 <TextInput
-                  style={styles.editInput}
-                  value={addPermanentAddressData.std_code}
-                  onChangeText={(text) => setAddPermanentAddressData({
-                    ...addPermanentAddressData,
-                    std_code: text
-                  })}
-                  placeholder="e.g., 0622"
-                  keyboardType="numeric"
-                />
+  style={styles.editInput}
+  value={addPermanentAddressData.std_code}
+  onChangeText={(text) => {
+    // Only allow numbers and limit to 5 digits
+    const cleaned = text.replace(/[^0-9]/g, '').slice(0, 5);
+    setAddPermanentAddressData({
+      ...addPermanentAddressData,
+      std_code: cleaned
+    });
+  }}
+  placeholder="e.g., 0622"
+  keyboardType="numeric"
+  maxLength={5}  // ✅ ADD THIS
+/>
               </View>
 
               <View style={styles.editInputContainer}>
-                <Text style={styles.editInputLabel}>TELEPHONE 1</Text>
+                <TranslatableText style={styles.editInputLabel}>TELEPHONE 1</TranslatableText>
                 <TextInput
-                  style={styles.editInput}
-                  value={addPermanentAddressData.tel_number1}
-                  onChangeText={(text) => setAddPermanentAddressData({
-                    ...addPermanentAddressData,
-                    tel_number1: text
-                  })}
-                  placeholder="e.g., 2345672"
-                  keyboardType="phone-pad"
-                />
+  style={styles.editInput}
+  value={addPermanentAddressData.tel_number1}
+  onChangeText={(text) => {
+    // Only allow numbers and limit to 8 digits
+    const cleaned = text.replace(/[^0-9]/g, '').slice(0, 8);
+    setAddPermanentAddressData({
+      ...addPermanentAddressData,
+      tel_number1: cleaned
+    });
+  }}
+  placeholder="e.g., 2345672"
+  keyboardType="phone-pad"
+  maxLength={8}  // ✅ ADD THIS
+/>
               </View>
 
               <View style={styles.editInputContainer}>
-                <Text style={styles.editInputLabel}>MOBILE 1</Text>
+                <TranslatableText style={styles.editInputLabel}>MOBILE 1</TranslatableText>
                 <TextInput
-                  style={styles.editInput}
-                  value={addPermanentAddressData.mobile_number1}
-                  onChangeText={(text) => setAddPermanentAddressData({
-                    ...addPermanentAddressData,
-                    mobile_number1: text
-                  })}
-                  placeholder="e.g., 8907896789"
-                  keyboardType="phone-pad"
-                />
+  style={styles.editInput}
+  value={addPermanentAddressData.mobile_number1}
+  onChangeText={(text) => {
+    // Only allow numbers and limit to 10 digits
+    const cleaned = text.replace(/[^0-9]/g, '').slice(0, 10);
+    setAddPermanentAddressData({
+      ...addPermanentAddressData,
+      mobile_number1: cleaned
+    });
+  }}
+  placeholder="e.g., 8907896789"
+  keyboardType="phone-pad"
+  maxLength={10}  // ✅ ADD THIS
+/>
               </View>
 
               <View style={styles.editInputContainer}>
-                <Text style={styles.editInputLabel}>TELEPHONE 2</Text>
+                <TranslatableText style={styles.editInputLabel}>TELEPHONE 2</TranslatableText>
                 <TextInput
                   style={styles.editInput}
                   value={addPermanentAddressData.tel_number2}
@@ -5118,7 +5865,7 @@ const renderAddPermanentAddressModal = () => {
               </View>
 
               <View style={styles.editInputContainer}>
-                <Text style={styles.editInputLabel}>MOBILE 2</Text>
+                <TranslatableText style={styles.editInputLabel}>MOBILE 2</TranslatableText>
                 <TextInput
                   style={styles.editInput}
                   value={addPermanentAddressData.mobile_number2}
@@ -5132,9 +5879,9 @@ const renderAddPermanentAddressModal = () => {
               </View>
 
               <View style={styles.infoContainer}>
-                <Text style={styles.infoText}>
+                <TranslatableText style={styles.infoText}>
                   Address Line 1 is required. Other fields are optional.
-                </Text>
+                </TranslatableText>
               </View>
             </View>
           </ScrollView>
@@ -5166,7 +5913,9 @@ const renderAddPresentAddressModal = () => {
               <Text style={styles.editModalCloseText}>✕</Text>
             </TouchableOpacity>
             <View style={styles.editModalTitleContainer}>
-              <Text style={styles.editModalTitle}>Add Present Address</Text>
+              <TranslatableText style={[styles.modalTitle, { fontSize: fontSize + 4 }]}>
+  Add Present Address
+</TranslatableText>
             </View>
             <TouchableOpacity
               onPress={submitPresentAddressEntry}
@@ -5186,7 +5935,9 @@ const renderAddPresentAddressModal = () => {
               <Text style={styles.editSectionTitle}>Address Details</Text>
               
               <View style={styles.editInputContainer}>
-                <Text style={styles.editInputLabel}>ADDRESS LINE 1 *</Text>
+               <TranslatableText style={[styles.editInputLabel, { fontSize: fontSize - 2 }]}>
+  ADDRESS LINE 1 *
+</TranslatableText>
                 <TextInput
                   style={styles.editInput}
                   value={addPresentAddressData.address1}
@@ -5199,7 +5950,9 @@ const renderAddPresentAddressModal = () => {
               </View>
 
               <View style={styles.editInputContainer}>
-                <Text style={styles.editInputLabel}>ADDRESS LINE 2</Text>
+               <TranslatableText style={[styles.editInputLabel, { fontSize: fontSize - 2 }]}>
+  ADDRESS LINE 2
+</TranslatableText>
                 <TextInput
                   style={styles.editInput}
                   value={addPresentAddressData.address2}
@@ -5212,7 +5965,7 @@ const renderAddPresentAddressModal = () => {
               </View>
 
               <View style={styles.editInputContainer}>
-                <Text style={styles.editInputLabel}>ADDRESS LINE 3</Text>
+                <TranslatableText style={styles.editInputLabel}>ADDRESS LINE 3</TranslatableText>
                 <TextInput
                   style={styles.editInput}
                   value={addPresentAddressData.address3}
@@ -5225,7 +5978,9 @@ const renderAddPresentAddressModal = () => {
               </View>
 
               <View style={styles.editInputContainer}>
-                <Text style={styles.editInputLabel}>PINCODE</Text>
+                <TranslatableText style={[styles.editInputLabel, { fontSize: fontSize - 2 }]}>
+  PINCODE
+</TranslatableText>
                 <TextInput
                   style={styles.editInput}
                   value={addPresentAddressData.pincode}
@@ -5239,7 +5994,9 @@ const renderAddPresentAddressModal = () => {
               </View>
 
               <View style={styles.editInputContainer}>
-                <Text style={styles.editInputLabel}>STATE</Text>
+               <TranslatableText style={[styles.editInputLabel, { fontSize: fontSize - 2 }]}>
+  STATE
+</TranslatableText>
                 <TextInput
                   style={styles.editInput}
                   value={addPresentAddressData.state}
@@ -5251,10 +6008,10 @@ const renderAddPresentAddressModal = () => {
                 />
               </View>
 
-              <Text style={styles.editSectionTitle}>Contact Details</Text>
+              <TranslatableText style={styles.editSectionTitle}>Contact Details</TranslatableText>
 
               <View style={styles.editInputContainer}>
-                <Text style={styles.editInputLabel}>ISD CODE</Text>
+                <TranslatableText style={styles.editInputLabel}>ISD CODE</TranslatableText>
                 <TextInput
                   style={styles.editInput}
                   value={addPresentAddressData.isd_code}
@@ -5267,7 +6024,7 @@ const renderAddPresentAddressModal = () => {
               </View>
 
               <View style={styles.editInputContainer}>
-                <Text style={styles.editInputLabel}>STD CODE</Text>
+                <TranslatableText style={styles.editInputLabel}>STD CODE</TranslatableText>
                 <TextInput
                   style={styles.editInput}
                   value={addPresentAddressData.std_code}
@@ -5281,7 +6038,9 @@ const renderAddPresentAddressModal = () => {
               </View>
 
               <View style={styles.editInputContainer}>
-                <Text style={styles.editInputLabel}>TELEPHONE 1</Text>
+                <TranslatableText style={[styles.editInputLabel, { fontSize: fontSize - 2 }]}>
+  TELEPHONE 1
+</TranslatableText>
                 <TextInput
                   style={styles.editInput}
                   value={addPresentAddressData.tel_number1}
@@ -5295,7 +6054,9 @@ const renderAddPresentAddressModal = () => {
               </View>
 
               <View style={styles.editInputContainer}>
-                <Text style={styles.editInputLabel}>MOBILE 1</Text>
+                <TranslatableText style={[styles.editInputLabel, { fontSize: fontSize - 2 }]}>
+  MOBILE 1
+</TranslatableText>
                 <TextInput
                   style={styles.editInput}
                   value={addPresentAddressData.mobile_number1}
@@ -5309,7 +6070,7 @@ const renderAddPresentAddressModal = () => {
               </View>
 
               <View style={styles.editInputContainer}>
-                <Text style={styles.editInputLabel}>TELEPHONE 2</Text>
+                <TranslatableText style={styles.editInputLabel}>TELEPHONE 2</TranslatableText>
                 <TextInput
                   style={styles.editInput}
                   value={addPresentAddressData.tel_number2}
@@ -5323,7 +6084,7 @@ const renderAddPresentAddressModal = () => {
               </View>
 
               <View style={styles.editInputContainer}>
-                <Text style={styles.editInputLabel}>MOBILE 2</Text>
+                <TranslatableText style={styles.editInputLabel}>MOBILE 2</TranslatableText>
                 <TextInput
                   style={styles.editInput}
                   value={addPresentAddressData.mobile_number2}
@@ -5337,8 +6098,334 @@ const renderAddPresentAddressModal = () => {
               </View>
 
               <View style={styles.infoContainer}>
-                <Text style={styles.infoText}>
+                <TranslatableText style={styles.infoText}>
                   Address Line 1 is required. Other fields are optional.
+                </TranslatableText>
+              </View>
+            </View>
+          </ScrollView>
+        </KeyboardAvoidingView>
+      </SafeAreaView>
+    </Modal>
+  );
+};
+
+// Add Social Media Modal
+const renderAddSocialMediaModal = () => {
+  return (
+    <Modal
+      visible={addSocialMediaModalVisible}
+      animationType="slide"
+      presentationStyle="formSheet"
+      onRequestClose={() => setAddSocialMediaModalVisible(false)}
+    >
+      <SafeAreaView style={styles.editModalContainer}>
+        <KeyboardAvoidingView 
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={styles.editModalContent}
+        >
+          {/* Modal Header */}
+          <View style={styles.editModalHeader}>
+            <TouchableOpacity
+              onPress={() => setAddSocialMediaModalVisible(false)}
+              style={styles.editModalCloseButton}
+            >
+              <Text style={styles.editModalCloseText}>✕</Text>
+            </TouchableOpacity>
+            <View style={styles.editModalTitleContainer}>
+              <TranslatableText style={[styles.modalTitle, { fontSize: fontSize + 4 }]}>
+                Add Social Media
+              </TranslatableText>
+            </View>
+            <TouchableOpacity
+              onPress={submitSocialMediaEntry}
+              style={styles.editModalSaveButton}
+              disabled={addSocialMediaLoading}
+            >
+              {addSocialMediaLoading ? (
+                <ActivityIndicator size="small" color="#ffffff" />
+              ) : (
+                <Text style={styles.editModalSaveText}>Save</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+
+          {/* Modal Body */}
+          <ScrollView style={styles.editModalBody}>
+            <View style={styles.editFormContainer}>
+              <TranslatableText style={[styles.editSectionTitle, { fontSize: fontSize + 2 }]}>
+                Social Media Links
+              </TranslatableText>
+              
+              {/* Facebook Field */}
+              <View style={styles.editInputContainer}>
+                <View style={styles.socialMediaLabelContainer}>
+                  <Text style={styles.socialMediaIcon}>📘</Text>
+                  <TranslatableText style={[styles.editInputLabel, { fontSize: fontSize - 2 }]}>
+                    FACEBOOK
+                  </TranslatableText>
+                </View>
+                <TextInput
+                  style={styles.editInput}
+                  value={addSocialMediaData.facebook}
+                  onChangeText={(text) => setAddSocialMediaData({
+                    ...addSocialMediaData,
+                    facebook: text
+                  })}
+                  placeholder="e.g., fb.com/leaderprofile"
+                  keyboardType="url"
+                  autoCapitalize="none"
+                />
+              </View>
+
+              {/* Twitter Field */}
+              <View style={styles.editInputContainer}>
+                <View style={styles.socialMediaLabelContainer}>
+                  <Text style={styles.socialMediaIcon}>🐦</Text>
+                  <TranslatableText style={[styles.editInputLabel, { fontSize: fontSize - 2 }]}>
+                    TWITTER / X
+                  </TranslatableText>
+                </View>
+                <TextInput
+                  style={styles.editInput}
+                  value={addSocialMediaData.twitter}
+                  onChangeText={(text) => setAddSocialMediaData({
+                    ...addSocialMediaData,
+                    twitter: text
+                  })}
+                  placeholder="e.g., @leaderhandle"
+                  keyboardType="url"
+                  autoCapitalize="none"
+                />
+              </View>
+
+              {/* LinkedIn Field */}
+              <View style={styles.editInputContainer}>
+                <View style={styles.socialMediaLabelContainer}>
+                  <Text style={styles.socialMediaIcon}>💼</Text>
+                  <TranslatableText style={[styles.editInputLabel, { fontSize: fontSize - 2 }]}>
+                    LINKEDIN
+                  </TranslatableText>
+                </View>
+                <TextInput
+                  style={styles.editInput}
+                  value={addSocialMediaData.linkedin}
+                  onChangeText={(text) => setAddSocialMediaData({
+                    ...addSocialMediaData,
+                    linkedin: text
+                  })}
+                  placeholder="e.g., linkedin.com/in/leaderprofile"
+                  keyboardType="url"
+                  autoCapitalize="none"
+                />
+              </View>
+
+              {/* Instagram Field */}
+              <View style={styles.editInputContainer}>
+                <View style={styles.socialMediaLabelContainer}>
+                  <Text style={styles.socialMediaIcon}>📸</Text>
+                  <TranslatableText style={[styles.editInputLabel, { fontSize: fontSize - 2 }]}>
+                    INSTAGRAM
+                  </TranslatableText>
+                </View>
+                <TextInput
+                  style={styles.editInput}
+                  value={addSocialMediaData.instagram}
+                  onChangeText={(text) => setAddSocialMediaData({
+                    ...addSocialMediaData,
+                    instagram: text
+                  })}
+                  placeholder="e.g., @leadergram"
+                  keyboardType="url"
+                  autoCapitalize="none"
+                />
+              </View>
+
+              {/* Info Text */}
+              <View style={styles.infoContainer}>
+                <Text style={styles.infoText}>
+                  Fill in at least one social media link. You can add full URLs or just usernames/handles.
+                </Text>
+              </View>
+            </View>
+          </ScrollView>
+        </KeyboardAvoidingView>
+      </SafeAreaView>
+    </Modal>
+  );
+};
+
+const renderAddLeaderCoordinatesModal = () => {
+  return (
+    <Modal
+      visible={addLeaderCoordinatesModalVisible}
+      animationType="slide"
+      presentationStyle="formSheet"
+      onRequestClose={() => setAddLeaderCoordinatesModalVisible(false)}
+    >
+      <SafeAreaView style={styles.editModalContainer}>
+        <KeyboardAvoidingView 
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={styles.editModalContent}
+        >
+          {/* Modal Header */}
+          <View style={styles.editModalHeader}>
+            <TouchableOpacity
+              onPress={() => setAddLeaderCoordinatesModalVisible(false)}
+              style={styles.editModalCloseButton}
+            >
+              <Text style={styles.editModalCloseText}>✕</Text>
+            </TouchableOpacity>
+            <View style={styles.editModalTitleContainer}>
+              <TranslatableText style={[styles.modalTitle, { fontSize: fontSize + 4 }]}>
+                Add Leader Coordinates
+              </TranslatableText>
+            </View>
+            <TouchableOpacity
+              onPress={submitLeaderCoordinatesEntry}
+              style={styles.editModalSaveButton}
+              disabled={addLeaderCoordinatesLoading}
+            >
+              {addLeaderCoordinatesLoading ? (
+                <ActivityIndicator size="small" color="#ffffff" />
+              ) : (
+                <Text style={styles.editModalSaveText}>Save</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+
+          {/* Modal Body */}
+          <ScrollView style={styles.editModalBody}>
+            <View style={styles.editFormContainer}>
+              <TranslatableText style={[styles.editSectionTitle, { fontSize: fontSize + 2 }]}>
+                Leader Information
+              </TranslatableText>
+              
+              {/* Title Field */}
+              <View style={styles.editInputContainer}>
+                <TranslatableText style={[styles.editInputLabel, { fontSize: fontSize - 2 }]}>
+                  TITLE
+                </TranslatableText>
+                <TextInput
+                  style={styles.editInput}
+                  value={addLeaderCoordinatesData.title}
+                  onChangeText={(text) => setAddLeaderCoordinatesData({
+                    ...addLeaderCoordinatesData,
+                    title: text
+                  })}
+                  placeholder="e.g., Hon'ble Shri"
+                  multiline={false}
+                />
+              </View>
+
+              {/* Member Name Field */}
+              <View style={styles.editInputContainer}>
+                <TranslatableText style={[styles.editInputLabel, { fontSize: fontSize - 2 }]}>
+                  MEMBER NAME *
+                </TranslatableText>
+                <TextInput
+                  style={styles.editInput}
+                  value={addLeaderCoordinatesData.member_name}
+                  onChangeText={(text) => setAddLeaderCoordinatesData({
+                    ...addLeaderCoordinatesData,
+                    member_name: text
+                  })}
+                  placeholder="e.g., Sanjay Jaiswal"
+                  multiline={false}
+                />
+              </View>
+
+              {/* Party Field */}
+              <View style={styles.editInputContainer}>
+                <TranslatableText style={[styles.editInputLabel, { fontSize: fontSize - 2 }]}>
+                  PARTY *
+                </TranslatableText>
+                <TextInput
+                  style={styles.editInput}
+                  value={addLeaderCoordinatesData.party}
+                  onChangeText={(text) => setAddLeaderCoordinatesData({
+                    ...addLeaderCoordinatesData,
+                    party: text
+                  })}
+                  placeholder="e.g., Bharatiya Janata Party"
+                  multiline={false}
+                />
+              </View>
+
+              {/* Constituency Field */}
+              <View style={styles.editInputContainer}>
+                <TranslatableText style={[styles.editInputLabel, { fontSize: fontSize - 2 }]}>
+                  CONSTITUENCY *
+                </TranslatableText>
+                <TextInput
+                  style={styles.editInput}
+                  value={addLeaderCoordinatesData.constituency}
+                  onChangeText={(text) => setAddLeaderCoordinatesData({
+                    ...addLeaderCoordinatesData,
+                    constituency: text
+                  })}
+                  placeholder="e.g., Paschim Champaran"
+                  multiline={false}
+                />
+              </View>
+
+              {/* State Field */}
+              <View style={styles.editInputContainer}>
+                <TranslatableText style={[styles.editInputLabel, { fontSize: fontSize - 2 }]}>
+                  STATE *
+                </TranslatableText>
+                <TextInput
+                  style={styles.editInput}
+                  value={addLeaderCoordinatesData.state}
+                  onChangeText={(text) => setAddLeaderCoordinatesData({
+                    ...addLeaderCoordinatesData,
+                    state: text
+                  })}
+                  placeholder="e.g., Bihar"
+                  multiline={false}
+                />
+              </View>
+
+              {/* Email ID Field */}
+              <View style={styles.editInputContainer}>
+                <TranslatableText style={[styles.editInputLabel, { fontSize: fontSize - 2 }]}>
+                  EMAIL ID
+                </TranslatableText>
+                <TextInput
+                  style={styles.editInput}
+                  value={addLeaderCoordinatesData.email_id}
+                  onChangeText={(text) => setAddLeaderCoordinatesData({
+                    ...addLeaderCoordinatesData,
+                    email_id: text
+                  })}
+                  placeholder="e.g., leader@example.com"
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                />
+              </View>
+
+              {/* Digital Sansad URL Field */}
+              <View style={styles.editInputContainer}>
+                <TranslatableText style={[styles.editInputLabel, { fontSize: fontSize - 2 }]}>
+                  DIGITAL SANSAD URL
+                </TranslatableText>
+                <TextInput
+                  style={styles.editInput}
+                  value={addLeaderCoordinatesData.digital_sansad_url}
+                  onChangeText={(text) => setAddLeaderCoordinatesData({
+                    ...addLeaderCoordinatesData,
+                    digital_sansad_url: text
+                  })}
+                  placeholder="e.g., https://digitalsansad.gov.in/"
+                  keyboardType="url"
+                  autoCapitalize="none"
+                />
+              </View>
+
+              {/* Info Text */}
+              <View style={styles.infoContainer}>
+                <Text style={styles.infoText}>
+                  Fields marked with * are required. Member Name, Party, Constituency, and State are mandatory.
                 </Text>
               </View>
             </View>
@@ -5372,8 +6459,12 @@ const renderProfileImageEditModal = () => {
                 <Icon name="account-circle" size={24} color="#e16e2b" />
               </View>
               <View style={styles.profileImageTitleContainer}>
-                <Text style={styles.profileImageModalTitle}>Update Profile Photo</Text>
-                <Text style={styles.profileImageModalSubtitle}>Choose a new profile picture</Text>
+                <TranslatableText style={[styles.profileImageModalTitle, { fontSize: fontSize + 2 }]}>
+  Update Profile Photo
+</TranslatableText>
+               <TranslatableText style={[styles.profileImageModalSubtitle, { fontSize: fontSize - 2 }]}>
+  Choose a new profile picture
+</TranslatableText>
               </View>
             </View>
             <TouchableOpacity 
@@ -5392,7 +6483,9 @@ const renderProfileImageEditModal = () => {
             
             {/* Current Image Section */}
             <View style={styles.profileImageSection}>
-              <Text style={styles.profileImageSectionLabel}>Current Photo</Text>
+              <TranslatableText style={[styles.profileImageSectionLabel, { fontSize: fontSize - 2 }]}>
+  Current Photo
+</TranslatableText>
               <View style={styles.profileImagePreviewContainer}>
                 <Image 
                   source={{ 
@@ -5453,7 +6546,9 @@ const renderProfileImageEditModal = () => {
                 ) : (
                   <View style={styles.profileImagePlaceholder}>
                     <Icon name="add-a-photo" size={32} color="#e16e2b" />
-                    <Text style={styles.profileImagePlaceholderText}>Tap to Choose</Text>
+                    <TranslatableText style={[styles.profileImagePlaceholderText, { fontSize: fontSize - 2 }]}>
+  Tap to Choose
+</TranslatableText>
                   </View>
                 )}
               </TouchableOpacity>
@@ -5473,8 +6568,13 @@ const renderProfileImageEditModal = () => {
 
           {/* ✅ TIPS SECTION */}
           <View style={styles.profileImageTips}>
-            <Text style={styles.profileImageTipsTitle}>📸 Photo Tips:</Text>
-            <Text style={styles.profileImageTipItem}>• Use a clear, well-lit photo</Text>
+           
+<TranslatableText style={[styles.profileImageTipsTitle, { fontSize: fontSize - 1 }]}>
+  📸 Photo Tips:
+</TranslatableText>
+            <TranslatableText style={[styles.profileImageTipItem, { fontSize: fontSize - 2 }]}>
+  • Use a clear, well-lit photo
+</TranslatableText>
             <Text style={styles.profileImageTipItem}>• Face should be clearly visible</Text>
             <Text style={styles.profileImageTipItem}>• Square format works best</Text>
           </View>
@@ -5490,7 +6590,9 @@ const renderProfileImageEditModal = () => {
               disabled={profileImageLoading}
             >
               <Icon name="close" size={18} color="#7f8c8d" />
-              <Text style={styles.profileImageCancelButtonText}>Cancel</Text>
+              <TranslatableText style={[styles.profileImageCancelButtonText, { fontSize: fontSize }]}>
+  Cancel
+</TranslatableText>
             </TouchableOpacity>
             
             <TouchableOpacity 
@@ -5510,9 +6612,15 @@ const renderProfileImageEditModal = () => {
               ) : (
                 <>
                   <Icon name="cloud-upload" size={18} color="#fff" />
-                  <Text style={styles.profileImageSaveButtonText}>
-                    {selectedProfileImage ? 'Update Photo' : 'Select Photo'}
-                  </Text>
+                  <TranslatableText
+  style={[
+    styles.profileImageSaveButtonText,
+    { fontSize: fontSize }
+  ]}
+>
+  {selectedProfileImage ? 'Update Photo' : 'Select Photo'}
+</TranslatableText>
+
                 </>
               )}
             </TouchableOpacity>
@@ -5524,6 +6632,16 @@ const renderProfileImageEditModal = () => {
   );
 };
 return (
+
+   <>
+    {/* Translation Loading Bar */}
+    {isTranslating && (
+      <View style={styles.translationLoadingBar}>
+        <ActivityIndicator size="small" color="#e16e2b" />
+        <Text style={styles.translationLoadingText}>Translating...</Text>
+      </View>
+    )}
+
   <ScrollView 
     style={styles.container}
     showsVerticalScrollIndicator={false}
@@ -5574,12 +6692,12 @@ return (
 
 {/* Add Present Address Modal - ADD THIS */}
 {renderAddPresentAddressModal()}
+{renderAddSocialMediaModal()}
+{renderAddLeaderCoordinatesModal()}
 {renderProfileImageEditModal()} 
   </ScrollView>
+  </>
 );
 
 };
-
-
-
 export default KnowYourLeaderScreen;

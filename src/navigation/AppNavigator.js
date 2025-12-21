@@ -27,6 +27,7 @@ import ForgotPasswordScreen from '../screens/ForgotPasswordScreen';
 import PartyUpdatesScreen from '../screens/PartyUpdatesScreen';
 import FeedbackScreen from '../screens/FeedbackScreen';
 import FeedbackDetailsScreen from '../screens/FeedbackDetailsScreen';
+import AppProfilerScreen from '../screens/AppProfilerScreen';
 
 const Stack = createStackNavigator();
 
@@ -72,6 +73,8 @@ const AppNavigator = () => {
         title:'Feedback Details'
       }}
       />
+
+      
       
       <Stack.Screen
         name="Registration"
@@ -96,6 +99,15 @@ const AppNavigator = () => {
       <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen}/>
       <Stack.Screen name="PartyUpdates" component={PartyUpdatesScreen}/>
       <Stack.Screen name="Feedback" component={FeedbackScreen}/>
+      {/* ✅ ADD THIS - App Profiler Screen */}
+<Stack.Screen
+  name="AppProfiler"
+  component={AppProfilerScreen}
+  options={{
+    title: '📊 App Profiler',
+    headerShown: true,
+  }}
+/>
       
       <Stack.Screen
         name="SamvadScreen"

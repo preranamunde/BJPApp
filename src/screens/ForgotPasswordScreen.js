@@ -111,7 +111,7 @@ const ForgotPasswordScreen = ({ navigation }) => {
   };
 
   // Email verification
- const handleEmailVerification = async () => {
+const handleEmailVerification = async () => {
   if (!email || !validateEmail(email)) {
     Alert.alert('Error', 'Please enter a valid email address');
     return;
@@ -125,11 +125,47 @@ const ForgotPasswordScreen = ({ navigation }) => {
   setEmailVerificationState('loading');
 
   try {
-    // ✅ Change from post to authPost
-    // Change from ApiService.post to ApiService.authPost
-const result = await ApiService.authPost(apiEndpoints.profile.verifyEmail, {
-  email: email.trim().toLowerCase(),
-});
+    // ✅ GET LEADER MOBILE NUMBER from storage
+    const getMobileNumberFromStorage = async () => {
+      try {
+        const appOwnerInfoStr = await EncryptedStorage.getItem('AppOwnerInfo');
+        if (appOwnerInfoStr) {
+          const appOwnerInfo = JSON.parse(appOwnerInfoStr);
+          const memberIdentifier = appOwnerInfo.mobile_no || 
+                                  appOwnerInfo.regdMobileNo || 
+                                  appOwnerInfo.mobile_number || 
+                                  '7702000725';
+          return memberIdentifier;
+        }
+        
+        const storedMemberId = await EncryptedStorage.getItem('MOBILE_NUMBER') || 
+                              await EncryptedStorage.getItem('OWNER_MOBILE') ||
+                              '7702000725';
+        return storedMemberId;
+      } catch (error) {
+        console.error('Error retrieving mobile number:', error);
+        return '7702000725';
+      }
+    };
+
+    const leaderMobileNo = await getMobileNumberFromStorage();
+    console.log('📱 Leader Mobile No for email verification:', leaderMobileNo);
+
+    // ✅ PREPARE REQUEST BODY with leader_regd_mobile_no
+    const requestBody = {
+      leader_regd_mobile_no: leaderMobileNo, // ✅ First parameter
+      user_email_id: email.trim().toLowerCase(), // ✅ CHANGED: email -> user_email_id
+    };
+
+    console.log('📡 Email Verification Request:', requestBody);
+
+    // ✅ Call API with updated body
+    const result = await ApiService.authPost(
+      apiEndpoints.profile.verifyEmail, 
+      requestBody
+    );
+
+    console.log('✅ Email Verification Response:', result);
 
     if (result.success) {
       setEmailVerificationState('verify');
@@ -138,13 +174,14 @@ const result = await ApiService.authPost(apiEndpoints.profile.verifyEmail, {
       Alert.alert('Error', result.message || 'Failed to verify email. Please try again.');
     }
   } catch (error) {
+    console.error('❌ Email Verification Error:', error);
     setEmailVerificationState('input');
     Alert.alert('Error', 'Failed to verify email. Please try again.');
   }
 };
 
   // Send OTP
-  const sendEmailOTP = async () => {
+const sendEmailOTP = async () => {
   if (!apiEndpoints) {
     Alert.alert('Error', 'API configuration not loaded');
     return;
@@ -153,13 +190,47 @@ const result = await ApiService.authPost(apiEndpoints.profile.verifyEmail, {
   try {
     setEmailVerificationState('loading');
 
-    // ✅ Change from post to authPost
-    // Change from ApiService.post to ApiService.authPost
-const result = await ApiService.authPost(apiEndpoints.profile.sendOTP, {
-  email: email.trim().toLowerCase(),
-});
+    // ✅ GET LEADER MOBILE NUMBER from storage
+    const getMobileNumberFromStorage = async () => {
+      try {
+        const appOwnerInfoStr = await EncryptedStorage.getItem('AppOwnerInfo');
+        if (appOwnerInfoStr) {
+          const appOwnerInfo = JSON.parse(appOwnerInfoStr);
+          const memberIdentifier = appOwnerInfo.mobile_no || 
+                                  appOwnerInfo.regdMobileNo || 
+                                  appOwnerInfo.mobile_number || 
+                                  '7702000725';
+          return memberIdentifier;
+        }
+        
+        const storedMemberId = await EncryptedStorage.getItem('MOBILE_NUMBER') || 
+                              await EncryptedStorage.getItem('OWNER_MOBILE') ||
+                              '7702000725';
+        return storedMemberId;
+      } catch (error) {
+        console.error('Error retrieving mobile number:', error);
+        return '7702000725';
+      }
+    };
 
-    console.log('OTP Send API response:', result);
+    const leaderMobileNo = await getMobileNumberFromStorage();
+    console.log('📱 Leader Mobile No for OTP:', leaderMobileNo);
+
+    // ✅ PREPARE REQUEST BODY with leader_regd_mobile_no and user_email_id
+    const requestBody = {
+      leader_regd_mobile_no: leaderMobileNo,
+      user_email_id: email.trim().toLowerCase(), // ✅ CHANGED: email -> user_email_id
+    };
+
+    console.log('📡 Send OTP Request:', requestBody);
+
+    // ✅ Call API with updated body
+    const result = await ApiService.authPost(
+      apiEndpoints.profile.sendOTP, 
+      requestBody
+    );
+
+    console.log('✅ OTP Send API response:', result);
 
     if (result.success && (result.data?.message === 'OTP sent to email successfully' || result.message === 'OTP sent to email successfully')) {
       setVerificationToken('dummy-token');
@@ -170,7 +241,7 @@ const result = await ApiService.authPost(apiEndpoints.profile.sendOTP, {
       throw new Error(result.message || 'Unexpected response');
     }
   } catch (error) {
-    console.log('OTP send error:', error);
+    console.error('❌ OTP send error:', error);
     setEmailVerificationState('verify');
     Alert.alert('Error', 'Failed to send OTP. Please try again.');
   }
@@ -190,7 +261,7 @@ const verifyEmailOTP = async () => {
   try {
     setEmailVerificationState('loading');
 
-    // get APP_KEY from secure storage
+    // ✅ GET APP_KEY from secure storage
     const appKey = await EncryptedStorage.getItem('APP_KEY');
 
     if (!appKey) {
@@ -198,20 +269,51 @@ const verifyEmailOTP = async () => {
       return;
     }
 
+    // ✅ GET LEADER MOBILE NUMBER from storage
+    const getMobileNumberFromStorage = async () => {
+      try {
+        const appOwnerInfoStr = await EncryptedStorage.getItem('AppOwnerInfo');
+        if (appOwnerInfoStr) {
+          const appOwnerInfo = JSON.parse(appOwnerInfoStr);
+          const memberIdentifier = appOwnerInfo.mobile_no || 
+                                  appOwnerInfo.regdMobileNo || 
+                                  appOwnerInfo.mobile_number || 
+                                  '7702000725';
+          return memberIdentifier;
+        }
+        
+        const storedMemberId = await EncryptedStorage.getItem('MOBILE_NUMBER') || 
+                              await EncryptedStorage.getItem('OWNER_MOBILE') ||
+                              '7702000725';
+        return storedMemberId;
+      } catch (error) {
+        console.error('Error retrieving mobile number:', error);
+        return '7702000725';
+      }
+    };
+
+    const leaderMobileNo = await getMobileNumberFromStorage();
+    console.log('📱 Leader Mobile No for OTP verification:', leaderMobileNo);
+
+    // ✅ PREPARE REQUEST BODY
+    const requestBody = {
+      leader_regd_mobile_no: leaderMobileNo, // ✅ ADD THIS
+      user_email_id: email.trim().toLowerCase(), // ✅ CHANGED: email -> user_email_id
+      otp: emailOtp,
+    };
+
+    console.log('📡 Verify OTP Request:', requestBody);
+
     const result = await ApiService.authPost(
       apiEndpoints.profile.verifyEmailOTP,
+      requestBody,
       {
-        email: email.trim().toLowerCase(),
-        otp: emailOtp,
-        verificationToken: verificationToken,
-      },
-      {
-        'x-app-key': appKey,       // ✔ SAME AS POSTMAN
+        'x-app-key': appKey,
         'Content-Type': 'application/json',
       }
     );
 
-    console.log("Verification response:", result);
+    console.log('✅ Verification response:', result);
 
     if (
       result.success ||
@@ -229,12 +331,11 @@ const verifyEmailOTP = async () => {
     }
 
   } catch (error) {
-    console.log("Verification error:", error);
+    console.error('❌ Verification error:', error);
     setEmailVerificationState('otp');
     Alert.alert('Error', 'Failed to verify OTP. Please try again.');
   }
 };
-
 
 
 
@@ -263,73 +364,111 @@ const verifyEmailOTP = async () => {
   };
 
   const handleForgotPassword = async () => {
-    if (!validateForm()) return;
-    setLoading(true);
+  if (!validateForm()) return;
+  setLoading(true);
 
-    try {
-      // Get Access Token
-      const accessToken = await AsyncStorage.getItem("userAccessToken")
-        || await AsyncStorage.getItem("jwt_token")
-        || await EncryptedStorage.getItem("ACCESS_TOKEN");
-
-      if (!accessToken) {
-        Alert.alert("Error", "Session expired. Please log in again.");
-        navigation.navigate("Login");
-        return;
+  try {
+    // ✅ GET LEADER MOBILE NUMBER from storage (same pattern as other functions)
+    const getMobileNumberFromStorage = async () => {
+      try {
+        const appOwnerInfoStr = await EncryptedStorage.getItem('AppOwnerInfo');
+        if (appOwnerInfoStr) {
+          const appOwnerInfo = JSON.parse(appOwnerInfoStr);
+          const memberIdentifier = appOwnerInfo.mobile_no || 
+                                  appOwnerInfo.regdMobileNo || 
+                                  appOwnerInfo.mobile_number || 
+                                  appOwnerInfo.client_mobile || // ✅ Added this field
+                                  '7702000725';
+          return memberIdentifier;
+        }
+        
+        const storedMemberId = await EncryptedStorage.getItem('MOBILE_NUMBER') || 
+                              await EncryptedStorage.getItem('OWNER_MOBILE') ||
+                              '7702000725';
+        return storedMemberId;
+      } catch (error) {
+        console.error('Error retrieving mobile number:', error);
+        return '7702000725';
       }
+    };
 
-      // Get App Key
-      const appKey = await EncryptedStorage.getItem("APP_KEY");
+    const leaderMobile = await getMobileNumberFromStorage();
+    console.log('📱 Leader Mobile No for password reset:', leaderMobile);
 
-      // Get App Owner Info (mobile + email)
-      const ownerInfoString = await EncryptedStorage.getItem("AppOwnerInfo");
-      const ownerInfo = ownerInfoString ? JSON.parse(ownerInfoString) : null;
-
-      const leaderMobile = ownerInfo?.client_mobile || "";
-
-      if (!leaderMobile) {
-        Alert.alert("Error", "Owner mobile not found. Restart app.");
-        return;
-      }
-
-      const baseUrl = await ConfigService.getBaseUrl();
-      const apiUrl = `${baseUrl}/api/profile/fp`;
-
-      // Required API Body
-      const requestPayload = {
-        leader_regd_mobile_no: leaderMobile,
-        user_email_id: email.trim().toLowerCase(),
-        npassword: newPassword
-      };
-
-      // Headers
-      const headers = {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${accessToken}`,
-        "x-access-token": accessToken,
-        ...(appKey && { "x-app-key": appKey })
-      };
-
-      console.log("📤 Forgot Password Request:", requestPayload);
-
-      const result = await ApiService.authPut(apiUrl, requestPayload, headers);
-
-      if (result?.success || result?.message === "Password updated successfully") {
-        Alert.alert(
-          "Success",
-          "Password reset successfully!",
-          [{ text: "OK", onPress: () => navigation.navigate("Login") }]
-        );
-      } else {
-        Alert.alert("Error", result?.message || "Failed to reset password");
-      }
-
-    } catch (error) {
-      Alert.alert("Error", error?.message || "Something went wrong");
-    } finally {
-      setLoading(false);
+    if (!leaderMobile) {
+      Alert.alert("Error", "Owner mobile not found. Restart app.");
+      return;
     }
-  };
+
+    // Get Access Token
+    const accessToken = await AsyncStorage.getItem("userAccessToken")
+      || await AsyncStorage.getItem("jwt_token")
+      || await EncryptedStorage.getItem("ACCESS_TOKEN")
+      || await EncryptedStorage.getItem("accessToken"); // ✅ Added common token key
+
+    if (!accessToken) {
+      Alert.alert("Error", "Session expired. Please log in again.");
+      navigation.navigate("Login");
+      return;
+    }
+
+    // Get App Key
+    const appKey = await EncryptedStorage.getItem("APP_KEY");
+
+    if (!appKey) {
+      console.warn('⚠️ APP_KEY not found, continuing without it');
+    }
+
+    const baseUrl = await ConfigService.getBaseUrl();
+    const apiUrl = `${baseUrl}/api/profile/fp`;
+
+    // ✅ Required API Body (matches Postman exactly)
+    const requestPayload = {
+      leader_regd_mobile_no: leaderMobile,
+      user_email_id: email.trim().toLowerCase(), // ✅ Already correct
+      npassword: newPassword // ✅ Already correct
+    };
+
+    console.log('📡 Forgot Password Request:', requestPayload);
+
+    // ✅ Headers
+    const headers = {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${accessToken}`,
+      "x-access-token": accessToken,
+    };
+
+    if (appKey) {
+      headers["x-app-key"] = appKey;
+    }
+
+    console.log('📋 Request Headers:', {
+      'Content-Type': headers['Content-Type'],
+      'Authorization': accessToken ? 'Bearer ***' : 'Missing',
+      'x-app-key': appKey ? 'Present' : 'Missing',
+    });
+
+    const result = await ApiService.authPut(apiUrl, requestPayload, headers);
+
+    console.log('✅ Password Reset Response:', result);
+
+    if (result?.success || result?.message === "Password updated successfully") {
+      Alert.alert(
+        "Success",
+        "Password reset successfully!",
+        [{ text: "OK", onPress: () => navigation.navigate("Login") }]
+      );
+    } else {
+      Alert.alert("Error", result?.message || "Failed to reset password");
+    }
+
+  } catch (error) {
+    console.error('❌ Password Reset Error:', error);
+    Alert.alert("Error", error?.message || "Something went wrong");
+  } finally {
+    setLoading(false);
+  }
+};
 
   // Render email verification section
   const renderEmailVerificationSection = () => {

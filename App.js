@@ -14,6 +14,7 @@ import AppNavigator from './src/navigation/AppNavigator';
 import { generateAppKey } from './src/utils/generateAppKey';
 import messaging from '@react-native-firebase/messaging';
 import crashlytics from '@react-native-firebase/crashlytics';
+import { TranslationProvider } from './src/context/TranslationContext';
 
 // Global variables for user state - Centralized Management
 // Add this with other global variables at top
@@ -628,6 +629,7 @@ const callBootstrapAPI = async (appKey) => {
 
       Alert.alert(
         '❌ Bootstrap Error',
+        
         `Bootstrap failed:\n${err.message}`,
         [{ text: 'Continue', onPress: () => setStage('app') }]
       );
@@ -680,9 +682,11 @@ const initializeFCM = async () => {
 
   if (stage === 'app') {
     return (
-      <NavigationContainer>
+      <TranslationProvider>
+        <NavigationContainer>
         <AppNavigator />
       </NavigationContainer>
+      </TranslationProvider>
     );
   }
 

@@ -138,17 +138,19 @@ const styles = StyleSheet.create({
   },
   
   partyContainer: {
-    backgroundColor: 'rgba(255,255,255,0.15)',
-    padding: 12,
-    borderRadius: 10,
-    marginBottom: 15,
-  },
-  
-  partyName: {
-    fontSize: 16,
-    color: '#ffffff',
-    fontWeight: '600',
-  },
+  backgroundColor: 'rgba(255,255,255,0.15)',
+  padding: 12,
+  borderRadius: 10,
+  marginBottom: 15,
+  alignItems: 'center',  // ✅ Centers the party name
+},
+
+partyName: {
+  fontSize: 16,
+  color: '#ffffff',
+  fontWeight: '600',
+  textAlign: 'center',  // ✅ This is already good
+},
   
   quickActionsRow: {
     flexDirection: 'row',
@@ -1780,6 +1782,37 @@ paginationDot: {
 paginationDotActive: {
   width: 24,
   backgroundColor: '#e16e2b',
+},
+translationLoadingBar: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  justifyContent: 'center',
+  backgroundColor: '#fff3cd',
+  paddingVertical: 8,
+  paddingHorizontal: 15,
+  gap: 10,
+},
+translationLoadingText: {
+  fontSize: 14,
+  color: '#856404',
+  fontWeight: '500',
+},
+// Add these to your styles object in KnowYourLeaderstyle.js
+socialMediaLabelContainer: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  gap: 8,
+},
+socialMediaIcon: {
+  fontSize: 20,
+},
+// ✅ ADD THIS STYLE
+inputHelperText: {
+  fontSize: 12,
+  color: '#7f8c8d',
+  marginTop: 4,
+  marginLeft: 2,
+  fontStyle: 'italic',
 },
 });
 

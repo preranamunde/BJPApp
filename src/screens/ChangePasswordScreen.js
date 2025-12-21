@@ -16,6 +16,7 @@ import EncryptedStorage from 'react-native-encrypted-storage';
 import ConfigService from '../services/ConfigService';
 import ApiService from '../services/ApiService';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { getCurrentUserRole } from '../../App';
 
 const ChangePasswordScreen = ({ navigation }) => {
   const [oldPassword, setOldPassword] = useState('');
@@ -64,11 +65,6 @@ const ChangePasswordScreen = ({ navigation }) => {
   };
 
   // Handle password change
-  // Handle password change
- // BETTER APPROACH: Use the currently logged-in user's credentials
-// Instead of AppOwnerInfo (which is the app owner's data)
-// You should use the logged-in user's data stored during login
-
 // Enhanced handleChangePassword with access token and app key in headers
 const handleChangePassword = async () => {
   if (!validatePasswords()) {
@@ -80,56 +76,102 @@ const handleChangePassword = async () => {
   try {
     console.log('🔄 Starting password change process...');
     
-    // STEP 1: Get logged-in user credentials
-    const loggedInEmail = await AsyncStorage.getItem('userEmail') || 
-                         await AsyncStorage.getItem('user_email_id') ||
-                         await EncryptedStorage.getItem('LOGGED_IN_EMAIL');
+    // ✅ GET FRESH USER INFO (SAME AS MEDIA CREATION)
+    const currentUserInfo = await getCurrentUserRole();
+    const freshEmail = currentUserInfo.loggedin_email || 
+                       currentUserInfo.email || 
+                       currentUserInfo.user_email_id || 
+                       '';
+    const freshMobile = currentUserInfo.mobile || 
+                        currentUserInfo.regdMobileNo || 
+                        currentUserInfo.leader_regd_mobile_no || 
+                        '';
     
-    const userData = await AsyncStorage.getItem('userData');
-    let mobileNo = '';
+    console.log('✅ Fresh credentials from getCurrentUserRole:', {
+      email: freshEmail,
+      mobile: freshMobile
+    });
+
+    let loggedInEmail = freshEmail;
+    let mobileNo = freshMobile;
     
-    if (userData) {
-      try {
-        const parsedUserData = JSON.parse(userData);
-        mobileNo = parsedUserData.mobile || 
-                  parsedUserData.mobileNo || 
-                  parsedUserData.mobile_no ||
-                  parsedUserData.client_mobile ||
-                  parsedUserData.phone ||
-                  parsedUserData.regdMobileNo ||
-                  '';
-        
-        console.log('📋 User data found:', {
-          email: loggedInEmail,
-          mobile: mobileNo,
-          availableFields: Object.keys(parsedUserData)
-        });
-      } catch (parseError) {
-        console.error('❌ Error parsing userData:', parseError);
+    // STEP 1: Fallback - Get from AsyncStorage if getCurrentUserRole didn't work
+    if (!loggedInEmail || !mobileNo) {
+      console.log('⚠️ getCurrentUserRole incomplete, checking AsyncStorage...');
+      
+      if (!loggedInEmail) {
+        loggedInEmail = await AsyncStorage.getItem('userEmail') || 
+                        await AsyncStorage.getItem('user_email_id') ||
+                        await EncryptedStorage.getItem('LOGGED_IN_EMAIL') ||
+                        '';
+      }
+      
+      const userData = await AsyncStorage.getItem('userData');
+      
+      if (userData) {
+        try {
+          const parsedUserData = JSON.parse(userData);
+          
+          if (!mobileNo) {
+            mobileNo = parsedUserData.mobile || 
+                      parsedUserData.mobileNo || 
+                      parsedUserData.mobile_no ||
+                      parsedUserData.client_mobile ||
+                      parsedUserData.phone ||
+                      parsedUserData.regdMobileNo ||
+                      '';
+          }
+          
+          // Also try to get email from userData if not found earlier
+          if (!loggedInEmail) {
+            loggedInEmail = parsedUserData.email ||
+                           parsedUserData.emailid ||
+                           parsedUserData.user_email_id ||
+                           parsedUserData.email_id ||
+                           parsedUserData.user_email ||
+                           '';
+          }
+          
+          console.log('📋 User data found:', {
+            email: loggedInEmail,
+            mobile: mobileNo,
+            availableFields: Object.keys(parsedUserData)
+          });
+        } catch (parseError) {
+          console.error('❌ Error parsing userData:', parseError);
+        }
       }
     }
     
-    // STEP 2: Fallback to AppOwnerInfo if logged-in user data not available
+    // STEP 2: Final fallback to AppOwnerInfo
     if (!loggedInEmail || !mobileNo) {
-      console.log('⚠️ Logged-in user data incomplete, checking AppOwnerInfo...');
+      console.log('⚠️ Still incomplete, checking AppOwnerInfo...');
       
       const appOwnerInfoStr = await EncryptedStorage.getItem('AppOwnerInfo');
       if (appOwnerInfoStr) {
-        const appOwnerInfo = JSON.parse(appOwnerInfoStr);
-        console.log('📋 AppOwnerInfo keys:', Object.keys(appOwnerInfo));
-        
-        if (!loggedInEmail) {
-          loggedInEmail = appOwnerInfo.emailid || 
-                         appOwnerInfo.email || 
-                         appOwnerInfo.user_email_id ||
-                         '';
-        }
-        
-        if (!mobileNo) {
-          mobileNo = appOwnerInfo.client_mobile || 
-                    appOwnerInfo.mobile_no || 
-                    appOwnerInfo.mobile ||
-                    '';
+        try {
+          const appOwnerInfo = JSON.parse(appOwnerInfoStr);
+          console.log('📋 AppOwnerInfo keys:', Object.keys(appOwnerInfo));
+          
+          if (!loggedInEmail) {
+            loggedInEmail = appOwnerInfo.emailid || 
+                           appOwnerInfo.email || 
+                           appOwnerInfo.user_email_id ||
+                           appOwnerInfo.email_id ||
+                           appOwnerInfo.user_email ||
+                           '';
+          }
+          
+          if (!mobileNo) {
+            mobileNo = appOwnerInfo.client_mobile || 
+                      appOwnerInfo.mobile_no || 
+                      appOwnerInfo.mobile ||
+                      appOwnerInfo.regdMobileNo ||
+                      appOwnerInfo.leader_regd_mobile_no ||
+                      '';
+          }
+        } catch (parseError) {
+          console.error('❌ Error parsing AppOwnerInfo:', parseError);
         }
       }
     }
@@ -140,10 +182,12 @@ const handleChangePassword = async () => {
     // STEP 3: Validate credentials
     if (!loggedInEmail || !mobileNo) {
       console.error('❌ Missing credentials after all attempts');
+      
       Alert.alert(
         'Error', 
-        'Unable to retrieve your credentials. Please log out and log in again.\n\n' +
-        `Found: Email=${!!loggedInEmail}, Mobile=${!!mobileNo}`
+        'Unable to retrieve your account credentials. Please log out and log in again.\n\n' +
+        `Email found: ${loggedInEmail || 'No'}\n` +
+        `Mobile found: ${mobileNo || 'No'}`
       );
       return;
     }
@@ -151,9 +195,11 @@ const handleChangePassword = async () => {
     // STEP 4: Get access token and app key for headers
     const accessToken = await AsyncStorage.getItem('userAccessToken') ||
                        await AsyncStorage.getItem('jwt_token') ||
-                       await EncryptedStorage.getItem('ACCESS_TOKEN');
+                       await AsyncStorage.getItem('access_token') ||
+                       await EncryptedStorage.getItem('ACCESS_TOKEN') ||
+                       '';
     
-    const appKey = await EncryptedStorage.getItem('APP_KEY');
+    const appKey = await EncryptedStorage.getItem('APP_KEY') || '';
 
     console.log('🔑 Access Token exists:', !!accessToken);
     console.log('🔑 App Key exists:', !!appKey);
@@ -161,14 +207,15 @@ const handleChangePassword = async () => {
     if (!accessToken) {
       Alert.alert(
         'Authentication Error',
-        'Access token not found. Please log in again.'
+        'Access token not found. Please log in again.',
+        [
+          { 
+            text: 'OK', 
+            onPress: () => navigation.navigate('Login') 
+          }
+        ]
       );
-      navigation.navigate('Login');
       return;
-    }
-
-    if (!appKey) {
-      console.warn('⚠️ App key not found, continuing without it...');
     }
 
     // STEP 5: Prepare API request
@@ -177,10 +224,10 @@ const handleChangePassword = async () => {
 
     console.log('🔗 API URL:', apiUrl);
 
-    // Request body
+    // Request body with fresh credentials
     const requestPayload = {
       leader_regd_mobile_no: mobileNo,
-      user_email_id: loggedInEmail,
+      user_email_id: loggedInEmail,  // ✅ USING FRESH EMAIL
       opassword: oldPassword,
       npassword: newPassword
     };
@@ -188,9 +235,9 @@ const handleChangePassword = async () => {
     // Request headers with access token and app key
     const headers = {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${accessToken}`,  // Standard Bearer token format
-      'x-access-token': accessToken,              // Alternative header name
-      ...(appKey && { 'x-app-key': appKey })      // Include app key if available
+      'Authorization': `Bearer ${accessToken}`,
+      'x-access-token': accessToken,
+      ...(appKey && { 'x-app-key': appKey })
     };
 
     console.log('📤 Request headers:', {
@@ -264,6 +311,10 @@ const handleChangePassword = async () => {
     
     if (error.message?.includes('Network') || error.message?.includes('timeout')) {
       errorMessage = 'Network error. Please check your internet connection and try again.';
+    }
+    
+    if (error.message?.includes('Invalid email') || error.message?.includes('email')) {
+      errorMessage = 'Invalid email address. Please log out and log in again.';
     }
     
     Alert.alert('Error', errorMessage);

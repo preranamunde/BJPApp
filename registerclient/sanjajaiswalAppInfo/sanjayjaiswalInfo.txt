@@ -1,0 +1,11 @@
+const raw = 'LeaderApp101|1755201528123|SureshGuptaApp';
+const appKey = CryptoJS.SHA256(raw).toString(CryptoJS.enc.Hex);
+pm.environment.set('app_key', appKey);
+console.log('Generated app_key:', appKey);
+
+
+
+ORDER_ID=LeaderApp101
+ORDER_DATE=1755201528123
+APP_NAME=SureshGuptaApp
+CRYPTO_SECRET=nutantek-secure-key

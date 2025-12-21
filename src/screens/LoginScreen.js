@@ -11,6 +11,7 @@ import {
   Platform,
   BackHandler, 
   ActivityIndicator,
+  Image,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -19,6 +20,7 @@ import AuthService from '../utils/AuthService';
 import ConfigService from '../services/ConfigService';
 import ApiService from '../services/ApiService';
 import { updateUserLoginStatus } from '../../App'; // Import the helper function
+import bjpLogo from '../assets/logobjp.png';
 
 // Enhanced Logging Service for Login
 class LoginLoggingService {
@@ -442,46 +444,96 @@ useEffect(() => {
     return true;
   };
 
-  const enhanceLoginResponse = async (loginResult) => {
-    try {
-      LoginLoggingService.loginInfo('🔧 === ENHANCING LOGIN RESPONSE ===');
-      
-      if (!loginResult.success || !loginResult.user) {
-        LoginLoggingService.loginWarn('⚠️ Login was not successful or no user data, skipping enhancement');
-        return loginResult;
-      }
-
-      setAdminCheckLoading(true);
-      
-      // Enhance user data with admin status and auto email verification
-      const enhancedUserData = await LoginAdminService.enhanceUserDataWithAdminStatus(
-        loginResult.user, 
-        formData.email.trim().toLowerCase()
-      );
-
-      // Create enhanced login result
-      const enhancedResult = {
-        ...loginResult,
-        user: enhancedUserData,
-        adminEnhanced: true
-      };
-
-      LoginLoggingService.loginInfo('✅ Login response enhanced successfully', {
-        isAdmin: enhancedUserData.isAdmin,
-        emailVerified: enhancedUserData.emailVerified,
-        userRole: enhancedUserData.userRole
-      });
-
-      return enhancedResult;
-
-    } catch (error) {
-      LoginLoggingService.loginError('❌ Error enhancing login response', error);
-      // Return original result if enhancement fails
+ const enhanceLoginResponse = async (loginResult) => {
+  try {
+    LoginLoggingService.loginInfo('🔧 === ENHANCING LOGIN RESPONSE WITH ADMIN CHECK ===');
+    
+    if (!loginResult.success || !loginResult.user) {
+      LoginLoggingService.loginWarn('⚠️ Login was not successful or no user data');
       return loginResult;
-    } finally {
-      setAdminCheckLoading(false);
     }
-  };
+
+    setAdminCheckLoading(true);
+    
+    // ✅ GET LOGGED IN EMAIL
+    const storedLoginEmail = formData.email.trim().toLowerCase();
+    
+    // ✅ GET OWNER EMAIL FROM STORAGE
+    let storedOwnerEmail = '';
+    try {
+      // First try AppOwnerInfo
+      const appOwnerInfoStr = await EncryptedStorage.getItem('AppOwnerInfo');
+      if (appOwnerInfoStr) {
+        const appOwnerInfo = JSON.parse(appOwnerInfoStr);
+        storedOwnerEmail = appOwnerInfo.emailid || 
+                          appOwnerInfo.email || 
+                          appOwnerInfo.email_id || 
+                          appOwnerInfo.owner_email || 
+                          '';
+      }
+      
+      // Fallback to direct storage
+      if (!storedOwnerEmail) {
+        storedOwnerEmail = await EncryptedStorage.getItem('OWNER_EMAIL') || '';
+      }
+    } catch (error) {
+      console.error('Error getting owner email:', error);
+    }
+    
+    console.log('🔍 Admin Check During Login:', {
+      loginEmail: storedLoginEmail,
+      ownerEmail: storedOwnerEmail,
+      match: storedLoginEmail === storedOwnerEmail?.toLowerCase()
+    });
+    
+    // ✅ CHECK IF EMAILS MATCH (case-insensitive)
+    const isAdminUser = storedLoginEmail === storedOwnerEmail?.toLowerCase() && storedOwnerEmail !== '';
+    
+    // ✅ UPDATE GLOBAL VARIABLES IMMEDIATELY
+    global.loggedin_email = storedLoginEmail;
+    global.owner_emailid = storedOwnerEmail;
+    global.userRole = isAdminUser ? 'admin' : 'user';
+    global.isUserAdmin = isAdminUser;
+    global.isUserLoggedin = true;
+    
+    // ✅ STORE IN ENCRYPTED STORAGE
+    await EncryptedStorage.setItem('USER_ROLE', isAdminUser ? 'admin' : 'user');
+    await EncryptedStorage.setItem('LOGGED_IN_EMAIL', storedLoginEmail);
+    if (storedOwnerEmail) {
+      await EncryptedStorage.setItem('OWNER_EMAIL', storedOwnerEmail);
+    }
+    
+    // ✅ ENHANCE USER DATA
+    const enhancedUserData = {
+      ...loginResult.user,
+      isAdmin: isAdminUser,
+      userRole: isAdminUser ? 'admin' : 'user',
+      emailVerified: isAdminUser ? true : loginResult.user.emailVerified // Auto-verify admin
+    };
+
+    console.log('✅ Login Response Enhanced:', {
+      isAdmin: isAdminUser,
+      userRole: enhancedUserData.userRole,
+      emailVerified: enhancedUserData.emailVerified,
+      globalVars: {
+        isUserAdmin: global.isUserAdmin,
+        userRole: global.userRole
+      }
+    });
+
+    return {
+      ...loginResult,
+      user: enhancedUserData,
+      adminEnhanced: true
+    };
+
+  } catch (error) {
+    LoginLoggingService.loginError('❌ Error enhancing login response', error);
+    return loginResult;
+  } finally {
+    setAdminCheckLoading(false);
+  }
+};
 
   // ENHANCED: Silent Profile Loading Function with better error handling
  // ✅ ENHANCED: Load full profile from API with proper data structure
@@ -707,10 +759,8 @@ const storeUserDataReliably = async (userData) => {
     return false;
   }
 };
-
-// ✅ REPLACE the handleLogin function with this improved version:
-
-// ✅ OPTIMIZED: Replace your handleLogin function with this version
+// ✅ COMPLETE FIXED handleLogin function for LoginScreen.js
+// Replace your entire handleLogin function with this:
 
 const handleLogin = async () => {
   if (!validateForm()) return;
@@ -722,94 +772,413 @@ const handleLogin = async () => {
       email: formData.email.trim().toLowerCase()
     });
     
-    // Call the original login service
-    const result = await AuthService.loginUser(formData.email, formData.password);
-    
-    LoginLoggingService.loginDebug('Login service result', {
-      success: result.success,
-      hasUser: !!result.user,
-      message: result.message
+    // ✅ STEP 1: Get leader mobile number
+    const getMobileNumberFromStorage = async () => {
+      try {
+        console.log('📱 === RETRIEVING OWNER MOBILE FROM BOOTSTRAP ===');
+        
+        // Method 1: Get from EncryptedStorage (stored during bootstrap)
+        const storedOwnerMobile = await EncryptedStorage.getItem('OWNER_MOBILE');
+        
+        if (storedOwnerMobile && storedOwnerMobile !== '') {
+          console.log('✅ Found owner mobile in storage:', storedOwnerMobile);
+          console.log('   This was stored during app bootstrap from AppOwnerInfo');
+          return storedOwnerMobile;
+        }
+        
+        console.log('⚠️ OWNER_MOBILE not found in storage, checking AppOwnerInfo directly...');
+        
+        // Method 2: Fallback - Get from AppOwnerInfo directly
+        const appOwnerInfoStr = await EncryptedStorage.getItem('AppOwnerInfo');
+        
+        if (appOwnerInfoStr) {
+          const appOwnerInfo = JSON.parse(appOwnerInfoStr);
+          console.log('📋 AppOwnerInfo found, extracting mobile...');
+          
+          // Check all possible mobile fields (same order as App.js)
+          const possibleMobileFields = [
+            'client_mobile',
+            'mobile_no',
+            'mobile_number',
+            'phone',
+            'mobileNo',
+            'regdMobileNo',
+            'Mobile',
+            'MobileNo',
+            'MOBILE',
+            'phoneNumber',
+            'contactNumber',
+            'mobile',
+            'cell',
+            'cellular',
+            'contact',
+            'phone_number'
+          ];
+          
+          for (const field of possibleMobileFields) {
+            const value = appOwnerInfo[field];
+            if (value && (typeof value === 'string' || typeof value === 'number')) {
+              const mobileNumber = String(value).trim();
+              if (mobileNumber && mobileNumber !== '') {
+                console.log(`✅ Found mobile in AppOwnerInfo field '${field}': ${mobileNumber}`);
+                
+                // Store it for next time
+                await EncryptedStorage.setItem('OWNER_MOBILE', mobileNumber);
+                
+                return mobileNumber;
+              }
+            }
+          }
+          
+          console.warn('⚠️ No mobile field found in AppOwnerInfo');
+          console.log('📋 Available fields:', Object.keys(appOwnerInfo));
+        } else {
+          console.warn('⚠️ AppOwnerInfo not found in storage');
+        }
+        
+        // Method 3: Final fallback - use default
+        console.warn('⚠️ Using default mobile number: 7702000725');
+        console.warn('   This means bootstrap may have failed or mobile not in AppOwnerInfo');
+        
+        return '7702000725';
+        
+      } catch (error) {
+        console.error('❌ Error retrieving owner mobile:', error);
+        console.error('❌ Stack:', error.stack);
+        
+        // Last resort fallback
+        return '7702000725';
+      }
+    };
+
+    const leaderMobileNo = await getMobileNumberFromStorage();
+
+    // Validate mobile number
+    console.log('📱 === LEADER MOBILE NUMBER FOR LOGIN API ===');
+    console.log('   Mobile:', leaderMobileNo);
+    console.log('   Length:', leaderMobileNo?.length);
+    console.log('   Type:', typeof leaderMobileNo);
+
+    if (!leaderMobileNo || leaderMobileNo === '' || leaderMobileNo === 'undefined') {
+      console.error('❌ CRITICAL: Invalid mobile number!');
+      Alert.alert(
+        'Configuration Error',
+        'Owner mobile number not found. The app may not have bootstrapped correctly.\n\n' +
+        'Please restart the app.',
+        [{ text: 'OK' }]
+      );
+      setLoading(false);
+      return;
+    }
+
+    console.log('✅ Mobile number validated - proceeding with login');
+
+    // ✅ STEP 2: Store leader mobile for profile API
+    await EncryptedStorage.setItem('OWNER_MOBILE', leaderMobileNo);
+
+    // ✅ STEP 3: Get APP_KEY (THIS WAS MISSING!)
+    const appKey = await EncryptedStorage.getItem('APP_KEY');
+    console.log('🔑 App Key:', appKey ? `Found: ${appKey.substring(0, 20)}...` : 'Not Found');
+
+    if (!appKey) {
+      Alert.alert('Error', 'APP_KEY not found. Please restart the app.');
+      setLoading(false);
+      return;
+    }
+
+    // ✅ STEP 4: Get login endpoint
+    const endpoints = await ConfigService.getApiEndpoints();
+    const loginEndpoint = endpoints.auth.login;
+    console.log('🌐 Login Endpoint:', loginEndpoint);
+
+    // ✅ STEP 5: Prepare request with leader mobile number
+    const requestBody = {
+      user_email_id: formData.email.trim().toLowerCase(),
+      password: formData.password,
+      leader_regd_mobile_no: leaderMobileNo,
+    };
+
+    console.log('📡 Login Request Body:', {
+      user_email_id: requestBody.user_email_id,
+      leader_regd_mobile_no: requestBody.leader_regd_mobile_no,
+      password: '***'
     });
 
-    if (result.success) {
-      LoginLoggingService.loginInfo('✅ Login successful');
+    // ✅ STEP 6: Make API call
+    const response = await fetch(loginEndpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-app-key': appKey,
+      },
+      body: JSON.stringify(requestBody),
+    });
 
-      // Enhance with admin status
-      const enhancedResult = await enhanceLoginResponse(result);
+    const responseData = await response.json();
+    
+    console.log('📥 Full Response:', JSON.stringify(responseData, null, 2));
 
-      // Update global login status
-      const updateResult = await updateUserLoginStatus(
-        formData.email.trim().toLowerCase(),
-        result.accessToken || result.token,
-        enhancedResult.user
-      );
-
-      console.log('💾 === STORING INITIAL DATA ===');
-      
-      // Store basic data first
-      await storeUserDataReliably(enhancedResult.user);
-      
-      console.log('⏳ === LOADING FULL PROFILE FROM API ===');
-      
-      // ✅ LOAD FULL PROFILE FROM API - WAIT for completion
-      const fullProfile = await silentProfileLoad(formData.email.trim().toLowerCase());
-
-      if (fullProfile) {
-        console.log('✅ Full profile loaded from API');
-        
-        // Store the complete profile data
-        await storeUserDataReliably(fullProfile);
-        
-        console.log('✅ Complete profile data ready for drawer!');
-      } else {
-        console.log('⚠️ Profile API failed, using basic login data');
-      }
-
-      // Small delay to ensure drawer can read the data
-      await new Promise(resolve => setTimeout(resolve, 200));
-
-      // Show success and navigate
-      const isAdmin = fullProfile?.isAdmin || enhancedResult.user?.isAdmin || updateResult.isAdmin;
-      const successMsg = isAdmin ? '👑 Admin Login Successful!' : '✅ Login Successful!';
-
-      Alert.alert('Success', successMsg, [
-        {
-          text: 'OK',
-          onPress: () => {
-            console.log('🏠 Navigating to MainDrawer');
-            
-            // Navigate
-            navigation.reset({
-              index: 0,
-              routes: [{ name: 'MainDrawer' }],
-            });
-            
-            // Trigger drawer refreshes at multiple intervals
-            const refreshDelays = [0, 100, 300, 600, 1000];
-            refreshDelays.forEach(delay => {
-              setTimeout(() => {
-                if (global.refreshDrawer) {
-                  console.log(`🔄 Drawer refresh at ${delay}ms`);
-                  global.refreshDrawer();
-                }
-              }, delay);
-            });
-          },
-        },
-      ]);
-      
-    } else {
-      LoginLoggingService.loginError('❌ Login failed', { message: result.message });
-      Alert.alert('Error', result.message);
+    if (!response.ok) {
+      throw new Error(responseData.message || 'Login failed');
     }
+
+    // ✅ STEP 7: Extract tokens
+    const accessToken = responseData.accessToken || responseData.token;
+    const refreshToken = responseData.refreshToken || responseData.refresh_token;
+
+    console.log('🔍 Token extraction:', {
+      hasAccessToken: !!accessToken,
+      hasRefreshToken: !!refreshToken,
+      accessTokenLength: accessToken?.length || 0,
+      refreshTokenLength: refreshToken?.length || 0
+    });
+
+    if (!accessToken) {
+      throw new Error('No access token received from server');
+    }
+
+    if (!refreshToken) {
+      console.warn('⚠️ WARNING: No refresh token received!');
+    }
+
+    // ✅ STEP 8: Save tokens FIRST (before making any API calls)
+    console.log('💾 === SAVING TOKENS ===');
+    
+    await Promise.all([
+      AsyncStorage.setItem('jwt_token', accessToken),
+      AsyncStorage.setItem('userAccessToken', accessToken),
+    ]);
+    console.log('✅ Access token saved');
+    
+    if (refreshToken) {
+      await Promise.all([
+        AsyncStorage.setItem('refresh_token', refreshToken),
+        AsyncStorage.setItem('refreshToken', refreshToken),
+        AsyncStorage.setItem('userRefreshToken', refreshToken),
+      ]);
+      console.log('✅ Refresh token saved');
+    }
+
+    // ✅ STEP 9: Extract user email and GET OWNER EMAIL FOR ADMIN CHECK
+    const userEmail = formData.email.trim().toLowerCase();
+
+    // ✅ CRITICAL: Get OWNER_EMAIL for admin check
+    let ownerEmail = '';
+    try {
+      const appOwnerInfoStr = await EncryptedStorage.getItem('AppOwnerInfo');
+      if (appOwnerInfoStr) {
+        const appOwnerInfo = JSON.parse(appOwnerInfoStr);
+        ownerEmail = appOwnerInfo.emailid || 
+                    appOwnerInfo.email || 
+                    appOwnerInfo.email_id || 
+                    appOwnerInfo.owner_email || 
+                    '';
+      }
+      
+      // Also try direct storage
+      if (!ownerEmail) {
+        ownerEmail = await EncryptedStorage.getItem('OWNER_EMAIL') || '';
+      }
+      
+      console.log('📧 Email Comparison:', {
+        userEmail,
+        ownerEmail,
+        match: userEmail === ownerEmail.toLowerCase()
+      });
+      
+      // ✅ STORE OWNER EMAIL
+      if (ownerEmail) {
+        await EncryptedStorage.setItem('OWNER_EMAIL', ownerEmail);
+      }
+      
+    } catch (error) {
+      console.error('Error getting owner email:', error);
+    }
+
+    // Save user email to storage
+    await Promise.all([
+      AsyncStorage.setItem('userEmail', userEmail),
+      EncryptedStorage.setItem('LOGGED_IN_EMAIL', userEmail)
+    ]);
+    console.log('✅ User email saved');
+
+    // ✅ STEP 10: CHECK ADMIN STATUS IMMEDIATELY
+    const isAdminUser = userEmail === ownerEmail.toLowerCase() && ownerEmail !== '';
+
+    // ✅ STORE ADMIN STATUS IN ALL LOCATIONS
+    await EncryptedStorage.setItem('USER_ROLE', isAdminUser ? 'admin' : 'user');
+
+    // ✅ UPDATE ALL GLOBAL VARIABLES
+    global.loggedin_email = userEmail;
+    global.owner_emailid = ownerEmail;
+    global.userRole = isAdminUser ? 'admin' : 'user';
+    global.isUserAdmin = isAdminUser;
+    global.isUserLoggedin = true;
+
+    console.log('✅ Admin Status Set:', {
+      isAdmin: isAdminUser,
+      userRole: global.userRole,
+      userEmail,
+      ownerEmail,
+      globalIsUserAdmin: global.isUserAdmin,
+      globalUserRole: global.userRole
+    });
+
+    // ✅ STEP 11: Set login status
+    await AsyncStorage.setItem('isLoggedin', 'TRUE');
+    console.log('✅ Login status set');
+
+    // ✅ STEP 12: NOW load profile from API (tokens and admin status are set)
+    console.log('⏳ === LOADING FULL PROFILE FROM API ===');
+    setProfileLoading(true);
+    
+    const fullProfile = await silentProfileLoad(userEmail);
+    
+    setProfileLoading(false);
+
+    if (!fullProfile) {
+      // If profile load fails, create minimal user data
+      console.log('⚠️ Profile API failed, creating minimal user data');
+      
+      const minimalUserData = {
+        email: userEmail,
+        name: userEmail.split('@')[0],
+        mobile: '',
+        isAdmin: isAdminUser,
+        userRole: isAdminUser ? 'admin' : 'user',
+        emailVerified: isAdminUser ? true : false
+      };
+      
+      await storeUserDataReliably(minimalUserData);
+      
+      const successMsg = isAdminUser ? '👑 Admin Login Successful!' : '✅ Login Successful!';
+      const adminInfo = isAdminUser ? '\n\nAdmin privileges enabled.' : '';
+      
+      Alert.alert(
+        'Login Successful', 
+        `${successMsg}\nWelcome! Please complete your profile.${adminInfo}`,
+        [
+          {
+            text: 'OK',
+            onPress: async () => {
+              const finalAdminCheck = global.loggedin_email?.toLowerCase() === global.owner_emailid?.toLowerCase();
+              
+              if (finalAdminCheck !== global.isUserAdmin) {
+                console.log('⚠️ Admin status mismatch detected, correcting...');
+                global.isUserAdmin = finalAdminCheck;
+                global.userRole = finalAdminCheck ? 'admin' : 'user';
+                await EncryptedStorage.setItem('USER_ROLE', finalAdminCheck ? 'admin' : 'user');
+              }
+              
+              console.log('🔑 Final Admin Status Before Navigation:', {
+                isAdmin: global.isUserAdmin,
+                userRole: global.userRole,
+                loginEmail: global.loggedin_email,
+                ownerEmail: global.owner_emailid
+              });
+              
+              navigation.reset({
+                index: 0,
+                routes: [{ name: 'MainDrawer' }],
+              });
+              
+              const refreshDelays = [0, 100, 300, 600, 1000];
+              refreshDelays.forEach(delay => {
+                setTimeout(() => {
+                  if (global.refreshDrawer) {
+                    console.log(`🔄 Drawer refresh at ${delay}ms`);
+                    global.refreshDrawer();
+                  }
+                }, delay);
+              });
+            }
+          }
+        ]
+      );
+      return;
+    }
+
+    // ✅ STEP 13: Profile loaded successfully
+    console.log('✅ Full profile loaded:', {
+      name: fullProfile.name,
+      email: fullProfile.email,
+      mobile: fullProfile.mobile,
+      isAdmin: fullProfile.isAdmin || isAdminUser
+    });
+
+    fullProfile.isAdmin = fullProfile.isAdmin || isAdminUser;
+    fullProfile.userRole = fullProfile.isAdmin ? 'admin' : 'user';
+
+    await new Promise(resolve => setTimeout(resolve, 300));
+
+    // ✅ STEP 14: Show success and navigate
+    const isAdmin = fullProfile.isAdmin;
+    const successMsg = isAdmin ? '👑 Admin Login Successful!' : '✅ Login Successful!';
+    const adminInfo = isAdmin ? '\n\nAdmin privileges enabled.' : '';
+    const welcomeMsg = `Welcome back, ${fullProfile.name || userEmail}!${adminInfo}`;
+
+    Alert.alert('Success', `${successMsg}\n${welcomeMsg}`, [
+      {
+        text: 'OK',
+        onPress: async () => {
+          console.log('🏠 Navigating to MainDrawer');
+          
+          const finalAdminCheck = global.loggedin_email?.toLowerCase() === global.owner_emailid?.toLowerCase();
+          
+          if (finalAdminCheck !== global.isUserAdmin) {
+            console.log('⚠️ Admin status mismatch detected, correcting...');
+            global.isUserAdmin = finalAdminCheck;
+            global.userRole = finalAdminCheck ? 'admin' : 'user';
+            await EncryptedStorage.setItem('USER_ROLE', finalAdminCheck ? 'admin' : 'user');
+          }
+          
+          console.log('🔑 Final Admin Status Before Navigation:', {
+            isAdmin: global.isUserAdmin,
+            userRole: global.userRole,
+            loginEmail: global.loggedin_email,
+            ownerEmail: global.owner_emailid,
+            match: global.loggedin_email === global.owner_emailid?.toLowerCase()
+          });
+          
+          navigation.reset({
+            index: 0,
+            routes: [{ name: 'MainDrawer' }],
+          });
+          
+          const refreshDelays = [0, 100, 300, 600, 1000];
+          refreshDelays.forEach(delay => {
+            setTimeout(() => {
+              if (global.refreshDrawer) {
+                console.log(`🔄 Drawer refresh at ${delay}ms`);
+                global.refreshDrawer();
+              }
+            }, delay);
+          });
+        },
+      },
+    ]);
+    
   } catch (error) {
     LoginLoggingService.loginError('💥 Login error', error);
-    Alert.alert('Error', 'Login failed. Please try again.');
+    console.error('Full error:', error);
+    
+    let errorMessage = 'Login failed. Please try again.';
+    
+    if (error.message.includes('Network')) {
+      errorMessage = 'Network error. Please check your connection.';
+    } else if (error.message.includes('timeout')) {
+      errorMessage = 'Request timeout. Please try again.';
+    } else if (error.message) {
+      errorMessage = error.message;
+    }
+    
+    Alert.alert('Error', errorMessage);
   } finally {
     setLoading(false);
+    setAdminCheckLoading(false);
+    setProfileLoading(false);
   }
 };
-
 
   const handleForgotPassword = () => {
   navigation.navigate('ForgotPassword'); // Navigate to forgot password screen
@@ -860,26 +1229,18 @@ const handleLogin = async () => {
     >
       <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
         <View style={styles.header}>
-          <Icon name="account-circle" size={80} color="#fff" />
-          <Text style={styles.title}>Login</Text>
-          <Text style={styles.subtitle}>Access Your Account</Text>
-          
-          {/* Enhanced admin info indicator */}
-          <View style={styles.adminInfoContainer}>
-            <Icon name="info" size={16} color="rgba(255,255,255,0.8)" />
-            <Text style={styles.adminInfoText}>
-              Profile data will be loaded automatically
-            </Text>
-          </View>
+  <View style={styles.headerLogoContainer}>
+    <Image 
+      source={bjpLogo}
+      style={styles.headerLogoImage}
+      resizeMode="contain"
+    />
+  </View>
+  <Text style={styles.title}>Login</Text>
+         
+        
 
-          {/* Additional info about profile loading */}
-          <View style={styles.roleInfoContainer}>
-            <Text style={styles.roleInfoText}>
-              • User profile loaded during login{'\n'}
-              • Username ready for drawer display{'\n'}
-              • Admin status determined automatically
-            </Text>
-          </View>
+        
         </View>
 
         <View style={styles.formContainer}>
@@ -984,59 +1345,8 @@ const handleLogin = async () => {
             </TouchableOpacity>
           </View>
 
-          {/* Enhanced Profile Loading Info */}
-          <View style={styles.profileLoadingInfoContainer}>
-            <View style={styles.profileLoadingInfoHeader}>
-              <Icon name="account-circle" size={20} color="#4CAF50" />
-              <Text style={styles.profileLoadingInfoTitle}>Profile Auto-Loading</Text>
-            </View>
-            <Text style={styles.profileLoadingInfoText}>
-              • Complete profile data loaded during login{'\n'}
-              • Username immediately available in navigation drawer{'\n'}
-              • No waiting time when accessing View Profile{'\n'}
-              • Profile image URLs automatically resolved{'\n'}
-              • Admin privileges applied instantly{'\n'}
-              • Offline profile data cached for faster access
-            </Text>
-          </View>
-
-          {/* Enhanced Admin Features Info */}
-          <View style={styles.adminFeaturesContainer}>
-            <View style={styles.adminFeaturesHeader}>
-              <Icon name="admin-panel-settings" size={20} color="#FFD700" />
-              <Text style={styles.adminFeaturesTitle}>Admin Features</Text>
-            </View>
-            <Text style={styles.adminFeaturesText}>
-              • App owners automatically become administrators{'\n'}
-              • Email verification is bypassed for admins{'\n'}
-              • Full system access and user management{'\n'}
-              • Edit capabilities enabled in all screens{'\n'}
-              • Role determined by matching owner email{'\n'}
-              • Profile data enhanced with admin privileges
-            </Text>
-          </View>
-
-          {/* Login Flow Info */}
-          {__DEV__ && (
-            <View style={styles.debugInfoContainer}>
-              <View style={styles.debugInfoHeader}>
-                <Icon name="bug-report" size={18} color="#666" />
-                <Text style={styles.debugInfoTitle}>Enhanced Login Flow (Debug)</Text>
-              </View>
-              <Text style={styles.debugInfoText}>
-                1. User enters credentials{'\n'}
-                2. AuthService validates login{'\n'}
-                3. Admin status checked against owner email{'\n'}
-                4. Basic user data stored immediately{'\n'}
-                5. Global variables set for drawer access{'\n'}
-                6. Full profile loaded from API{'\n'}
-                7. Profile image URLs resolved{'\n'}
-                8. Enhanced profile data cached{'\n'}
-                9. Drawer refresh triggered{'\n'}
-                10. Navigation to MainDrawer with ready profile
-              </Text>
-            </View>
-          )}
+          
+        
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
@@ -1294,91 +1604,26 @@ const styles = StyleSheet.create({
   signUpLinkDisabled: {
     color: '#ccc',
   },
-  // Profile Loading Info Styles
-  profileLoadingInfoContainer: {
-    backgroundColor: '#fff',
-    borderRadius: 15,
-    padding: 20,
-    marginBottom: 20,
-    borderWidth: 1,
-    borderColor: '#4CAF50',
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-  },
-  profileLoadingInfoHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  profileLoadingInfoTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#2E7D32',
-    marginLeft: 8,
-  },
-  profileLoadingInfoText: {
-    fontSize: 14,
-    color: '#666',
-    lineHeight: 22,
-  },
-  // Admin Features Info Styles
-  adminFeaturesContainer: {
-    backgroundColor: '#fff',
-    borderRadius: 15,
-    padding: 20,
-    marginBottom: 20,
-    borderWidth: 1,
-    borderColor: '#FFD700',
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-  },
-  adminFeaturesHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  adminFeaturesTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#FF8C00',
-    marginLeft: 8,
-  },
-  adminFeaturesText: {
-    fontSize: 14,
-    color: '#666',
-    lineHeight: 22,
-  },
-  // Debug Info Styles
-  debugInfoContainer: {
-    backgroundColor: '#f8f9fa',
-    borderRadius: 12,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: '#e9ecef',
-  },
-  debugInfoHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 10,
-  },
-  debugInfoTitle: {
-    fontSize: 14,
-    fontWeight: 'bold',
-    color: '#666',
-    marginLeft: 6,
-  },
-  debugInfoText: {
-    fontSize: 12,
-    color: '#666',
-    lineHeight: 18,
-    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
-  },
+  headerLogoContainer: {
+  width: 80,
+  height: 80,
+  borderRadius: 50,  // Half of width/height for perfect circle
+  backgroundColor: '#fff',
+  justifyContent: 'center',
+  alignItems: 'center',
+  overflow: 'hidden',  // CRITICAL - clips image to circular boundary
+  elevation: 4,
+  shadowColor: '#000',
+  shadowOffset: { width: 0, height: 2 },
+  shadowOpacity: 0.2,
+  shadowRadius: 4,
+  borderWidth: 3,
+  borderColor: 'rgba(255, 255, 255, 0.8)',
+},
+headerLogoImage: {
+  width: 100,   // Slightly smaller than container
+  height: 100,  // Slightly smaller than container
+},
 });
 
 export default LoginScreen;

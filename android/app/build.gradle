@@ -1,4 +1,3 @@
-
 apply plugin: "com.android.application"
 apply plugin: "org.jetbrains.kotlin.android"
 apply plugin: "com.facebook.react"
@@ -13,8 +12,8 @@ def jscFlavor = 'io.github.react-native-community:jsc-android:2026004.+'
 
 android {
     ndkVersion rootProject.ext.ndkVersion
-    buildToolsVersion rootProject.ext.buildToolsVersion
-    compileSdk rootProject.ext.compileSdkVersion
+    buildToolsVersion "35.0.0"  // ✅ Latest for Android 15
+    compileSdk 35  // ✅ Android 15
 
     externalNativeBuild {
         cmake {
@@ -26,14 +25,28 @@ android {
 
     defaultConfig {
         applicationId "com.nutantek.sanjayjaiswal"
-    minSdkVersion rootProject.ext.minSdkVersion
-        targetSdkVersion rootProject.ext.targetSdkVersion
+        minSdkVersion 24  // ✅ Recommend 24+ for ML Kit
+        targetSdkVersion 35  // ✅ Android 15
         versionCode 1
         versionName "1.0"
 
         ndk {
             abiFilters "armeabi-v7a", "arm64-v8a", "x86", "x86_64"
         }
+
+        // ✅ Required for Android 15 - Specify Java version
+        multiDexEnabled true
+    }
+
+    // ✅ Java compatibility for Android 15
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    // ✅ Kotlin compatibility
+    kotlinOptions {
+        jvmTarget = '17'
     }
 
     splits {
@@ -64,13 +77,35 @@ android {
             proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
         }
     }
+
+    // ✅ Package options for Android 15
+    packagingOptions {
+        pickFirst 'lib/x86/libc++_shared.so'
+        pickFirst 'lib/x86_64/libc++_shared.so'
+        pickFirst 'lib/armeabi-v7a/libc++_shared.so'
+        pickFirst 'lib/arm64-v8a/libc++_shared.so'
+    }
 }
 
 dependencies {
     implementation("com.facebook.react:react-android")
-    implementation(platform("com.google.firebase:firebase-bom:34.5.0"))
+    
+    // ✅ Updated Firebase BOM for Android 15
+    implementation(platform("com.google.firebase:firebase-bom:33.7.0"))
     implementation("com.google.firebase:firebase-crashlytics")
     implementation("com.google.firebase:firebase-analytics")
+    implementation("com.google.firebase:firebase-messaging")
+        implementation project(':react-native-ml-kit_translate-text')
+
+    
+    // ML Kit Translation
+    implementation project(':react-native-ml-kit_translate-text')
+    
+    // ✅ MultiDex support for Android 15
+    implementation 'androidx.multidex:multidex:2.0.1'
+    
+    // LeakCanary for debugging
+    debugImplementation 'com.squareup.leakcanary:leakcanary-android:2.14'
 
     if (hermesEnabled.toBoolean()) {
         implementation("com.facebook.react:hermes-android")
@@ -78,11 +113,6 @@ dependencies {
         implementation jscFlavor
     }
 }
-
-/*firebaseCrashlytics {
-    nativeSymbolUploadEnabled true
-    unstrippedNativeLibsDir 'build/intermediates/merged_native_libs/release/out/lib'
-}*/
 
 apply from: "../../node_modules/react-native-vector-icons/fonts.gradle"
 apply plugin: 'com.google.gms.google-services'

@@ -19,11 +19,11 @@ import ApiService from '../services/ApiService';
 
 const FeedbackDetailsScreen = ({ route, navigation }) => {
   const { feedbackId, ownerMobile, userEmail } = route.params;
-  
   const [loading, setLoading] = useState(true);
   const [feedbackData, setFeedbackData] = useState(null);
   const [imageUri, setImageUri] = useState(null);
   const [imageLoading, setImageLoading] = useState(false);
+  
 
   useEffect(() => {
     fetchFeedbackDetails();
@@ -33,6 +33,8 @@ const FeedbackDetailsScreen = ({ route, navigation }) => {
     try {
       console.log('📥 === FETCHING FEEDBACK DETAILS ===');
       console.log('Feedback ID:', feedbackId);
+      
+
       console.log('Owner Mobile:', ownerMobile);
       console.log('User Email:', userEmail);
 
@@ -171,12 +173,13 @@ const FeedbackDetailsScreen = ({ route, navigation }) => {
         mediaUrl = mediaUrl.replace(/http:\/\/localhost:\d+/, baseUrl);
         console.log('🔄 Fixed localhost URL:', mediaUrl);
       }
-      
-      // Fix ngrok URLs
-      if (mediaUrl.includes('ngrok-free.app:')) {
-        mediaUrl = mediaUrl.replace(/:(\d+)\//, '/');
-        console.log('🔄 Fixed ngrok URL:', mediaUrl);
-      }
+     // ✅ FIX NGROK URLs - Remove port number from ngrok URLs
+if (mediaUrl.includes('ngrok-free.app') || mediaUrl.includes('ngrok-free.dev')) {
+  // Remove any port number from ngrok URL
+  mediaUrl = mediaUrl.replace(/ngrok-free\.app:\d+/, 'ngrok-free.app');
+  mediaUrl = mediaUrl.replace(/ngrok-free\.dev:\d+/, 'ngrok-free.dev');
+  console.log('🔄 Fixed ngrok URL (removed port):', mediaUrl);
+}
       
       console.log('📥 Loading attachment from:', mediaUrl);
       

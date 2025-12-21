@@ -260,97 +260,88 @@ class AdminService {
 // Updated Profile API Class
 // Updated Profile API Class to match Postman structure - Replace the existing ProfileAPI class in ViewProfileScreen
 class ProfileAPI {
-  static async getUserEmail() {
-    console.log('🔍 Starting email search based on App.js storage patterns...');
-    
-    // Based on your App.js updateUserLoginStatus function, check these locations in order:
-    
-    // 1. AsyncStorage 'userEmail' (primary location from updateUserLoginStatus)
-    try {
-      const userEmail = await AsyncStorage.getItem('userEmail');
-      if (userEmail && userEmail.trim() !== '') {
-        console.log('✅ Email found in AsyncStorage[userEmail]:', userEmail);
-        return userEmail.trim();
-      }
-    } catch (error) {
-      console.log('⚠️ Error reading AsyncStorage[userEmail]:', error.message);
+static async getUserEmail() {
+  console.log('🔍 Starting email search based on App.js storage patterns...');
+  
+  // 1. AsyncStorage 'userEmail' (primary location)
+  try {
+    const userEmail = await AsyncStorage.getItem('userEmail');
+    if (userEmail && userEmail.trim() !== '') {
+      console.log('✅ Email found in AsyncStorage[userEmail]:', userEmail);
+      return userEmail.trim();
     }
-    
-    // 2. EncryptedStorage 'LOGGED_IN_EMAIL' (secondary location from updateUserLoginStatus)
-    try {
-      const encryptedEmail = await EncryptedStorage.getItem('LOGGED_IN_EMAIL');
-      if (encryptedEmail && encryptedEmail.trim() !== '') {
-        console.log('✅ Email found in EncryptedStorage[LOGGED_IN_EMAIL]:', encryptedEmail);
-        return encryptedEmail.trim();
-      }
-    } catch (error) {
-      console.log('⚠️ Error reading EncryptedStorage[LOGGED_IN_EMAIL]:', error.message);
-    }
-    
-    // 3. Check userData object (from updateUserLoginStatus)
-    try {
-      const userData = await AsyncStorage.getItem('userData');
-      if (userData) {
-        const parsed = JSON.parse(userData);
-        console.log('📋 userData available, checking email fields...');
-        
-        // Check common email fields
-        const emailFields = ['email', 'emailid', 'email_id'];
-        for (const field of emailFields) {
-          if (parsed[field] && parsed[field].trim() !== '') {
-            console.log(`✅ Email found in userData[${field}]:`, parsed[field]);
-            return parsed[field].trim();
-          }
-        }
-        
-        console.log('📋 Available userData keys:', Object.keys(parsed));
-      }
-    } catch (error) {
-      console.log('⚠️ Error reading userData:', error.message);
-    }
-    
-    // 4. Check JWT token for email (fallback)
-    try {
-      const accessToken = await AsyncStorage.getItem('jwt_token') || 
-                         await AsyncStorage.getItem('userAccessToken');
-      
-      if (accessToken) {
-        console.log('🔑 JWT token found, attempting decode...');
-        const parts = accessToken.split('.');
-        if (parts.length === 3) {
-          const payload = JSON.parse(atob(parts[1]));
-          console.log('🔑 JWT payload keys:', Object.keys(payload));
-          
-          const emailFields = ['email', 'emailid', 'user_email', 'sub'];
-          for (const field of emailFields) {
-            if (payload[field] && payload[field].includes && payload[field].includes('@')) {
-              console.log(`✅ Email found in JWT[${field}]:`, payload[field]);
-              return payload[field].trim();
-            }
-          }
-        }
-      }
-    } catch (error) {
-      console.log('⚠️ Error decoding JWT:', error.message);
-    }
-    
-    // 5. Check global variables (from your App.js)
-    if (global.loggedin_email && global.loggedin_email.trim() !== '') {
-      console.log('✅ Email found in global.loggedin_email:', global.loggedin_email);
-      return global.loggedin_email.trim();
-    }
-    
-    console.log('🚫 NO EMAIL FOUND ANYWHERE!');
-    console.log('💡 Available AsyncStorage keys to check:');
-    try {
-      const allKeys = await AsyncStorage.getAllKeys();
-      console.log('   ', allKeys.join(', '));
-    } catch (e) {
-      console.log('   Could not get AsyncStorage keys');
-    }
-    
-    return null;
+  } catch (error) {
+    console.log('⚠️ Error reading AsyncStorage[userEmail]:', error.message);
   }
+  
+  // 2. EncryptedStorage 'LOGGED_IN_EMAIL'
+  try {
+    const encryptedEmail = await EncryptedStorage.getItem('LOGGED_IN_EMAIL');
+    if (encryptedEmail && encryptedEmail.trim() !== '') {
+      console.log('✅ Email found in EncryptedStorage[LOGGED_IN_EMAIL]:', encryptedEmail);
+      return encryptedEmail.trim();
+    }
+  } catch (error) {
+    console.log('⚠️ Error reading EncryptedStorage[LOGGED_IN_EMAIL]:', error.message);
+  }
+  
+  // 3. Check userData object
+  try {
+    const userData = await AsyncStorage.getItem('userData');
+    if (userData) {
+      const parsed = JSON.parse(userData);
+      console.log('📋 userData available, checking email fields...');
+      
+      // ✅ FIXED: Check user_email_id FIRST (primary field from your API)
+      const emailFields = ['user_email_id', 'email', 'emailid', 'email_id'];
+      for (const field of emailFields) {
+        if (parsed[field] && parsed[field].trim() !== '') {
+          console.log(`✅ Email found in userData[${field}]:`, parsed[field]);
+          return parsed[field].trim();
+        }
+      }
+      
+      console.log('📋 Available userData keys:', Object.keys(parsed));
+    }
+  } catch (error) {
+    console.log('⚠️ Error reading userData:', error.message);
+  }
+  
+  // 4. Check JWT token for email (fallback)
+  try {
+    const accessToken = await AsyncStorage.getItem('jwt_token') || 
+                       await AsyncStorage.getItem('userAccessToken');
+    
+    if (accessToken) {
+      console.log('🔑 JWT token found, attempting decode...');
+      const parts = accessToken.split('.');
+      if (parts.length === 3) {
+        const payload = JSON.parse(atob(parts[1]));
+        console.log('🔑 JWT payload keys:', Object.keys(payload));
+        
+        // ✅ FIXED: Check user_email_id first
+        const emailFields = ['user_email_id', 'email', 'emailid', 'user_email', 'sub'];
+        for (const field of emailFields) {
+          if (payload[field] && payload[field].includes && payload[field].includes('@')) {
+            console.log(`✅ Email found in JWT[${field}]:`, payload[field]);
+            return payload[field].trim();
+          }
+        }
+      }
+    }
+  } catch (error) {
+    console.log('⚠️ Error decoding JWT:', error.message);
+  }
+  
+  // 5. Check global variables
+  if (global.loggedin_email && global.loggedin_email.trim() !== '') {
+    console.log('✅ Email found in global.loggedin_email:', global.loggedin_email);
+    return global.loggedin_email.trim();
+  }
+  
+  console.log('🚫 NO EMAIL FOUND ANYWHERE!');
+  return null;
+}
 
   static async getOwnerMobile() {
     console.log('Getting owner mobile for profile API...');
@@ -376,178 +367,258 @@ class ProfileAPI {
     return '';
   }
 
-  static async getProfile() {
-    console.log('🚀 Starting profile fetch based on Postman structure...');
+// ✅ REPLACE ProfileAPI.getProfile() in ViewProfileScreen.js
+
+static async getProfile() {
+  console.log('=====================================');
+  console.log('🚀 PROFILE FETCH START - FIXED VERSION');
+  console.log('=====================================');
+  
+  try {
+    // Step 1: Get user email
+    console.log('📧 STEP 1: Getting user email...');
+    const userEmail = await this.getUserEmail();
+    console.log('📧 Result - User email:', userEmail);
     
-    try {
-      // Get the email using our comprehensive search
-      const userEmail = await this.getUserEmail();
-      console.log('📧 Email search result:', userEmail);
-      
-      if (!userEmail) {
-        console.log('🚫 Cannot proceed - no email found');
-        return {
-          success: false,
-          message: 'No user email found in storage. Please login again to refresh your session.',
-          status: 400
-        };
-      }
-      
-      // Get owner mobile from EncryptedStorage (as set in bootstrap)
-      let ownerMobile = '';
-      try {
-        ownerMobile = await EncryptedStorage.getItem('OWNER_MOBILE') || '';
-        console.log('📱 Owner mobile from storage:', ownerMobile);
-      } catch (error) {
-        console.log('⚠️ Could not get owner mobile:', error.message);
-      }
-      
-      // Get API endpoint
-      const endpoints = await ConfigService.getApiEndpoints();
-      const profileEndpoint = endpoints.user.profile;
-      
-      console.log('🌐 Profile endpoint from ConfigService:', profileEndpoint);
-      
-      // Build POST body as shown in Postman
-      const requestBody = {
-        leader_regd_mobile_no: ownerMobile,
-        user_email_id: userEmail
-      };
-      
-      console.log('📡 Profile API Request Body:', requestBody);
-      
-      // Use POST method with body (matching your Postman request)
-      const result = await ApiService.authPost(profileEndpoint, requestBody);
-      
-      console.log('📥 API Response received:', {
-        success: result.success,
-        status: result.status,
-        message: result.message,
-        hasData: !!result.data
-      });
-      
-      if (result.success && result.data) {
-        return this.processProfileResponse(result);
-      } else {
-        console.log('❌ API call failed:', result.message);
-        return {
-          success: false,
-          message: result.message || 'Failed to fetch profile from server. Please try logging in again.',
-          status: result.status
-        };
-      }
-      
-    } catch (error) {
-      console.log('💥 Unexpected error in profile fetch:', error.message);
-      console.log('💥 Error stack:', error.stack);
+    if (!userEmail) {
+      console.log('❌ NO EMAIL - Aborting profile fetch');
       return {
         success: false,
-        message: 'Network error occurred. Please check your connection and try again.',
+        message: 'No user email found. Please login again.',
+        status: 400
       };
     }
+    
+    // Step 2: Get owner mobile
+    console.log('📱 STEP 2: Getting owner mobile...');
+    let ownerMobile = '';
+    
+    try {
+      ownerMobile = await EncryptedStorage.getItem('OWNER_MOBILE') || '';
+      console.log('📱 EncryptedStorage OWNER_MOBILE:', ownerMobile);
+    } catch (error) {
+      console.log('⚠️ EncryptedStorage error:', error.message);
+    }
+    
+    if (!ownerMobile || ownerMobile.trim() === '') {
+      ownerMobile = '7702000725';
+      console.log('📱 Using DEFAULT mobile:', ownerMobile);
+    }
+    
+    console.log('📱 FINAL owner mobile:', ownerMobile);
+    
+    // Step 3: Get base URL
+    console.log('🌐 STEP 3: Getting base URL...');
+    const baseUrl = await ConfigService.getBaseUrl();
+    console.log('🌐 Base URL:', baseUrl);
+    
+    // Step 4: Construct endpoint
+    const profileEndpoint = `${baseUrl}/api/profile`;
+    
+    // ✅ CRITICAL FIX: Build query params properly
+    const queryParams = new URLSearchParams({
+      leader_regd_mobile_no: ownerMobile,
+      user_email_id: userEmail
+    }).toString();
+    
+    const fullUrl = `${profileEndpoint}?${queryParams}`;
+    
+    console.log('=====================================');
+    console.log('📡 API CALL DETAILS:');
+    console.log('   Full URL:', fullUrl);
+    console.log('   Query Params:', queryParams);
+    console.log('=====================================');
+    
+    // Step 5: Get auth headers
+    console.log('🔐 STEP 5: Getting auth headers...');
+    const accessToken = await AsyncStorage.getItem('jwt_token');
+    const appKey = await EncryptedStorage.getItem('APP_KEY');
+    
+    console.log('🔐 Has access token:', !!accessToken);
+    console.log('🔑 Has app key:', !!appKey);
+    
+    if (!accessToken) {
+      console.log('❌ NO ACCESS TOKEN!');
+      return {
+        success: false,
+        message: 'No access token. Please login.',
+        status: 401
+      };
+    }
+    
+    const headers = {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${accessToken}`,
+      'x-app-key': appKey || ''
+    };
+    
+    console.log('📋 Request headers:', {
+      'Content-Type': headers['Content-Type'],
+      'Authorization': 'Bearer ***' + accessToken.slice(-20),
+      'x-app-key': appKey ? 'Present' : 'Missing'
+    });
+    
+    // Step 6: Make API call
+    console.log('📞 STEP 6: Making API call...');
+    
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 30000);
+    
+    const response = await fetch(fullUrl, {
+      method: 'GET',
+      headers: headers,
+      signal: controller.signal
+    });
+    
+    clearTimeout(timeoutId);
+    
+    console.log('=====================================');
+    console.log('📥 API RESPONSE RECEIVED:');
+    console.log('   Status:', response.status);
+    console.log('   OK:', response.ok);
+    console.log('=====================================');
+    
+    const responseData = await response.json();
+    
+    console.log('📋 Response data structure:', {
+      hasFormattedData: !!responseData.formattedData,
+      hasUser: !!responseData.user,
+      hasData: !!responseData.data,
+      topLevelKeys: Object.keys(responseData)
+    });
+    
+    if (response.ok && responseData) {
+      console.log('✅ Profile fetch successful');
+      return this.processProfileResponse({ success: true, data: responseData, status: response.status });
+    } else {
+      console.log('❌ Profile fetch failed');
+      return {
+        success: false,
+        message: responseData.message || `Request failed with status ${response.status}`,
+        status: response.status
+      };
+    }
+    
+  } catch (error) {
+    console.log('=====================================');
+    console.log('💥 PROFILE FETCH ERROR:');
+    console.log('   Error:', error.message);
+    console.log('   Stack:', error.stack);
+    console.log('=====================================');
+    return {
+      success: false,
+      message: 'Network error occurred. Please check your connection.',
+    };
   }
+}
 
   static async processProfileResponse(result) {
-    console.log('📊 Processing profile response...');
-    console.log('   Response data keys:', result.data ? Object.keys(result.data) : 'No data');
+  console.log('📊 Processing profile response...');
+  console.log('   Response data keys:', result.data ? Object.keys(result.data) : 'No data');
 
-    if (result.success && result.data) {
-      let userData;
-      
-      // Based on Postman response structure: { formattedData: {...} }
-      if (result.data.formattedData) {
-        console.log('✅ Using formattedData from response');
-        userData = result.data.formattedData;
-      } 
-      // Fallback structures
-      else if (result.data.user) {
-        console.log('✅ Using user data from response');
-        userData = result.data.user;
-      } 
-      else if (result.data.data) {
-        console.log('✅ Using data field from response');
-        userData = result.data.data;
-      } 
-      // Direct user data
-      else if (result.data._id || result.data.email) {
-        console.log('✅ Using direct data from response');
-        userData = result.data;
-      } 
-      else {
-        console.log('❌ No recognizable user data structure');
-        console.log('   Available keys:', Object.keys(result.data));
-        return {
-          success: false,
-          message: 'No profile data found in server response',
-        };
-      }
-
-      console.log('📋 Extracted user data:', {
-        id: userData._id,
-        name: userData.name,
-        email: userData.email,
-        mobile: userData.mobile,
-        hasProfileImage: !!userData.profile_image
-      });
-
-      // Handle profile image if present
-      if (userData.profile_image && userData.profile_image !== 'placeholder') {
-        try {
-          const workingImageUrl = await ImageService.getWorkingImageUrl(userData.profile_image);
-          if (workingImageUrl) {
-            userData.profile_image = workingImageUrl;
-            console.log('🖼️ Profile image URL resolved successfully');
-          } else {
-            console.log('⚠️ Could not resolve profile image URL');
-          }
-        } catch (imageError) {
-          console.log('⚠️ Error resolving profile image:', imageError.message);
-        }
-      }
-
-      console.log('✅ Profile processing completed successfully');
-      
-      return {
-        success: true,
-        data: userData,
-      };
-    }
+  if (result.success && result.data) {
+    let userData;
     
-    console.log('❌ Profile response processing failed');
-    return result;
-  }
-
-  // Helper method to refresh profile data
-  static async refreshProfile() {
-    console.log('Refreshing user profile...');
-    
-    try {
-      const result = await this.getProfile();
-      
-      if (result.success) {
-        console.log('Profile refreshed successfully');
-        
-        // Update global user data if available
-        if (result.data) {
-          global.currentUser = result.data;
-          global.currentUserName = result.data.name || result.data.fullName;
-          global.currentUserEmail = result.data.email || result.data.emailid;
-          global.currentUserMobile = result.data.mobile || result.data.mobileNo;
-          global.currentUserCity = result.data.city;
-          global.currentUserProfileImage = result.data.profile_image;
-        }
-      }
-      
-      return result;
-    } catch (error) {
-      console.log('Error refreshing profile:', error.message);
+    // Based on Postman response structure: { formattedData: {...} }
+    if (result.data.formattedData) {
+      console.log('✅ Using formattedData from response');
+      userData = result.data.formattedData;
+    } 
+    // Fallback structures
+    else if (result.data.user) {
+      console.log('✅ Using user data from response');
+      userData = result.data.user;
+    } 
+    else if (result.data.data) {
+      console.log('✅ Using data field from response');
+      userData = result.data.data;
+    } 
+    // Direct user data
+    else if (result.data._id || result.data.user_email_id || result.data.email) {
+      console.log('✅ Using direct data from response');
+      userData = result.data;
+    } 
+    else {
+      console.log('❌ No recognizable user data structure');
+      console.log('   Available keys:', Object.keys(result.data));
       return {
         success: false,
-        message: 'Failed to refresh profile',
-        error: error.message
+        message: 'No profile data found in server response',
       };
     }
+
+    // ✅ UPDATED: Normalize email field
+    if (userData.user_email_id && !userData.email) {
+      userData.email = userData.user_email_id;
+    }
+
+    console.log('📋 Extracted user data:', {
+      id: userData._id,
+      name: userData.name,
+      email: userData.email || userData.user_email_id,
+      mobile: userData.mobile,
+      hasProfileImage: !!userData.profile_image
+    });
+
+    // Handle profile image if present
+    if (userData.profile_image && userData.profile_image !== 'placeholder') {
+      try {
+        const workingImageUrl = await ImageService.getWorkingImageUrl(userData.profile_image);
+        if (workingImageUrl) {
+          userData.profile_image = workingImageUrl;
+          console.log('🖼️ Profile image URL resolved successfully');
+        } else {
+          console.log('⚠️ Could not resolve profile image URL');
+        }
+      } catch (imageError) {
+        console.log('⚠️ Error resolving profile image:', imageError.message);
+      }
+    }
+
+    console.log('✅ Profile processing completed successfully');
+    
+    return {
+      success: true,
+      data: userData,
+    };
   }
+  
+  console.log('❌ Profile response processing failed');
+  return result;
+}
+
+  // Helper method to refresh profile data
+ static async refreshProfile() {
+  console.log('Refreshing user profile...');
+  
+  try {
+    const result = await this.getProfile();
+    
+    if (result.success) {
+      console.log('Profile refreshed successfully');
+      
+      // Update global user data if available
+      if (result.data) {
+        global.currentUser = result.data;
+        global.currentUserName = result.data.name || result.data.fullName;
+        // ✅ UPDATED: Check both email fields
+        global.currentUserEmail = result.data.email || result.data.user_email_id || result.data.emailid;
+        global.currentUserMobile = result.data.mobile || result.data.mobileNo;
+        global.currentUserCity = result.data.city;
+        global.currentUserProfileImage = result.data.profile_image;
+      }
+    }
+    
+    return result;
+  } catch (error) {
+    console.log('Error refreshing profile:', error.message);
+    return {
+      success: false,
+      message: 'Failed to refresh profile',
+      error: error.message
+    };
+  }
+}
 
   // Helper method to get cached profile
   static async getCachedProfile() {
@@ -715,235 +786,252 @@ const ViewProfileScreen = ({ navigation, route }) => {
     }
   };
 
-  const checkSessionAndLoadProfile = async () => {
-    try {
-      LoggingService.profileInfo('=== STARTING SESSION CHECK ===');
-      setLoading(true);
-      setSessionExpired(false);
-      
-      // Check login status first
-      const loginStatus = await AsyncStorage.getItem('isLoggedin');
-      const isLoggedIn = loginStatus === 'TRUE' || global.isUserLoggedin;
-      
-      LoggingService.profileDebug('Login status check', { 
-        asyncStorageValue: loginStatus,
-        globalValue: global.isUserLoggedin,
-        finalIsLoggedIn: isLoggedIn
-      });
-      
-      if (!isLoggedIn) {
-        LoggingService.profileWarn('User not logged in - showing login required screen');
-        setIsUserLoggedIn(false);
-        setLoading(false);
-        return;
-      }
+// ✅ REPLACE checkSessionAndLoadProfile in ViewProfileScreen.js
 
-      // Check if tokens exist
-      const accessToken = await AuthService.getToken();
-      const refreshToken = await AuthService.getRefreshToken();
-      
-      LoggingService.profileDebug('Token availability check', { 
-        hasAccessToken: !!accessToken, 
-        hasRefreshToken: !!refreshToken,
-        accessTokenLength: accessToken?.length || 0
-      });
-
-      if (!accessToken && !refreshToken) {
-        LoggingService.profileWarn('No tokens found');
-        
-        if (justRegistered) {
-          LoggingService.profileInfo('User just registered, attempting local profile load');
-          setIsUserLoggedIn(true);
-          await loadLocalUserProfile();
-          return;
-        }
-        
-        LoggingService.profileWarn('User needs to login');
-        setIsUserLoggedIn(false);
-        setLoading(false);
-        return;
-      }
-
-      // Validate JWT token - The AuthService will handle automatic logout if needed
-      LoggingService.profileDebug('Starting token validation');
-      const tokenValidation = await AuthService.validateAndRefreshToken();
-      LoggingService.profileDebug('Token validation result', tokenValidation);
-      
-      if (!tokenValidation.valid) {
-        // Session expiry is already handled by AuthService callback
-        // Just update local state
-        LoggingService.profileWarn('Token validation failed - session handled by AuthService');
-        setLoading(false);
-        return;
-      }
-
-      // Token is valid, fetch profile from API
-      LoggingService.profileInfo('Tokens valid - fetching profile from API');
-      setIsUserLoggedIn(true);
-      await fetchProfileFromAPI();
-      
-    } catch (error) {
-      LoggingService.profileError('Error during session check', {
-        errorMessage: error.message,
-        errorName: error.name
-      });
-      
-      // Error handling is now managed by AuthService
+const checkSessionAndLoadProfile = async () => {
+  try {
+    LoggingService.profileInfo('=== STARTING SESSION CHECK ===');
+    
+    setLoading(true);
+    setSessionExpired(false);
+    
+    // Check login status first
+    const loginStatus = await AsyncStorage.getItem('isLoggedin');
+    const isLoggedIn = loginStatus === 'TRUE' || global.isUserLoggedin;
+    
+    LoggingService.profileDebug('Login status check', { 
+      asyncStorageValue: loginStatus,
+      globalValue: global.isUserLoggedin,
+      finalIsLoggedIn: isLoggedIn
+    });
+    
+    if (!isLoggedIn) {
+      LoggingService.profileWarn('User not logged in');
+      setIsUserLoggedIn(false);
       setLoading(false);
+      return;
     }
-  };
 
-  const checkAdminStatus = async (userEmail) => {
-    try {
-      LoggingService.profileInfo('=== CHECKING ADMIN STATUS ===');
+    // Check if tokens exist
+    const accessToken = await AuthService.getToken();
+    const refreshToken = await AuthService.getRefreshToken();
+    
+    LoggingService.profileDebug('Token availability', { 
+      hasAccessToken: !!accessToken, 
+      hasRefreshToken: !!refreshToken
+    });
+
+    if (!accessToken && !refreshToken) {
+      LoggingService.profileWarn('No tokens found');
       
-      if (!userEmail) {
-        LoggingService.profileWarn('No user email provided for admin check');
-        return { isAdmin: false };
+      if (justRegistered) {
+        LoggingService.profileInfo('User just registered, loading local profile');
+        setIsUserLoggedIn(true);
+        await loadLocalUserProfile();
+        return;
       }
+      
+      setIsUserLoggedIn(false);
+      setLoading(false);
+      return;
+    }
 
-      const roleInfo = await AdminService.getUserRoleInfo(userEmail);
-      
-      LoggingService.profileInfo(`Admin status determined: ${roleInfo.isAdmin ? 'Admin' : 'User'}`, {
-        userEmail: userEmail,
-        isAdmin: roleInfo.isAdmin,
-        userRole: roleInfo.userRole,
-        ownerEmail: roleInfo.ownerEmail
-      });
+    // ✅ CHANGED: Load local profile FIRST (instant display)
+    setIsUserLoggedIn(true);
+    await loadLocalUserProfile();
+    setLoading(false); // Stop loading spinner
+    
+    // ✅ CHANGED: Try to fetch from API WITHOUT token validation
+    // Let the API call handle token refresh automatically
+    try {
+      LoggingService.profileInfo('🔄 Fetching fresh profile from API...');
+      await fetchProfileFromAPIQuietly();
+    } catch (backgroundError) {
+      LoggingService.profileWarn('Background refresh failed, using cached data', backgroundError);
+      // Don't show error to user - cached data is already displayed
+    }
+    
+  } catch (error) {
+    LoggingService.profileError('Error during session check', error);
+    setLoading(false);
+    
+    // Try to load local data even on error
+    try {
+      await loadLocalUserProfile();
+    } catch (localError) {
+      LoggingService.profileError('Failed to load local data', localError);
+    }
+  }
+};
 
-      setIsAdmin(roleInfo.isAdmin);
-      setAdminInfo(roleInfo);
-      
-      return roleInfo;
-      
-    } catch (error) {
-      LoggingService.profileError('Error checking admin status', error);
-      setIsAdmin(false);
-      setAdminInfo(null);
+ const checkAdminStatus = async (userEmail) => {
+  try {
+    LoggingService.profileInfo('=== CHECKING ADMIN STATUS ===');
+    
+    if (!userEmail) {
+      LoggingService.profileWarn('No user email provided for admin check');
       return { isAdmin: false };
     }
-  };
 
-  const enhanceUserProfileWithAdminStatus = async (userData) => {
-    try {
-      LoggingService.profileInfo('=== ENHANCING PROFILE WITH ADMIN STATUS ===');
-      
-      const adminStatus = await checkAdminStatus(userData.email);
-      const enhancedProfile = { ...userData };
-      
-      if (adminStatus.isAdmin) {
-        LoggingService.profileInfo('User is admin - auto-verifying email', {
-          email: userData.email,
-          originalEmailVerified: userData.emailVerified
-        });
-        
-        enhancedProfile.emailVerified = true;
-        enhancedProfile.isAdmin = true;
-        enhancedProfile.userRole = 'admin';
-        
-        if (adminStatus.appOwnerInfo) {
-          enhancedProfile.adminInfo = {
-            ownerEmail: adminStatus.ownerEmail,
-            mobile: adminStatus.appOwnerInfo.mobile_no || adminStatus.appOwnerInfo.mobile_number,
-          };
-        }
-        
-        LoggingService.profileInfo('Profile enhanced for admin user', {
-          emailVerified: enhancedProfile.emailVerified,
-          isAdmin: enhancedProfile.isAdmin,
-          userRole: enhancedProfile.userRole
-        });
-      } else {
-        LoggingService.profileInfo('Regular user - keeping original email verification status', {
-          email: userData.email,
-          emailVerified: userData.emailVerified
-        });
-        
-        enhancedProfile.isAdmin = false;
-        enhancedProfile.userRole = 'user';
-      }
-      
-      return enhancedProfile;
-      
-    } catch (error) {
-      LoggingService.profileError('Error enhancing profile with admin status', error);
-      return userData;
+    const roleInfo = await AdminService.getUserRoleInfo(userEmail);
+    
+    LoggingService.profileInfo(`Admin status determined: ${roleInfo.isAdmin ? 'Admin' : 'User'}`, {
+      userEmail: userEmail,
+      isAdmin: roleInfo.isAdmin,
+      userRole: roleInfo.userRole,
+      ownerEmail: roleInfo.ownerEmail
+    });
+
+    setIsAdmin(roleInfo.isAdmin);
+    setAdminInfo(roleInfo);
+    
+    return roleInfo;
+    
+  } catch (error) {
+    LoggingService.profileError('Error checking admin status', error);
+    setIsAdmin(false);
+    setAdminInfo(null);
+    return { isAdmin: false };
+  }
+};
+
+ const enhanceUserProfileWithAdminStatus = async (userData) => {
+  try {
+    LoggingService.profileInfo('=== ENHANCING PROFILE WITH ADMIN STATUS ===');
+    
+    // ✅ UPDATED: Get email from either field
+    const userEmail = userData.email || userData.user_email_id;
+    
+    const adminStatus = await checkAdminStatus(userEmail);
+    const enhancedProfile = { ...userData };
+    
+    // ✅ UPDATED: Ensure email field exists
+    if (!enhancedProfile.email && enhancedProfile.user_email_id) {
+      enhancedProfile.email = enhancedProfile.user_email_id;
     }
-  };
-
-  const fetchProfileFromAPI = async () => {
-    try {
-      LoggingService.profileInfo('=== FETCHING PROFILE FROM API USING CONFIGSERVICE ===');
-      
-      const result = await ProfileAPI.getProfile();
-      
-      LoggingService.profileDebug('API call completed', {
-        success: result.success,
-        hasData: !!result.data,
-        message: result.message
+    
+    if (adminStatus.isAdmin) {
+      LoggingService.profileInfo('User is admin - auto-verifying email', {
+        email: userEmail,
+        originalEmailVerified: userData.emailVerified || userData.isEmailVerified
       });
       
-      if (result.success && result.data) {
-        LoggingService.profileInfo('Profile data received, enhancing with admin status', {
-          profileId: result.data._id,
-          profileName: result.data.name,
-          profileEmail: result.data.email,
-          profileImage: result.data.profile_image
-        });
-        
-        const enhancedProfile = await enhanceUserProfileWithAdminStatus(result.data);
-        
-        LoggingService.profileInfo('Setting enhanced user profile', {
-          profileId: enhancedProfile._id,
-          profileName: enhancedProfile.name,
-          isAdmin: enhancedProfile.isAdmin,
-          emailVerified: enhancedProfile.emailVerified,
-          userRole: enhancedProfile.userRole
-        });
-        
-        setUserProfile(enhancedProfile);
-        
-        try {
-          await AsyncStorage.setItem('userData', JSON.stringify(enhancedProfile));
-          LoggingService.profileDebug('Enhanced profile saved to local storage successfully');
-        } catch (saveError) {
-          LoggingService.profileError('Failed to save profile to local storage', saveError);
-        }
-        
-      } else {
-        // Check if the error is due to session expiry (401 status)
-        if (result.status === 401) {
-          LoggingService.profileWarn('API returned 401 - session will be handled by AuthService');
-          return; // AuthService callback will handle this
-        }
-        
-        LoggingService.profileError('API returned failure or no data', {
-          success: result.success,
-          message: result.message
-        });
-        
-        Alert.alert('Error', result.message || 'Failed to load profile');
+      enhancedProfile.emailVerified = true;
+      enhancedProfile.isAdmin = true;
+      enhancedProfile.userRole = 'admin';
+      
+      if (adminStatus.appOwnerInfo) {
+        enhancedProfile.adminInfo = {
+          ownerEmail: adminStatus.ownerEmail,
+          mobile: adminStatus.appOwnerInfo.mobile_no || adminStatus.appOwnerInfo.mobile_number,
+        };
+      }
+      
+      LoggingService.profileInfo('Profile enhanced for admin user', {
+        emailVerified: enhancedProfile.emailVerified,
+        isAdmin: enhancedProfile.isAdmin,
+        userRole: enhancedProfile.userRole
+      });
+    } else {
+      LoggingService.profileInfo('Regular user - keeping original email verification status', {
+        email: userEmail,
+        emailVerified: userData.emailVerified || userData.isEmailVerified
+      });
+      
+      enhancedProfile.isAdmin = false;
+      enhancedProfile.userRole = 'user';
+      // ✅ UPDATED: Check both field names
+      enhancedProfile.emailVerified = userData.emailVerified || userData.isEmailVerified || false;
+    }
+    
+    return enhancedProfile;
+    
+  } catch (error) {
+    LoggingService.profileError('Error enhancing profile with admin status', error);
+    return userData;
+  }
+};
+
+const fetchProfileFromAPIQuietly = async () => {
+  try {
+    LoggingService.profileInfo('=== QUIET PROFILE REFRESH FROM API ===');
+    
+    const result = await ProfileAPI.getProfile();
+    
+    if (result.success && result.data) {
+      LoggingService.profileInfo('✅ Background refresh successful');
+      
+      const enhancedProfile = await enhanceUserProfileWithAdminStatus(result.data);
+      
+      // Update state with fresh data
+      setUserProfile(enhancedProfile);
+      
+      // Save to storage
+      await AsyncStorage.setItem('userData', JSON.stringify(enhancedProfile));
+      await AsyncStorage.setItem('profileLastUpdated', new Date().toISOString());
+      
+    } else if (result.status === 401) {
+      LoggingService.profileWarn('⚠️ Background refresh got 401 - session may be expired');
+      // Don't trigger logout - user can continue with cached data
+    } else {
+      LoggingService.profileWarn('⚠️ Background refresh failed, keeping cached data');
+    }
+    
+  } catch (error) {
+    LoggingService.profileError('❌ Quiet refresh error (non-critical)', error);
+    // Don't propagate error - cached data is fine
+  }
+};
+
+
+ const fetchProfileFromAPI = async () => {
+  try {
+    LoggingService.profileInfo('=== FETCHING PROFILE FROM API ===');
+    
+    const result = await ProfileAPI.getProfile();
+    
+    LoggingService.profileDebug('API call completed', {
+      success: result.success,
+      hasData: !!result.data,
+      message: result.message
+    });
+    
+    if (result.success && result.data) {
+      const enhancedProfile = await enhanceUserProfileWithAdminStatus(result.data);
+      setUserProfile(enhancedProfile);
+      
+      await AsyncStorage.setItem('userData', JSON.stringify(enhancedProfile));
+      LoggingService.profileDebug('Profile saved to local storage');
+      
+    } else {
+      // ✅ CHANGED: Don't trigger session expiry on 401
+      if (result.status === 401) {
+        LoggingService.profileWarn('Got 401 - loading cached data instead');
         await loadLocalUserProfile();
-      }
-    } catch (error) {
-      LoggingService.profileError('Error during API fetch', {
-        errorMessage: error.message,
-        errorName: error.name
-      });
-      
-      // Check if error indicates session expiry
-      if (error.message && error.message.includes('401')) {
-        // AuthService callback will handle this
-        return;
+        return; // Don't show error
       }
       
-      Alert.alert('Error', 'Failed to load profile from server. Loading local data.');
+      LoggingService.profileError('API returned failure', result);
+      Alert.alert('Info', 'Could not fetch latest profile. Showing cached data.');
       await loadLocalUserProfile();
-    } finally {
-      LoggingService.profileInfo('Profile fetch process completed');
-      setLoading(false);
     }
-  };
+  } catch (error) {
+    LoggingService.profileError('Error during API fetch', error);
+    
+    // ✅ CHANGED: Don't trigger session expiry on network errors
+    if (error.message && error.message.includes('401')) {
+      LoggingService.profileWarn('Network error - loading cached data');
+      await loadLocalUserProfile();
+      return;
+    }
+    
+    Alert.alert('Info', 'Could not connect to server. Showing cached data.');
+    await loadLocalUserProfile();
+  } finally {
+    setLoading(false);
+  }
+};
+
 
   const loadLocalUserProfile = async () => {
     try {
@@ -1202,23 +1290,26 @@ const ViewProfileScreen = ({ navigation, route }) => {
         </Text>
         
         {/* Email with verification status */}
-        <View style={styles.emailContainer}>
-          <Text style={styles.userEmail}>{userProfile.email}</Text>
-          {userProfile.emailVerified && (
-            <View style={styles.verifiedBadgeHeader}>
-              <Icon name="verified" size={16} color="#4CAF50" />
-              <Text style={styles.verifiedTextHeader}>
-                {userProfile.isAdmin ? 'Admin - Auto Verified' : 'Verified'}
-              </Text>
-            </View>
-          )}
-          {userProfile.isAdmin && !userProfile.emailVerified && (
-            <View style={styles.verifiedBadgeHeader}>
-              <Icon name="admin-panel-settings" size={16} color="#FFD700" />
-              <Text style={styles.adminAutoVerifyText}>Admin Account</Text>
-            </View>
-          )}
-        </View>
+       {/* Email with verification status */}
+<View style={styles.emailContainer}>
+  <Text style={styles.userEmail}>
+    {userProfile.email || userProfile.user_email_id}
+  </Text>
+  {userProfile.emailVerified && (
+    <View style={styles.verifiedBadgeHeader}>
+      <Icon name="verified" size={16} color="#4CAF50" />
+      <Text style={styles.verifiedTextHeader}>
+        {userProfile.isAdmin ? 'Admin - Auto Verified' : 'Verified'}
+      </Text>
+    </View>
+  )}
+  {userProfile.isAdmin && !userProfile.emailVerified && (
+    <View style={styles.verifiedBadgeHeader}>
+      <Icon name="admin-panel-settings" size={16} color="#FFD700" />
+      <Text style={styles.adminAutoVerifyText}>Admin Account</Text>
+    </View>
+  )}
+</View>
 
         {/* User Role Indicator */}
         <View style={styles.roleContainer}>
@@ -1241,7 +1332,7 @@ const ViewProfileScreen = ({ navigation, route }) => {
     <Text style={styles.sectionTitle}>Personal Information</Text>
     {renderInfoRow('Full Name', userProfile.name || userProfile.fullName, 'person')}
     {renderInfoRow('Mobile Number', userProfile.mobile || userProfile.mobileNo, 'phone')}
-    {renderInfoRow('Email Address', userProfile.email, 'email')}
+    {renderInfoRow('Email Address', userProfile.email || userProfile.user_email_id, 'email')}
     {/* Address removed from here */}
   </View>
   

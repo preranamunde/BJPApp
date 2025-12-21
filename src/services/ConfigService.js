@@ -14,14 +14,12 @@ static DEFAULT_BASE_URL = 'http://192.168.0.102:5000';
     try {
       await this.setBaseUrl(this.DEFAULT_BASE_URL); // Force new ngrok URL
       console.log('✅ Configuration initialized with ngrok base URL:', this.DEFAULT_BASE_URL);
+
     } catch (error) {
       console.error('❌ Error initializing configuration:', error);
 
     }
   }
-  
-
-
   // Set base URL
   static async setBaseUrl(baseUrl) {
     
@@ -137,7 +135,7 @@ static async getApiEndpoints() {
       login: `${baseUrl}/api/auth/login`,
       register: `${baseUrl}/api/auth/register`,
       logout: `${baseUrl}/api/auth/logout`,
-      refreshToken: `${baseUrl}/api/auth/refresh-token`,
+      refreshToken: `${baseUrl}/api/auth/refreshtoken`,
       verifyEmail: `${baseUrl}/api/auth/verifyemail`,
       sendOTP: `${baseUrl}/api/auth/sendotp`,
       verifyEmailOTP: `${baseUrl}/api/auth/verifyemailotp`,

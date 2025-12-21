@@ -15,6 +15,7 @@ import {
   Dimensions,
   TextInput,
 Button,
+lang,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import EncryptedStorage from 'react-native-encrypted-storage';
@@ -22,11 +23,13 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import ConfigService from '../services/ConfigService';
 import ApiService from '../services/ApiService';
 import NotificationIcon from '../components/NotificationIcon';
-import { languageData } from '../components/languages';
+
 import { getCurrentUserRole,checkIfCurrentUserIsAdmin } from '../../App';
 import { launchImageLibrary } from 'react-native-image-picker';
 import messaging from '@react-native-firebase/messaging';
 import crashlytics from '@react-native-firebase/crashlytics';
+import { useTranslation } from '../context/TranslationContext';
+import TranslatableText from '../components/TranslatableText';
 
 const { width } = Dimensions.get('window');
 
@@ -308,6 +311,117 @@ const AddHomeMediaModal = ({ visible, onClose, onSave }) => {
                 <ActivityIndicator color="#fff" />
               ) : (
                 <Text style={styles.saveButtonText}>Add Media</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+};
+
+// ✅ NEW: Add Latest News Modal Component
+const AddLatestNewsModal = ({ visible, onClose, onSave }) => {
+  const [header, setHeader] = useState('');
+  const [description, setDescription] = useState('');
+  const [url, setUrl] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (visible) {
+      setHeader('');
+      setDescription('');
+      setUrl('');
+    }
+  }, [visible]);
+
+  const handleSave = async () => {
+    if (!header.trim()) {
+      Alert.alert('Validation Error', 'Please enter a header');
+      return;
+    }
+
+    if (!description.trim()) {
+      Alert.alert('Validation Error', 'Please enter a description');
+      return;
+    }
+
+    setSaving(true);
+    try {
+      await onSave({ header, description, url });
+      onClose();
+    } catch (error) {
+      Alert.alert('Error', 'Failed to add latest news');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Modal
+      visible={visible}
+      transparent
+      animationType="slide"
+      onRequestClose={onClose}
+    >
+      <View style={styles.modalOverlay}>
+        <View style={styles.modalContainer}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Add Latest News</Text>
+            <TouchableOpacity onPress={onClose}>
+              <Text style={styles.closeButton}>✕</Text>
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView style={styles.modalContent}>
+            <Text style={styles.label}>Header *</Text>
+            <TextInput
+              style={styles.input}
+              value={header}
+              onChangeText={setHeader}
+              placeholder="Enter news header"
+              placeholderTextColor="#999"
+            />
+
+            <Text style={styles.label}>Description *</Text>
+            <TextInput
+              style={[styles.input, styles.textArea]}
+              value={description}
+              onChangeText={setDescription}
+              placeholder="Enter news description"
+              placeholderTextColor="#999"
+              multiline
+              numberOfLines={4}
+            />
+
+            <Text style={styles.label}>URL</Text>
+            <TextInput
+              style={styles.input}
+              value={url}
+              onChangeText={setUrl}
+              placeholder="Enter URL (optional)"
+              placeholderTextColor="#999"
+              autoCapitalize="none"
+            />
+          </ScrollView>
+
+          <View style={styles.modalFooter}>
+            <TouchableOpacity 
+              style={[styles.modalButton, styles.cancelButton]}
+              onPress={onClose}
+            >
+              <Text style={styles.cancelButtonText}>Cancel</Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity 
+              style={[styles.modalButton, styles.saveButton]}
+              onPress={handleSave}
+              disabled={saving}
+            >
+              {saving ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={styles.saveButtonText}>Add News</Text>
               )}
             </TouchableOpacity>
           </View>
@@ -629,8 +743,7 @@ const HomeMediaImage = React.memo(({
 
 // MAIN COMPONENT
 const HomeScreen = ({ navigation }) => {
-  const [selectedLanguage, setSelectedLanguage] = useState('en');
-  const [isLanguageModalVisible, setIsLanguageModalVisible] = useState(false);
+
   const [isListening, setIsListening] = useState(false);
   const [homeMediaData, setHomeMediaData] = useState([]);
   const [homeMediaLoading, setHomeMediaLoading] = useState(false);
@@ -656,6 +769,20 @@ const [latestNewsData, setLatestNewsData] = useState([]);
 const [newsLoading, setNewsLoading] = useState(false);
 // Add with other useState declarations
 const [clientAppName, setClientAppName] = useState('Leader App');
+
+const { 
+  currentLanguage, 
+  changeLanguage, 
+  isTranslating, 
+  setIsTranslating,
+  availableLanguages 
+} = useTranslation();
+
+const [isLanguageModalVisible, setIsLanguageModalVisible] = useState(false);
+const [addNewsModalVisible, setAddNewsModalVisible] = useState(false);
+
+const fontSize = 16;
+// Add this AFTER the useTranslation hook (around line 230)
 
 
   // ✅ ADD THIS ADMIN CHECK FUNCTION
@@ -694,6 +821,35 @@ const checkAdminRole = async () => {
   useEffect(() => {
     initializeHomeMedia();
   }, []);
+
+
+useEffect(() => {
+  const testTranslationModule = async () => {
+    console.log('🧪 Testing Translation Module in HomeScreen...');
+    
+    try {
+      const TranslationService = (await import('../services/TranslationService')).default;
+      
+      // Test translation
+      const result = await TranslationService.testTranslation();
+      
+      if (result.success) {
+        console.log(`✅ Translation test passed: ${result.translated}`);
+        // Don't show Alert in production, only log
+      } else {
+        console.log('⚠️ Translation test failed:', result.error);
+      }
+    } catch (error) {
+      console.error('❌ Test error:', error);
+    }
+  };
+
+  // Run test after 3 seconds (only in development)
+  if (__DEV__) {
+    const timer = setTimeout(testTranslationModule, 3000);
+    return () => clearTimeout(timer);
+  }
+}, []);
 
   useEffect(() => {
   const showFCMToken = async () => {
@@ -768,27 +924,44 @@ useEffect(() => {
   }
 }, [isAdmin, homeMediaData, homeMediaLoading]);
 
-  const getMobileNumberFromStorage = async () => {
-    try {
-      const appOwnerInfoStr = await EncryptedStorage.getItem('AppOwnerInfo');
-      if (appOwnerInfoStr) {
-        const appOwnerInfo = JSON.parse(appOwnerInfoStr);
-        const memberIdentifier = appOwnerInfo.mobile_no || 
-                                appOwnerInfo.regdMobileNo || 
-                                appOwnerInfo.mobile_number || 
-                                '7702000725';
+ const getMobileNumberFromStorage = async () => {
+  try {
+    // ✅ FIRST: Try to get owner mobile from App.js global state
+    const ownerMobileFromGlobal = global.owner_mobile;
+    if (ownerMobileFromGlobal) {
+      console.log('✅ Using owner mobile from global:', ownerMobileFromGlobal);
+      return ownerMobileFromGlobal;
+    }
+
+    // ✅ SECOND: Try encrypted storage (set by bootstrap)
+    const ownerMobileFromStorage = await EncryptedStorage.getItem('OWNER_MOBILE');
+    if (ownerMobileFromStorage) {
+      console.log('✅ Using owner mobile from storage:', ownerMobileFromStorage);
+      return ownerMobileFromStorage;
+    }
+
+    // ✅ THIRD: Try AppOwnerInfo
+    const appOwnerInfoStr = await EncryptedStorage.getItem('AppOwnerInfo');
+    if (appOwnerInfoStr) {
+      const appOwnerInfo = JSON.parse(appOwnerInfoStr);
+      const memberIdentifier = appOwnerInfo.mobile_no || 
+                              appOwnerInfo.regdMobileNo || 
+                              appOwnerInfo.mobile_number ||
+                              appOwnerInfo.client_mobile;
+      if (memberIdentifier) {
+        console.log('✅ Using owner mobile from AppOwnerInfo:', memberIdentifier);
         return memberIdentifier;
       }
-      
-      const storedMemberId = await EncryptedStorage.getItem('MOBILE_NUMBER') || 
-                            await EncryptedStorage.getItem('OWNER_MOBILE') ||
-                            '7702000725';
-      return storedMemberId;
-    } catch (error) {
-      console.error('Error retrieving mobile number:', error);
-      return '7702000725';
     }
-  };
+    
+    // ✅ FALLBACK: Use default
+    console.warn('⚠️ No owner mobile found, using default: 7702000725');
+    return '7702000725';
+  } catch (error) {
+    console.error('❌ Error retrieving mobile number:', error);
+    return '7702000725';
+  }
+};
 
   const fetchHomeMedia = async (memberIdentifier) => {
     try {
@@ -887,8 +1060,11 @@ const initializeHomeMedia = async () => {
     setNewsLoading(true); // ✅ ADD THIS
     
     await checkAdminRole();
-    
     const mobileNo = await getMobileNumberFromStorage();
+    console.log('📱 === OWNER MOBILE BEING USED ===');
+    console.log('   Mobile No:', mobileNo);
+    console.log('   Source: getMobileNumberFromStorage()');
+    
     setRegdMobileNo(mobileNo);
     
     const currentUserInfo = await getCurrentUserRole();
@@ -952,7 +1128,7 @@ const initializeHomeMedia = async () => {
       const apiUrl = `${baseUrl}/api/mediacorner`;
 
       const formData = new FormData();
-      formData.append('regd_mobile_no', regdMobileNo);
+      formData.append('leader_regd_mobile_no', regdMobileNo);
       formData.append('user_email_id', userEmail);
       formData.append('media_header', updatedData.media_header);
       formData.append('media_narration', updatedData.media_narration);
@@ -999,7 +1175,7 @@ const handleNewsSave = async (updatedData) => {
     const apiUrl = `${baseUrl}/api/mediacorner`;
 
     const formData = new FormData();
-    formData.append('regd_mobile_no', regdMobileNo);
+    formData.append('leader_regd_mobile_no', regdMobileNo);
     formData.append('user_email_id', userEmail);
     formData.append('media_header', updatedData.media_header);
     formData.append('media_narration', updatedData.media_narration);
@@ -1079,7 +1255,7 @@ const handleAddMedia = async (selectedImage) => {
     const apiUrl = `${baseUrl}/api/mediacorner`;
 
     const formData = new FormData();
-    formData.append('regd_mobile_no', regdMobileNo);
+    formData.append('leader_regd_mobile_no', regdMobileNo);
     formData.append('user_email_id', userEmail);
     formData.append('media_header', 'null');
     formData.append('media_narration', 'null');
@@ -1114,26 +1290,125 @@ const handleAddMedia = async (selectedImage) => {
   }
 };
 
-  const fontSize = 16;
-  const lang = languageData[selectedLanguage];
+// ✅ NEW: Handle Add Latest News
+const handleAddLatestNews = async (newsData) => {
+  try {
+    console.log('➕ Adding new latest news...');
+    
+    const baseUrl = await ConfigService.getBaseUrl();
+    const apiUrl = `${baseUrl}/api/mediacorner`;
 
-  const languages = [
-    { code: 'en', name: 'English' },
-    { code: 'hi', name: 'हिंदी' },
-  ];
+    const formData = new FormData();
+    formData.append('leader_regd_mobile_no', regdMobileNo);
+    formData.append('user_email_id', userEmail);
+    formData.append('media_header', newsData.header);
+    formData.append('media_narration', newsData.description);
+    formData.append('media_url', newsData.url || '');
+    formData.append('media_type', 'LN'); // ✅ Latest News type
+
+    console.log('📤 Sending POST request to create latest news...');
+
+    const result = await ApiService.authPost(apiUrl, formData, {}, true);
+
+    if (result.success) {
+      Alert.alert('✅ Success', 'Latest news added successfully');
+      setAddNewsModalVisible(false);
+      initializeHomeMedia(); // Refresh the data
+    } else {
+      throw new Error(result.message || 'Creation failed');
+    }
+  } catch (error) {
+    console.error('❌ Error adding latest news:', error);
+    Alert.alert('Error', error.message || 'Failed to add latest news');
+  }
+};
+  
+
+ const languages = Object.entries(availableLanguages).map(([code, data]) => ({
+  code,
+  name: data.name,
+}));
+
 
   const quickActions = [
-    { id: 1, title: lang.knowLeader, icon: 'person', screen: 'KnowYourLeader' },
-    { id: 2, title: lang.aboutConstituency, icon: 'location-on', screen: 'AboutConstituency' },
-    { id: 3, title: lang.partyUpdates, icon: 'update', screen: 'PartyUpdates' },
-    { id: 4, title: lang.feedback, icon: 'feedback', screen: 'Feedback' },
-  ];
+  { id: 1, title: 'Know Your Leader', titleKey: 'know_leader', icon: 'person', screen: 'KnowYourLeader' },
+  { id: 2, title: 'About Constituency', titleKey: 'about_constituency', icon: 'location-on', screen: 'AboutConstituency' },
+  { id: 3, title: 'Party Updates', titleKey: 'party_updates', icon: 'update', screen: 'PartyUpdates' },
+  { id: 4, title: 'Feedback', titleKey: 'feedback', icon: 'feedback', screen: 'Feedback' },
+];
 
-  const handleLanguageSelect = (language) => {
-    setSelectedLanguage(language.code);
-    setIsLanguageModalVisible(false);
-    Alert.alert('Language Changed', `Language changed to ${language.name}`);
-  };
+// Update the handleLanguageSelect function in HomeScreen.js
+
+const handleLanguageSelect = async (languageCode) => {
+  console.log(`\n🌐 === USER SELECTED LANGUAGE: ${languageCode} ===`);
+  
+  setIsLanguageModalVisible(false);
+
+  if (languageCode === currentLanguage) {
+    console.log('⚠️ Same language selected, no change needed');
+    return;
+  }
+
+  // Show loading indicator
+  setIsTranslating(true);
+
+  try {
+    console.log('🔄 Calling changeLanguage...');
+    const result = await changeLanguage(languageCode);
+
+    if (result.success) {
+      const langName = availableLanguages[languageCode]?.name || languageCode;
+      
+      Alert.alert(
+        'Language Changed ✅',
+        `Language changed to ${langName}\n\nNote: First-time translation may take a moment to download models.`,
+        [
+          {
+            text: 'OK',
+            onPress: () => {
+              console.log('✅ Language change confirmed by user');
+            }
+          }
+        ]
+      );
+    } else {
+      // Show detailed error
+      Alert.alert(
+        'Language Change Failed ❌',
+        `${result.error || 'Unknown error'}\n\nTroubleshooting:\n• Check internet connection\n• Ensure storage space available\n• Try again in a moment`,
+        [
+          {
+            text: 'Retry',
+            onPress: () => handleLanguageSelect(languageCode)
+          },
+          {
+            text: 'Cancel',
+            style: 'cancel'
+          }
+        ]
+      );
+    }
+  } catch (error) {
+    console.error('❌ Error in handleLanguageSelect:', error);
+    Alert.alert(
+      'Error',
+      `Failed to change language: ${error.message}\n\nPlease check your internet connection and try again.`,
+      [
+        {
+          text: 'Retry',
+          onPress: () => handleLanguageSelect(languageCode)
+        },
+        {
+          text: 'Cancel',
+          style: 'cancel'
+        }
+      ]
+    );
+  } finally {
+    setIsTranslating(false);
+  }
+};
+
 
   const handleSpeechToText = () => {
     setIsListening(!isListening);
@@ -1154,16 +1429,16 @@ const handleAddMedia = async (selectedImage) => {
     }
   };
 
-  const renderLanguageItem = ({ item }) => (
-    <TouchableOpacity
-      style={styles.languageItem}
-      onPress={() => handleLanguageSelect(item)}>
-      <Text style={styles.languageText}>{item.name}</Text>
-      {selectedLanguage === item.code && (
-        <Icon name="check" size={20} color="#FF6B35" />
-      )}
-    </TouchableOpacity>
-  );
+const renderLanguageItem = ({ item }) => (
+  <TouchableOpacity
+    style={styles.languageItem}
+    onPress={() => handleLanguageSelect(item.code)}>
+    <Text style={styles.languageText}>{item.name}</Text>
+    {currentLanguage === item.code && (
+      <Icon name="check" size={20} color="#e16e2b" />
+    )}
+  </TouchableOpacity>
+);
 const renderHomeMediaGallery = () => {
   if (homeMediaLoading) {
     return (
@@ -1291,14 +1566,16 @@ const renderHomeMediaGallery = () => {
   );
 };
 const renderNewsSection = () => {
-  // ✅ CHANGE: Use latestNewsData instead of filtering homeMediaData
-  const newsItems = latestNewsData || [];
+  // ✅ SAFE: Handle undefined/null/non-array cases
+  const newsItems = Array.isArray(latestNewsData) ? latestNewsData : [];
 
   // Show loading state
   if (newsLoading) {
     return (
       <View style={styles.newsSection}>
-        <Text style={[styles.sectionTitle, { fontSize: fontSize + 2 }]}>{lang.latestNews}</Text>
+        <TranslatableText style={[styles.sectionTitle, { fontSize: fontSize + 2 }]}>
+          Latest News
+        </TranslatableText>
         <View style={styles.newsCard}>
           <View style={styles.emptyNewsState}>
             <ActivityIndicator size="large" color="#e16e2b" />
@@ -1309,39 +1586,47 @@ const renderNewsSection = () => {
     );
   }
 
-  // Show empty state
-  if (newsItems.length === 0) {
-    return (
-      <View style={styles.newsSection}>
-        <Text style={[styles.sectionTitle, { fontSize: fontSize + 2 }]}>{lang.latestNews}</Text>
-        <View style={styles.newsCard}>
-          <View style={styles.emptyNewsState}>
-            <Icon name="article" size={48} color="#bdc3c7" />
-            <Text style={styles.emptyStateText}>No latest news available</Text>
-            {/* ✅ ADD: Show Add button for admin when no news */}
-            {isAdmin && (
-              <TouchableOpacity
-                style={[styles.readMoreButton, { marginTop: 15, borderTopWidth: 0 }]}
-                onPress={() => {
-                  // TODO: Add modal for creating new news
-                  Alert.alert('Add News', 'Feature coming soon!');
-                }}
-              >
-                <Icon name="add-circle" size={20} color="#e16e2b" />
-                <Text style={[styles.readMoreText, { marginLeft: 8 }]}>Add First News</Text>
-              </TouchableOpacity>
-            )}
-          </View>
+// Show empty state
+if (newsItems.length === 0) {
+  return (
+    <View style={styles.newsSection}>
+      <TranslatableText style={[styles.sectionTitle, { fontSize: fontSize + 2 }]}>
+        Latest News
+      </TranslatableText>
+      
+      <View style={styles.newsCard}>
+        <View style={styles.emptyNewsState}>
+          <Icon name="article" size={48} color="#bdc3c7" />
+          <Text style={styles.emptyStateText}>No latest news available</Text>
+          {isAdmin && (
+            <TouchableOpacity
+              style={styles.addFirstNewsButton}
+              onPress={() => {
+                console.log('➕ Add First News button pressed');
+                setAddNewsModalVisible(true);
+              }}
+              activeOpacity={0.7}
+            >
+              <Icon name="add-circle" size={24} color="#e16e2b" />
+              <Text style={styles.addFirstNewsText}>Add First News</Text>
+            </TouchableOpacity>
+          )}
         </View>
       </View>
-    );
-  }
+    </View>
+  );
+}
 
   return (
     <View style={styles.newsSection}>
-      <Text style={[styles.sectionTitle, { fontSize: fontSize + 2 }]}>{lang.latestNews}</Text>
+      <TranslatableText style={[styles.sectionTitle, { fontSize: fontSize + 2 }]}>
+        Latest News
+      </TranslatableText>
       
       {newsItems.map((item, index) => {
+        // ✅ ADD: Safety check for item
+        if (!item) return null;
+        
         const newsDate = item.createdAt 
           ? new Date(item.createdAt).toLocaleDateString('en-IN', {
               day: 'numeric',
@@ -1352,7 +1637,7 @@ const renderNewsSection = () => {
 
         return (
           <View key={item._id || `news-${index}`} style={styles.newsCard}>
-            {/* ✅ Three Dot Menu for admin */}
+            {/* rest of your news card code remains the same */}
             {isAdmin && (
               <TouchableOpacity 
                 style={styles.newsMenuButton}
@@ -1371,9 +1656,9 @@ const renderNewsSection = () => {
             <View style={styles.newsHeaderRow}>
               <View style={styles.newsHeader}>
                 <Icon name="campaign" size={20} color="#e16e2b" />
-                <Text style={[styles.newsTitle, { fontSize: fontSize, flex: 1, marginLeft: 8 }]}>
-                  {item.media_header}
-                </Text>
+                <TranslatableText style={[styles.newsTitle, { fontSize: fontSize, flex: 1, marginLeft: 8 }]}>
+                  {item.media_header || 'No Title'}
+                </TranslatableText>
               </View>
             </View>
             
@@ -1381,14 +1666,14 @@ const renderNewsSection = () => {
               {newsDate}
             </Text>
             
-            <Text 
+            <TranslatableText 
               style={[styles.newsDescription, { fontSize: fontSize - 2 }]}
               numberOfLines={3}
             >
-              {item.media_narration}
-            </Text>
+              {item.media_narration || 'No description available'}
+            </TranslatableText>
 
-            {item.media_url && (
+            {item.media_url && item.media_url.trim() !== '' && (
               <TouchableOpacity
                 style={styles.readMoreButton}
                 onPress={() => {
@@ -1401,7 +1686,9 @@ const renderNewsSection = () => {
                 }}
                 activeOpacity={0.7}
               >
-                <Text style={styles.readMoreText}>Read More</Text>
+                <TranslatableText style={styles.readMoreText}>
+                  Read More
+                </TranslatableText>
                 <Icon name="arrow-forward" size={14} color="#e16e2b" />
               </TouchableOpacity>
             )}
@@ -1409,7 +1696,22 @@ const renderNewsSection = () => {
         );
       })}
 
-      {/* Admin controls */}
+      {isAdmin && (
+        <TouchableOpacity
+          style={styles.addNewsButtonBottom}
+          onPress={() => {
+            console.log('➕ Add News button pressed (bottom)');
+            setAddNewsModalVisible(true);
+          }}
+          activeOpacity={0.7}
+        >
+          <Icon name="add-circle" size={24} color="#e16e2b" />
+          <Text style={styles.addNewsButtonBottomText}>Add Latest News</Text>
+        </TouchableOpacity>
+      )}
+
+
+      {/* Admin controls - rest remains the same */}
       {isAdmin && (
         <>
           <ThreeDotMenu
@@ -1453,10 +1755,15 @@ const renderNewsSection = () => {
             }}
             onSave={handleNewsSave}
           />
+         
         </>
       )}
     </View>
   );
+};
+
+const renderDebugSection = () => {
+  return null; // ✅ REMOVED Debug Section
 };
 // Add this button somewhere
 <Button
@@ -1496,81 +1803,49 @@ const renderNewsSection = () => {
           />
         </View>
       </View>
+{isTranslating && (
+  <View style={styles.translationLoadingBar}>
+    <ActivityIndicator size="small" color="#e16e2b" />
+    <Text style={styles.translationLoadingText}>Translating...</Text>
+  </View>
+)}
 
       <ScrollView style={styles.content}>
-       <View style={styles.welcomeSection}>
-  
-  <Text style={[styles.welcomeSubtitle, { fontSize: fontSize+8 }]}>
-  Welcome to {clientAppName} App
-</Text>
-  <Text style={[styles.welcomeDescription, { fontSize: fontSize - 2 }]}>
-    {lang.stayConnected}
-  </Text>
+      <View style={styles.welcomeSection}>
+   <TranslatableText style={[styles.welcomeSubtitle, { fontSize: fontSize+8 }]}>
+    Welcome to {clientAppName} App
+  </TranslatableText>
+  <TranslatableText style={[styles.welcomeDescription, { fontSize: fontSize - 2 }]}>
+    Stay connected with your leader and community. Get updates, provide feedback, and engage with local initiatives.
+  </TranslatableText>
 </View>
 
         <View style={styles.quickActionsSection}>
-          <Text style={[styles.sectionTitle, { fontSize: fontSize + 2 }]}>{lang.quickActions}</Text>
-          <View style={styles.quickActionsGrid}>
-            {quickActions.map((item) => (
-              <TouchableOpacity
-                key={item.id}
-                style={styles.quickActionCard}
-                onPress={() => handleQuickAction(item)}
-              >
-                <Icon name={item.icon} size={32} color="#e16e2b" />
-                <Text style={[styles.quickActionText, { fontSize: fontSize - 2 }]}>{item.title}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        </View>
+  <TranslatableText style={[styles.sectionTitle, { fontSize: fontSize + 2 }]}>
+    Quick Actions
+  </TranslatableText>
+  <View style={styles.quickActionsGrid}>
+    {quickActions.map((item) => (
+      <TouchableOpacity
+        key={item.id}
+        style={styles.quickActionCard}
+        onPress={() => handleQuickAction(item)}
+      >
+        <Icon name={item.icon} size={32} color="#e16e2b" />
+        <TranslatableText 
+          style={[styles.quickActionText, { fontSize: fontSize - 2 }]}
+          cacheKey={item.titleKey}
+        >
+          {item.title}
+        </TranslatableText>
+      </TouchableOpacity>
+    ))}
+  </View>
+</View>
 
         {renderHomeMediaGallery()}
         {renderNewsSection()}
-{__DEV__ && (
-          <View style={styles.testCrashSection}>
-            <Text style={styles.testCrashTitle}>🔧 Developer Testing</Text>
-            <TouchableOpacity
-              style={styles.testCrashButton}
-              onPress={() => {
-                Alert.alert(
-                  '⚠️ Test Crash',
-                  'This will FORCE CRASH the app to test Firebase Crashlytics.\n\nThe crash will appear in Firebase Console within 5 minutes.\n\nContinue?',
-                  [
-                    { text: 'Cancel', style: 'cancel' },
-                    {
-                      text: 'CRASH NOW',
-                      style: 'destructive',
-                      onPress: () => {
-                        // Log crash details
-                        console.log('🔥 === FORCING CRASH FOR FIREBASE TEST ===');
-                        crashlytics().log('User manually triggered test crash');
-                        crashlytics().setAttribute('test_crash', 'true');
-                        crashlytics().setAttribute('screen', 'HomeScreen');
-                        
-                        // Force immediate crash
-                        setTimeout(() => {
-                          throw new Error('Manual Test Crash - Firebase Crashlytics Verification');
-                        }, 100);
-                      }
-                    }
-                  ]
-                );
-              }}
-              activeOpacity={0.8}
-            >
-              <Icon name="bug-report" size={24} color="#fff" />
-              <Text style={styles.testCrashButtonText}>
-                TEST FIREBASE CRASH
-              </Text>
-            </TouchableOpacity>
-            
-            <Text style={styles.testCrashDescription}>
-              After crash, check Firebase Console {'\n'}
-              (Crashlytics section) in 3-5 minutes
-            </Text>
-          </View>
-        )}
-
+       
 
 
     
@@ -1581,6 +1856,16 @@ const renderNewsSection = () => {
         onPress={() => navigation.navigate('LokSahayak')}>
         <Icon name="chat" size={28} color="#fff" />
       </TouchableOpacity>
+
+      {/* ✅ ADD THIS - Floating Profiler Button (Admin Only) */}
+{isAdmin && (
+  <TouchableOpacity
+    style={styles.profilerButton}
+    onPress={() => navigation.navigate('AppProfiler')}
+  >
+    <Text style={styles.profilerButtonText}>📊</Text>
+  </TouchableOpacity>
+)}
 
       <Modal
         visible={isLanguageModalVisible}
@@ -1608,6 +1893,12 @@ const renderNewsSection = () => {
           </View>
         </TouchableOpacity>
       </Modal>
+       {/* ✅ NEW: Add News Modal */}
+          <AddLatestNewsModal
+            visible={addNewsModalVisible}
+            onClose={() => setAddNewsModalVisible(false)}
+            onSave={handleAddLatestNews}
+          />
     </SafeAreaView>
   );
 };
@@ -1692,6 +1983,27 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.25,
     shadowRadius: 4,
   },
+
+  // ✅ ADD THESE TWO NEW STYLES
+profilerButton: {
+  position: 'absolute',
+  bottom: 80,  // Above chat button
+  right: 10,
+  width: 60,
+  height: 60,
+  borderRadius: 30,
+  backgroundColor: '#2c3e50',
+  justifyContent: 'center',
+  alignItems: 'center',
+  elevation: 5,
+  shadowColor: '#000',
+  shadowOffset: { width: 0, height: 2 },
+  shadowOpacity: 0.3,
+  shadowRadius: 4,
+},
+profilerButtonText: {
+  fontSize: 28,
+},
   
   // Language Modal Styles
   languageList: { maxHeight: 200 },
@@ -2040,6 +2352,123 @@ newsHeaderRow: {
   flexDirection: 'row',
   alignItems: 'flex-start',
   marginBottom: 8,
+},
+translationLoadingBar: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  justifyContent: 'center',
+  backgroundColor: '#fff3cd',
+  paddingVertical: 8,
+  paddingHorizontal: 15,
+  gap: 10,
+},
+translationLoadingText: {
+  fontSize: 14,
+  color: '#856404',
+  fontWeight: '500',
+},
+debugSection: {
+    margin: 20,
+    padding: 15,
+    backgroundColor: '#fff3cd',
+    borderRadius: 10,
+    borderWidth: 2,
+    borderColor: '#ffc107',
+    borderStyle: 'dashed',
+  },
+  debugTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#856404',
+    marginBottom: 10,
+  },
+  debugButton: {
+    backgroundColor: '#fff',
+    padding: 12,
+    borderRadius: 8,
+    marginVertical: 5,
+    borderWidth: 1,
+    borderColor: '#e16e2b',
+  },
+  debugButtonText: {
+    color: '#e16e2b',
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  // ✅ NEW: Add News Button Styles
+newsSectionHeader: {
+  flexDirection: 'row',
+  justifyContent: 'space-between',
+  alignItems: 'center',
+  marginBottom: 15,
+  paddingRight: 0,
+},
+addNewsButton: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  backgroundColor: '#e16e2b',
+  paddingVertical: 10,
+  paddingHorizontal: 16,
+  borderRadius: 20,
+  elevation: 3,
+  shadowColor: '#e16e2b',
+  shadowOffset: { width: 0, height: 2 },
+  shadowOpacity: 0.3,
+  shadowRadius: 4,
+  marginLeft: 10,
+},
+addNewsButtonText: {
+  color: '#fff',
+  fontSize: 13,
+  fontWeight: '700',
+  marginLeft: 6,
+},
+// ✅ NEW: Add First News Button (in empty state)
+addFirstNewsButton: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  justifyContent: 'center',
+  backgroundColor: '#fff',
+  paddingVertical: 14,
+  paddingHorizontal: 24,
+  borderRadius: 10,
+  marginTop: 20,
+  borderWidth: 2,
+  borderColor: '#e16e2b',
+  elevation: 2,
+  shadowColor: '#000',
+  shadowOffset: { width: 0, height: 2 },
+  shadowOpacity: 0.1,
+  shadowRadius: 4,
+},
+addFirstNewsText: {
+  color: '#e16e2b',
+  fontSize: 16,
+  fontWeight: '700',
+  marginLeft: 10,
+},
+addNewsButtonBottom: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  justifyContent: 'center',
+  backgroundColor: '#e16e2b', // ✅ Changed from '#fff' to orange
+  paddingVertical: 14,
+  paddingHorizontal: 10,
+  borderRadius: 10,
+  marginTop: 15,
+  marginBottom: 10,
+  borderWidth: 0, // ✅ Removed border
+  elevation: 3, // ✅ Increased shadow
+  shadowColor: '#e16e2b',
+  shadowOffset: { width: 0, height: 2 },
+  shadowOpacity: 0.3,
+  shadowRadius: 4,
+},
+addNewsButtonBottomText: {
+  color: '#fff', // ✅ Changed from '#e16e2b' to white
+  fontSize: 16,
+  fontWeight: '700',
+  marginLeft: 10,
 },
 });
 

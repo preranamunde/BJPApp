@@ -104,62 +104,172 @@ const AddEventModal = ({ visible, onClose, onSave, regdMobileNo, userEmail }) =>
     });
   };
 
-  const handleSave = async () => {
-    if (!header.trim()) {
-      Alert.alert('Validation Error', 'Please enter an event title');
-      return;
-    }
+ const handleSave = async () => {
+  if (!header.trim()) {
+    Alert.alert('Validation Error', 'Please enter an event title');
+    return;
+  }
 
-    if (!selectedImage) {
-      Alert.alert('Validation Error', 'Please select an image file');
-      return;
-    }
+  if (!selectedImage) {
+    Alert.alert('Validation Error', 'Please select an image file');
+    return;
+  }
 
-    setSaving(true);
-    try {
-      const baseUrl = await ConfigService.getBaseUrl();
-      const apiUrl = `${baseUrl}/api/mediacorner`;
+  setSaving(true);
+  try {
+    console.log('🔄 Starting event creation...');
+    
+    // ✅ GET FRESH USER INFO (SAME AS PASSWORD CHANGE)
+    const currentUserInfo = await getCurrentUserRole();
+    const freshEmail = currentUserInfo.loggedin_email || 
+                       currentUserInfo.email || 
+                       currentUserInfo.user_email_id || 
+                       '';
+    const freshMobile = currentUserInfo.mobile || 
+                        currentUserInfo.regdMobileNo || 
+                        currentUserInfo.leader_regd_mobile_no || 
+                        '';
+    
+    console.log('✅ Fresh credentials from getCurrentUserRole:', {
+      email: freshEmail,
+      mobile: freshMobile
+    });
 
-      const formData = new FormData();
-      formData.append('regd_mobile_no', regdMobileNo);
-      formData.append('user_email_id', userEmail);
-      formData.append('media_header', header);
-      formData.append('media_narration', narration);
-      formData.append('media_url', url);
-      formData.append('media_type', 'UE');
-
-      // Add the file
-      const fileUri = selectedImage.uri;
-      const fileName = fileUri.split('/').pop();
-      const fileType = selectedImage.type || (
-        fileName.endsWith('.jpg') || fileName.endsWith('.jpeg') ? 'image/jpeg' : 'image/png'
-      );
-
-      formData.append('media_file', {
-        uri: fileUri,
-        name: fileName,
-        type: fileType,
-      });
-
-      console.log('📤 Creating new event...');
-      const result = await ApiService.authPost(apiUrl, formData, {}, true);
-
-      console.log('📥 POST Response:', result);
-
-      if (result.success) {
-        Alert.alert('✅ Success', 'Event created successfully');
-        onSave();
-        onClose();
-      } else {
-        throw new Error(result.message || 'Creation failed');
+    let loggedInEmail = freshEmail;
+    let mobileNo = freshMobile;
+    
+    // STEP 1: Fallback - Get from AsyncStorage
+    if (!loggedInEmail || !mobileNo) {
+      console.log('⚠️ getCurrentUserRole incomplete, checking AsyncStorage...');
+      
+      if (!loggedInEmail) {
+        loggedInEmail = await AsyncStorage.getItem('userEmail') || 
+                        await AsyncStorage.getItem('user_email_id') ||
+                        await EncryptedStorage.getItem('LOGGED_IN_EMAIL') ||
+                        '';
       }
-    } catch (error) {
-      console.error('❌ Error creating event:', error);
-      Alert.alert('Error', error.message || 'Failed to create event');
-    } finally {
-      setSaving(false);
+      
+      const userData = await AsyncStorage.getItem('userData');
+      if (userData) {
+        try {
+          const parsedUserData = JSON.parse(userData);
+          
+          if (!mobileNo) {
+            mobileNo = parsedUserData.mobile || 
+                      parsedUserData.mobileNo || 
+                      parsedUserData.mobile_no ||
+                      parsedUserData.client_mobile ||
+                      parsedUserData.phone ||
+                      parsedUserData.regdMobileNo ||
+                      '';
+          }
+          
+          if (!loggedInEmail) {
+            loggedInEmail = parsedUserData.email ||
+                           parsedUserData.emailid ||
+                           parsedUserData.user_email_id ||
+                           parsedUserData.email_id ||
+                           parsedUserData.user_email ||
+                           '';
+          }
+        } catch (parseError) {
+          console.error('❌ Error parsing userData:', parseError);
+        }
+      }
     }
-  };
+    
+    // STEP 2: Final fallback to AppOwnerInfo
+    if (!loggedInEmail || !mobileNo) {
+      console.log('⚠️ Still incomplete, checking AppOwnerInfo...');
+      
+      const appOwnerInfoStr = await EncryptedStorage.getItem('AppOwnerInfo');
+      if (appOwnerInfoStr) {
+        try {
+          const appOwnerInfo = JSON.parse(appOwnerInfoStr);
+          
+          if (!loggedInEmail) {
+            loggedInEmail = appOwnerInfo.emailid || 
+                           appOwnerInfo.email || 
+                           appOwnerInfo.user_email_id ||
+                           appOwnerInfo.email_id ||
+                           appOwnerInfo.user_email ||
+                           '';
+          }
+          
+          if (!mobileNo) {
+            mobileNo = appOwnerInfo.client_mobile || 
+                      appOwnerInfo.mobile_no || 
+                      appOwnerInfo.mobile ||
+                      appOwnerInfo.regdMobileNo ||
+                      appOwnerInfo.leader_regd_mobile_no ||
+                      '';
+          }
+        } catch (parseError) {
+          console.error('❌ Error parsing AppOwnerInfo:', parseError);
+        }
+      }
+    }
+
+    console.log('📧 Final Email:', loggedInEmail);
+    console.log('📱 Final Mobile:', mobileNo);
+
+    // STEP 3: Validate credentials
+    if (!loggedInEmail || !mobileNo) {
+      console.error('❌ Missing credentials after all attempts');
+      Alert.alert(
+        'Error', 
+        'Unable to retrieve your account credentials. Please log out and log in again.\n\n' +
+        `Email found: ${loggedInEmail || 'No'}\n` +
+        `Mobile found: ${mobileNo || 'No'}`
+      );
+      setSaving(false);
+      return;
+    }
+
+    // STEP 4: Prepare and send request
+    const baseUrl = await ConfigService.getBaseUrl();
+    const apiUrl = `${baseUrl}/api/mediacorner`;
+
+    const formData = new FormData();
+    formData.append('leader_regd_mobile_no', mobileNo);      // ✅ Fresh mobile
+    formData.append('user_email_id', loggedInEmail);         // ✅ Fresh email
+    formData.append('media_header', header);
+    formData.append('media_narration', narration);
+    formData.append('media_url', url);
+    formData.append('media_type', 'UE');
+
+    // Add the file
+    const fileUri = selectedImage.uri;
+    const fileName = fileUri.split('/').pop();
+    const fileType = selectedImage.type || (
+      fileName.endsWith('.jpg') || fileName.endsWith('.jpeg') ? 'image/jpeg' : 'image/png'
+    );
+
+    formData.append('media_file', {
+      uri: fileUri,
+      name: fileName,
+      type: fileType,
+    });
+
+    console.log('📤 Creating new event...');
+    const result = await ApiService.authPost(apiUrl, formData, {}, true);
+
+    console.log('📥 POST Response:', result);
+
+    if (result.success) {
+      Alert.alert('✅ Success', 'Event created successfully');
+      onSave();
+      onClose();
+    } else {
+      throw new Error(result.message || 'Creation failed');
+    }
+  } catch (error) {
+    console.error('❌ Error creating event:', error);
+    Alert.alert('Error', error.message || 'Failed to create event');
+  } finally {
+    setSaving(false);
+  }
+};
 
   return (
     <Modal
@@ -762,89 +872,129 @@ const checkUserRoleAndPermissions = async () => {
     }
   }, [regdMobileNo, userEmail]);
 
- const initializeUserData = async () => {
+const initializeUserData = async () => {
   try {
-    console.log('🔍 === INITIALIZING USER DATA FOR MEDIA CORNER ===');
+    console.log('🔍 === INITIALIZING USER DATA FOR UPCOMING EVENTS ===');
     
-    // ✅ Force clear any cached data
-    setRegdMobileNo(null);
-    setUserEmail(null);
+    // ✅ GET FRESH USER INFO (SAME AS PASSWORD CHANGE)
+    const currentUserInfo = await getCurrentUserRole();
+    const freshEmail = currentUserInfo.loggedin_email || 
+                       currentUserInfo.email || 
+                       currentUserInfo.user_email_id || 
+                       '';
+    const freshMobile = currentUserInfo.mobile || 
+                        currentUserInfo.regdMobileNo || 
+                        currentUserInfo.leader_regd_mobile_no || 
+                        '';
     
-    // ✅ Get fresh AppOwnerInfo (which was updated during login)
-    const appOwnerInfoStr = await EncryptedStorage.getItem('AppOwnerInfo');
-    console.log('📦 AppOwnerInfo found:', appOwnerInfoStr ? 'Yes' : 'No');
+    console.log('✅ Fresh credentials from getCurrentUserRole:', {
+      email: freshEmail,
+      mobile: freshMobile
+    });
+
+    let loggedInEmail = freshEmail;
+    let mobileNo = freshMobile;
     
-    if (appOwnerInfoStr) {
-      const appOwnerInfo = JSON.parse(appOwnerInfoStr);
-      console.log('👤 AppOwnerInfo keys:', Object.keys(appOwnerInfo));
-      console.log('📋 Full AppOwnerInfo:', appOwnerInfo);
+    // STEP 1: Fallback - Get from AsyncStorage if getCurrentUserRole didn't work
+    if (!loggedInEmail || !mobileNo) {
+      console.log('⚠️ getCurrentUserRole incomplete, checking AsyncStorage...');
       
-      // ✅ Extract mobile with expanded field search
-      const possibleMobileFields = [
-        'mobile_no', 'mobile', 'phone', 'mobileNo', 'regdMobileNo',
-        'client_mobile', 'contact_number', 'phoneNumber'
-      ];
+      if (!loggedInEmail) {
+        loggedInEmail = await AsyncStorage.getItem('userEmail') || 
+                        await AsyncStorage.getItem('user_email_id') ||
+                        await EncryptedStorage.getItem('LOGGED_IN_EMAIL') ||
+                        '';
+      }
       
-      let mobile = '';
-      for (const field of possibleMobileFields) {
-        if (appOwnerInfo[field]) {
-          mobile = String(appOwnerInfo[field]).trim();
-          console.log(`✅ Found mobile in field '${field}': ${mobile}`);
-          break;
+      const userData = await AsyncStorage.getItem('userData');
+      
+      if (userData) {
+        try {
+          const parsedUserData = JSON.parse(userData);
+          
+          if (!mobileNo) {
+            mobileNo = parsedUserData.mobile || 
+                      parsedUserData.mobileNo || 
+                      parsedUserData.mobile_no ||
+                      parsedUserData.client_mobile ||
+                      parsedUserData.phone ||
+                      parsedUserData.regdMobileNo ||
+                      '';
+          }
+          
+          if (!loggedInEmail) {
+            loggedInEmail = parsedUserData.email ||
+                           parsedUserData.emailid ||
+                           parsedUserData.user_email_id ||
+                           parsedUserData.email_id ||
+                           parsedUserData.user_email ||
+                           '';
+          }
+          
+          console.log('📋 User data found:', {
+            email: loggedInEmail,
+            mobile: mobileNo
+          });
+        } catch (parseError) {
+          console.error('❌ Error parsing userData:', parseError);
         }
       }
-      
-      // ✅ Extract email with expanded field search
-      const possibleEmailFields = [
-        'email', 'emailid', 'email_id', 'user_email', 'user_email_id',
-        'owner_email', 'emailAddress'
-      ];
-      
-      let email = '';
-      for (const field of possibleEmailFields) {
-        if (appOwnerInfo[field] && String(appOwnerInfo[field]).includes('@')) {
-          email = String(appOwnerInfo[field]).trim().toLowerCase();
-          console.log(`✅ Found email in field '${field}': ${email}`);
-          break;
-        }
-      }
-      
-      // ✅ Fallback to AsyncStorage if not found
-      if (!email) {
-        email = await AsyncStorage.getItem('userEmail') || 
-                await AsyncStorage.getItem('user_email_id') ||
-                'sanjay.jaiswal@gmail.com';
-        console.log('⚠️ Using email from AsyncStorage fallback:', email);
-      }
-      
-      if (!mobile) {
-        mobile = '7702000725';
-        console.log('⚠️ Using default mobile fallback:', mobile);
-      }
-      
-      console.log('✅ Final extracted values:');
-      console.log('   📱 Mobile:', mobile);
-      console.log('   📧 Email:', email);
-      
-      setRegdMobileNo(mobile);
-      setUserEmail(email);
-    } else {
-      console.warn('⚠️ No AppOwnerInfo found');
-      
-      // ✅ Fallback to AsyncStorage
-      const fallbackEmail = await AsyncStorage.getItem('userEmail') || 
-                           await AsyncStorage.getItem('user_email_id') ||
-                           'sanjay.jaiswal@gmail.com';
-      const fallbackMobile = '7702000725';
-      
-      console.log('Using fallback values:', { fallbackEmail, fallbackMobile });
-      setRegdMobileNo(fallbackMobile);
-      setUserEmail(fallbackEmail);
     }
+    
+    // STEP 2: Final fallback to AppOwnerInfo
+    if (!loggedInEmail || !mobileNo) {
+      console.log('⚠️ Still incomplete, checking AppOwnerInfo...');
+      
+      const appOwnerInfoStr = await EncryptedStorage.getItem('AppOwnerInfo');
+      if (appOwnerInfoStr) {
+        try {
+          const appOwnerInfo = JSON.parse(appOwnerInfoStr);
+          console.log('📋 AppOwnerInfo keys:', Object.keys(appOwnerInfo));
+          
+          if (!loggedInEmail) {
+            loggedInEmail = appOwnerInfo.emailid || 
+                           appOwnerInfo.email || 
+                           appOwnerInfo.user_email_id ||
+                           appOwnerInfo.email_id ||
+                           appOwnerInfo.user_email ||
+                           '';
+          }
+          
+          if (!mobileNo) {
+            mobileNo = appOwnerInfo.client_mobile || 
+                      appOwnerInfo.mobile_no || 
+                      appOwnerInfo.mobile ||
+                      appOwnerInfo.regdMobileNo ||
+                      appOwnerInfo.leader_regd_mobile_no ||
+                      '';
+          }
+        } catch (parseError) {
+          console.error('❌ Error parsing AppOwnerInfo:', parseError);
+        }
+      }
+    }
+
+    console.log('📧 Final Email:', loggedInEmail);
+    console.log('📱 Final Mobile:', mobileNo);
+
+    // Validate we have both values
+    if (!loggedInEmail || !mobileNo) {
+      console.error('❌ Missing credentials after all attempts');
+      Alert.alert(
+        'Error', 
+        'Unable to retrieve your account credentials. Please log out and log in again.\n\n' +
+        `Email found: ${loggedInEmail || 'No'}\n` +
+        `Mobile found: ${mobileNo || 'No'}`
+      );
+      return;
+    }
+
+    setRegdMobileNo(mobileNo);
+    setUserEmail(loggedInEmail);
+    
   } catch (error) {
     console.error('❌ Error initializing user data:', error);
-    setRegdMobileNo('7702000725');
-    setUserEmail('sanjay.jaiswal@gmail.com');
+    Alert.alert('Error', 'Failed to load user information. Please restart the app.');
   }
 };
 
@@ -894,7 +1044,7 @@ const checkUserRoleAndPermissions = async () => {
       const apiUrl = `${baseUrl}/api/mediacorner`;
 
       const formData = new FormData();
-      formData.append('regd_mobile_no', regdMobileNo);
+      formData.append('leader_regd_mobile_no', regdMobileNo);
       formData.append('user_email_id', userEmail);
       formData.append('media_header', updatedData.media_header);
       formData.append('media_narration', updatedData.media_narration);

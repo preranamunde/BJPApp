@@ -27,6 +27,8 @@ import { getCurrentUserRole, checkIfCurrentUserIsAdmin} from '../../App'; // Imp
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useTranslation } from '../context/TranslationContext';
 import TranslatableText from '../components/TranslatableText';
+import UpdateStatusService from '../services/UpdateStatusService';
+import LocalStorageService from '../services/LocalStorageService';
 
 // ✅ ADD THESE VALIDATION HELPER FUNCTIONS
 const validateMobileNumber = (mobile) => {
@@ -1047,15 +1049,18 @@ const fetchPermanentAddress = async (memberIdentifier) => {
   try {
     const baseUrl = await ConfigService.getBaseUrl();
     
-    // Get current user info for email parameter
     const currentUserInfo = await getCurrentUserRole();
     const userEmailId = currentUserInfo.loggedin_email || '';
     
-    // Use query parameters
     const endpoint = `${baseUrl}/api/permaddress/?leader_regd_mobile_no=${encodeURIComponent(memberIdentifier)}&user_email_id=${encodeURIComponent(userEmailId)}`;
     
-    // Use authGet to include Authorization + x-app-key headers
+    console.log('🔍 Fetching permanent address from:', endpoint);
+    console.log('📧 Using email:', userEmailId);
+    console.log('📱 Using mobile:', memberIdentifier);
+    
     const result = await ApiService.authGet(endpoint);
+    
+    console.log('🏠 Permanent Address API Response:', result);
     
     return {
       success: result.success,
@@ -1063,7 +1068,7 @@ const fetchPermanentAddress = async (memberIdentifier) => {
       error: result.success ? null : result.error || result.message
     };
   } catch (error) {
-    console.error('API Error (permaddress):', error);
+    console.error('❌ API Error (permaddress):', error);
     return { success: false, error: error.message };
   }
 };
@@ -1072,15 +1077,18 @@ const fetchPresentAddress = async (memberIdentifier) => {
   try {
     const baseUrl = await ConfigService.getBaseUrl();
     
-    // Get current user info for email parameter
     const currentUserInfo = await getCurrentUserRole();
     const userEmailId = currentUserInfo.loggedin_email || '';
     
-    // Use query parameters
     const endpoint = `${baseUrl}/api/preaddress/?leader_regd_mobile_no=${encodeURIComponent(memberIdentifier)}&user_email_id=${encodeURIComponent(userEmailId)}`;
     
-    // Use authGet to include Authorization + x-app-key headers
+    console.log('🔍 Fetching present address from:', endpoint);
+    console.log('📧 Using email:', userEmailId);
+    console.log('📱 Using mobile:', memberIdentifier);
+    
     const result = await ApiService.authGet(endpoint);
+    
+    console.log('🏢 Present Address API Response:', result);
     
     return {
       success: result.success,
@@ -1088,7 +1096,7 @@ const fetchPresentAddress = async (memberIdentifier) => {
       error: result.success ? null : result.error || result.message
     };
   } catch (error) {
-    console.error('API Error (preaddress):', error);
+    console.error('❌ API Error (preaddress):', error);
     return { success: false, error: error.message };
   }
 };
@@ -2318,23 +2326,134 @@ const deleteTimeline = async (memberIdentifier) => {
 };
 
 
-  const loadInitialData = async (memberIdentifier) => {
-    if (!memberIdentifier) {
-      console.error('❌ No member identifier provided');
-      return;
-    }
+ const loadInitialData = async (memberIdentifier) => {
+  if (!memberIdentifier) {
+    console.error('❌ No member identifier provided');
+    return;
+  }
+  await loadProfileData(memberIdentifier);
+  // ✅ REMOVED: await loadTimelineData(memberIdentifier); 
+  // Timeline is already loaded inside loadProfileData with caching
+};
 
-    await loadProfileData(memberIdentifier);
-    await loadTimelineData(memberIdentifier);
-  };
 
 const loadProfileData = async (memberIdentifier) => {
   try {
-    console.log('📡 Loading profile data for member:', memberIdentifier);
+    console.log('📡 ========================================');
+    console.log('📡 LOADING PROFILE DATA');
+    console.log('📡 ========================================');
+    console.log('📱 Member ID:', memberIdentifier);
 
     setKylMediaLoading(true);
 
-    // Fetch all profile data concurrently
+    // ✅ Get current user info
+    const currentUserInfo = await getCurrentUserRole();
+    const userEmailId = currentUserInfo.loggedin_email || '';
+    console.log('📧 User Email:', userEmailId);
+
+    // ✅ STEP 1: CHECK IF FIRST LAUNCH (with better detection)
+    const isFirstLaunch = await LocalStorageService.isFirstLaunch();
+    console.log('🚀 Is First Launch:', isFirstLaunch);
+
+    // ✅ DEBUG: Show what data exists in cache
+    if (!isFirstLaunch) {
+      console.log('📦 Checking existing cache contents...');
+      const cacheKeys = [
+        'LEADER_COORDINATES', 'SOCIAL_MEDIA', 'PERSONAL_DETAILS',
+        'EDUCATION_DATA', 'PERMANENT_ADDRESS', 'PRESENT_ADDRESS', 'TIMELINE_DATA', 'KYL_MEDIA'
+      ];
+      for (const key of cacheKeys) {
+        const cached = await LocalStorageService.getData(key);
+        console.log(`   ${key}: ${cached ? '✅ EXISTS' : '❌ MISSING'}`);
+      }
+    }
+
+    let updateFlags = null;
+    
+    if (isFirstLaunch) {
+      // ✅ FIRST LAUNCH: Fetch ALL APIs and store data
+      console.log('\n🆕 === FIRST LAUNCH - FETCHING ALL DATA ===');
+      
+      // Fetch all data in parallel
+      const results = await Promise.allSettled([
+        fetchAndStoreData('LEADER_COORDINATES', fetchMemberCoordinates, memberIdentifier),
+        fetchAndStoreData('SOCIAL_MEDIA', fetchSocialMedia, memberIdentifier),
+        fetchAndStoreData('PERSONAL_DETAILS', fetchPersonalDetails, memberIdentifier),
+        fetchAndStoreData('EDUCATION_DATA', fetchEducationalDetails, memberIdentifier),
+        fetchAndStoreData('PERMANENT_ADDRESS', fetchPermanentAddress, memberIdentifier),
+        fetchAndStoreData('PRESENT_ADDRESS', fetchPresentAddress, memberIdentifier),
+        fetchAndStoreData('TIMELINE_DATA', fetchTimeline, memberIdentifier),
+        fetchAndStoreData('KYL_MEDIA', fetchKYLMedia, memberIdentifier)
+      ]);
+      
+      // Log any failures
+      results.forEach((result, index) => {
+        const keys = ['LEADER_COORDINATES', 'SOCIAL_MEDIA', 'PERSONAL_DETAILS', 'EDUCATION_DATA', 
+                      'PERMANENT_ADDRESS', 'PRESENT_ADDRESS', 'TIMELINE_DATA', 'KYL_MEDIA'];
+        if (result.status === 'rejected') {
+          console.log(`   ⚠️ ${keys[index]} fetch failed:`, result.reason);
+        }
+      });
+      
+      // Mark as launched
+      await LocalStorageService.setHasLaunched();
+      console.log('✅ First launch completed - App marked as launched');
+      
+      // Create initial update flags (all false since we just fetched everything)
+      const initialFlags = {
+        updatedContactus: false,
+        updatedSM: false,
+        updatedPersdet: false,
+        updatedEducation: false,
+        updatedPermaddr: false,
+        updatedPresadd: false,
+        updatedTimeline: false,
+        updatedKYL: false
+      };
+      await AsyncStorage.setItem('UPDATE_FLAGS', JSON.stringify(initialFlags));
+      console.log('✅ Initial update flags set to false');
+      
+   } else {
+  console.log('\n🔄 === SUBSEQUENT LAUNCH ===');
+  
+  updateFlags = await UpdateStatusService.checkUpdateStatus(
+    memberIdentifier,
+    userEmailId
+  );
+  
+  // ✅ ADD THIS BLOCK HERE:
+  if (updateFlags) {
+    console.log('\n📊 === FLAG ANALYSIS ===');
+    console.log('updatedContactus:', updateFlags.updatedContactus, '→', updateFlags.updatedContactus === true ? '🔴 FETCH' : '🟢 CACHE');
+    console.log('updatedSM:', updateFlags.updatedSM, '→', updateFlags.updatedSM === true ? '🔴 FETCH' : '🟢 CACHE');
+    console.log('updatedPersdet:', updateFlags.updatedPersdet, '→', updateFlags.updatedPersdet === true ? '🔴 FETCH' : '🟢 CACHE');
+    console.log('updatedEducation:', updateFlags.updatedEducation, '→', updateFlags.updatedEducation === true ? '🔴 FETCH' : '🟢 CACHE');
+    console.log('updatedPermaddr:', updateFlags.updatedPermaddr, '→', updateFlags.updatedPermaddr === true ? '🔴 FETCH' : '🟢 CACHE');
+    console.log('updatedPresadd:', updateFlags.updatedPresadd, '→', updateFlags.updatedPresadd === true ? '🔴 FETCH' : '🟢 CACHE');
+    console.log('updatedTimeline:', updateFlags.updatedTimeline, '→', updateFlags.updatedTimeline === true ? '🔴 FETCH' : '🟢 CACHE');
+    console.log('updatedKYL:', updateFlags.updatedKYL, '→', updateFlags.updatedKYL === true ? '🔴 FETCH' : '🟢 CACHE');
+    console.log('===========================\n');
+    
+    await UpdateStatusService.clearUpdatedCaches(updateFlags);
+  } else {
+    console.log('⚠️ No update flags received - will fetch all data fresh');
+    // If we can't get update flags, fetch everything fresh
+    updateFlags = {
+      updatedContactus: true,
+      updatedSM: true,
+      updatedPersdet: true,
+      updatedEducation: true,
+      updatedPermaddr: true,
+      updatedPresadd: true,
+      updatedTimeline: true,
+      updatedKYL: true
+    };
+  }
+}
+
+    // ✅ STEP 2: LOAD DATA (from cache or fetch fresh based on flags)
+    console.log('\n📦 === LOADING DATA WITH CACHING LOGIC ===');
+    
     const [
       memberCoordinates,
       socialMedia,
@@ -2342,105 +2461,249 @@ const loadProfileData = async (memberIdentifier) => {
       educationalDetails,
       permanentAddress,
       presentAddress,
-      kylMedia 
+      timelineResult,
+      kylMedia
     ] = await Promise.all([
-      fetchMemberCoordinates(memberIdentifier),
-      fetchSocialMedia(memberIdentifier),
-      fetchPersonalDetails(memberIdentifier),
-      fetchEducationalDetails(memberIdentifier),
-      fetchPermanentAddress(memberIdentifier),
-      fetchPresentAddress(memberIdentifier),
-      fetchKYLMedia(memberIdentifier)
+      loadDataWithCache('LEADER_COORDINATES', fetchMemberCoordinates, memberIdentifier, updateFlags?.updatedContactus),
+      loadDataWithCache('SOCIAL_MEDIA', fetchSocialMedia, memberIdentifier, updateFlags?.updatedSM),
+      loadDataWithCache('PERSONAL_DETAILS', fetchPersonalDetails, memberIdentifier, updateFlags?.updatedPersdet),
+      loadDataWithCache('EDUCATION_DATA', fetchEducationalDetails, memberIdentifier, updateFlags?.updatedEducation),
+      loadDataWithCache('PERMANENT_ADDRESS', fetchPermanentAddress, memberIdentifier, updateFlags?.updatedPermaddr),
+      loadDataWithCache('PRESENT_ADDRESS', fetchPresentAddress, memberIdentifier, updateFlags?.updatedPresadd),
+      loadDataWithCache('TIMELINE_DATA', fetchTimeline, memberIdentifier, updateFlags?.updatedTimeline),
+      loadDataWithCache('KYL_MEDIA', fetchKYLMedia, memberIdentifier, updateFlags?.updatedKYL)
     ]);
 
-    // Set member data with normalized leader photo
-    if (memberCoordinates.success && memberCoordinates.data.leader_coordinates) {
+    // ❌ DELETE THIS ENTIRE SECTION - IT'S DUPLICATE:
+    // // ✅ STEP 3: KYL Media - Always fetch fresh (not cached)
+    // console.log('\n📸 === FETCHING KYL MEDIA (ALWAYS FRESH) ===');
+    // const kylMedia = await fetchKYLMedia(memberIdentifier);
+
+    // ✅ STEP 3: SET ALL DATA TO STATE
+    console.log('\n💾 === SETTING DATA TO STATE ===');
+    
+    // Set Leader Coordinates
+    if (memberCoordinates.success && memberCoordinates.data?.leader_coordinates) {
+      console.log('   ✅ Setting Leader Coordinates');
       const leaderData = memberCoordinates.data.leader_coordinates;
       
-      // ✅ CRITICAL: Normalize leader photo URL with cache buster
+      // Handle profile image
       if (leaderData.leader_photo || leaderData.profile_image) {
         const originalPhotoUrl = leaderData.leader_photo || leaderData.profile_image;
-        console.log('🖼️ Original leader photo URL:', originalPhotoUrl);
-        
-        // Normalize the URL
         let normalizedPhotoUrl = await ImageService.normalizeImageUrl(originalPhotoUrl);
         
-        // ✅ CRITICAL: Add timestamp to force reload and bypass cache
         if (normalizedPhotoUrl) {
           normalizedPhotoUrl = `${normalizedPhotoUrl}?t=${Date.now()}`;
         }
         
-        console.log('✅ Normalized leader photo URL with cache buster:', normalizedPhotoUrl);
-        
-        // Update the leader data with normalized URL
         leaderData.profile_image = normalizedPhotoUrl;
         leaderData.leader_photo = normalizedPhotoUrl;
       }
       
       setMemberData(leaderData);
-      console.log('✅ Member data set with normalized photo');
     } else {
-      console.error('Failed to load member coordinates:', memberCoordinates.error);
+      console.log('   ⚠️ No Leader Coordinates data');
+      setMemberData(null);
     }
 
-    // Set social media data
-    if (socialMedia.success && socialMedia.data.social_media) {
+    // Set Social Media
+    if (socialMedia.success && socialMedia.data?.social_media) {
+      console.log('   ✅ Setting Social Media');
       setSocialMediaData(socialMedia.data.social_media);
     } else {
-      console.error('Failed to load social media:', socialMedia.error);
+      console.log('   ⚠️ No Social Media data');
+      setSocialMediaData(null);
     }
 
-    // Set personal data
-    if (personalDetails.success && personalDetails.data.personal_details) {
+    // Set Personal Details
+    if (personalDetails.success && personalDetails.data?.personal_details) {
+      console.log('   ✅ Setting Personal Details');
       setPersonalData(personalDetails.data.personal_details);
     } else {
-      console.error('Failed to load personal details:', personalDetails.error);
+      console.log('   ⚠️ No Personal Details data');
+      setPersonalData(null);
     }
 
-    // Set education data
-    if (educationalDetails.success && educationalDetails.data.leader_edu_data) {
+    // Set Education Data
+    if (educationalDetails.success && educationalDetails.data?.leader_edu_data) {
+      console.log('   ✅ Setting Education Data');
       setEducationData(educationalDetails.data.leader_edu_data.edu_qual);
     } else {
-      console.error('Failed to load educational details:', educationalDetails.error);
+      console.log('   ⚠️ No Education data');
+      setEducationData(null);
     }
 
+    // Set KYL Media
     if (kylMedia.success && kylMedia.data) {
+      console.log('   ✅ Setting KYL Media:', kylMedia.data.length, 'items');
       setKylMediaData(kylMedia.data);
-      console.log('✅ KYL media data loaded:', kylMedia.data.length, 'items');
     } else {
-      console.error('Failed to load KYL media:', kylMedia.error);
+      console.log('   ⚠️ No KYL Media data');
       setKylMediaData([]);
     }
 
     setKylMediaLoading(false);
 
-    // Combine address data
+    // Set Address Data
     const addresses = {
       permanent: permanentAddress.success ? permanentAddress.data.perm_address : null,
       present: presentAddress.success ? presentAddress.data.present_address : null
     };
+    
+    if (addresses.permanent) {
+      console.log('   ✅ Setting Permanent Address');
+    } else {
+      console.log('   ⚠️ No Permanent Address data');
+    }
+    
+    if (addresses.present) {
+      console.log('   ✅ Setting Present Address');
+    } else {
+      console.log('   ⚠️ No Present Address data');
+    }
+    
     setAddressData(addresses);
 
-    // Set errors for debugging
-    const apiErrors = {
-      memberCoordinates: !memberCoordinates.success ? memberCoordinates.error : null,
-      socialMedia: !socialMedia.success ? socialMedia.error : null,
-      personalDetails: !personalDetails.success ? personalDetails.error : null,
-      educationalDetails: !educationalDetails.success ? educationalDetails.error : null,
-      permanentAddress: !permanentAddress.success ? permanentAddress.error : null,
-      presentAddress: !presentAddress.success ? presentAddress.error : null,
-    };
-    setErrors(apiErrors);
+    // Set Timeline Data
+    if (timelineResult.success && timelineResult.data?.timeline) {
+      console.log('   ✅ Setting Timeline Data:', timelineResult.data.timeline.length, 'entries');
+      setTimelineData(timelineResult.data.timeline);
+    } else {
+      console.log('   ⚠️ No Timeline data');
+      setTimelineData(null);
+    }
 
-    console.log('✅ Profile data loaded successfully');
+    console.log('\n✅ ========================================');
+    console.log('✅ PROFILE DATA LOADED SUCCESSFULLY');
+    console.log('✅ ========================================\n');
+    
   } catch (error) {
-    console.error('Profile data loading error:', error);
-    Alert.alert('Network Error', 'Please check your internet connection and try again.');
+    console.error('\n❌ ========================================');
+    console.error('❌ PROFILE DATA LOADING ERROR');
+    console.error('❌ ========================================');
+    console.error('❌ Error:', error.message);
+    console.error('❌ Stack:', error.stack);
+    
+    setKylMediaLoading(false);
+    
+    Alert.alert(
+      'Error Loading Data', 
+      `Failed to load profile data:\n\n${error.message}\n\nPlease try again.`,
+      [
+        { text: 'Cancel' },
+        { text: 'Retry', onPress: () => loadProfileData(memberIdentifier) }
+      ]
+    );
+  }
+};
+
+// ✅ HELPER: Fetch and store data (for first launch)
+const fetchAndStoreData = async (cacheKey, fetchFunction, memberIdentifier) => {
+  try {
+    console.log(`   🔄 Fetching ${cacheKey}...`);
+    const result = await fetchFunction(memberIdentifier);
+    
+    if (result.success && result.data) {
+      await LocalStorageService.storeData(cacheKey, result.data);
+      console.log(`   ✅ ${cacheKey} fetched and stored`);
+    } else {
+      console.log(`   ⚠️ ${cacheKey} fetch failed:`, result.error);
+    }
+    
+    return result;
+  } catch (error) {
+    console.error(`   ❌ Error fetching ${cacheKey}:`, error);
+    throw error;
+  }
+};
+
+// ✅ HELPER: Load data with caching logic
+// ✅ IMPROVED: Load data with proper caching logic
+// ✅ HELPER: Load data with caching logic
+const loadDataWithCache = async (cacheKey, fetchFunction, memberIdentifier, updateFlag) => {
+  try {
+    const cached = await LocalStorageService.getData(cacheKey);
+    const hasCachedData = !!cached;
+    
+    // ✅ CRITICAL FIX: Convert any type to boolean
+    let booleanFlag = null;
+    
+    if (updateFlag === true || updateFlag === 'true' || updateFlag === 1 || updateFlag === '1') {
+      booleanFlag = true;
+    } else if (updateFlag === false || updateFlag === 'false' || updateFlag === 0 || updateFlag === '0') {
+      booleanFlag = false;
+    } else if (updateFlag === undefined || updateFlag === null) {
+      booleanFlag = null;
+    }
+    
+    console.log(`\n🔍 ${cacheKey}:`);
+    console.log(`   💾 Cache exists: ${hasCachedData}`);
+    console.log(`   🚩 Flag: ${updateFlag} → ${booleanFlag}`);
+    
+    // ✅ IMPROVED Decision logic
+    let shouldFetchFresh;
+    
+    if (!hasCachedData) {
+      // No cache at all - must fetch fresh
+      shouldFetchFresh = true;
+      console.log(`   ❌ No cache → FETCH`);
+    } else if (booleanFlag === true) {
+      // Flag is TRUE - data was updated on backend, fetch fresh
+      shouldFetchFresh = true;
+      console.log(`   🔴 Flag TRUE → FETCH`);
+    } else if (booleanFlag === false) {
+      // Flag is FALSE - data NOT updated, use cache
+      shouldFetchFresh = false;
+      console.log(`   🟢 Flag FALSE → CACHE`);
+    } else {
+      // ✅ FIX: Flag is null/undefined - means backend didn't send this flag
+      // Since we have cache, use it (assume no changes)
+      shouldFetchFresh = false;
+      console.log(`   ⚪ No flag (backend didn't send) → CACHE`);
+    }
+    
+    if (shouldFetchFresh) {
+      console.log(`   📡 Calling API...`);
+      const result = await fetchFunction(memberIdentifier);
+      
+      if (result.success && result.data) {
+        await LocalStorageService.storeData(cacheKey, result.data);
+        
+        // ✅ Mark as updated (false) in local flags
+        const flagName = Object.keys(UpdateStatusService.UPDATE_FLAG_TO_CACHE_KEY).find(
+          key => UpdateStatusService.UPDATE_FLAG_TO_CACHE_KEY[key] === cacheKey
+        );
+        if (flagName) {
+          await UpdateStatusService.markAsUpdated(flagName);
+        }
+        
+        return result;
+      } else {
+        // ✅ API failed but we have cache - use cache as fallback
+        if (hasCachedData) {
+          console.log(`   ⚠️ API failed, using cache as fallback`);
+          return { success: true, data: cached };
+        }
+        return result;
+      }
+    } else {
+      console.log(`   💾 Using cache - NO API CALL`);
+      return { success: true, data: cached };
+    }
+  } catch (error) {
+    console.error(`   ❌ Error: ${error.message}`);
+    // ✅ On error, try to use cache if available
+    const cached = await LocalStorageService.getData(cacheKey);
+    if (cached) {
+      console.log(`   ⚠️ Error occurred, using cache as fallback`);
+      return { success: true, data: cached };
+    }
+    return { success: false, error: error.message };
   }
 };
 
 
-  const loadTimelineData = async (memberIdentifier) => {
+ /* const loadTimelineData = async (memberIdentifier) => {
     try {
       console.log('📡 Loading timeline data for member:', memberIdentifier);
       const result = await fetchTimeline(memberIdentifier);
@@ -2456,7 +2719,7 @@ const loadProfileData = async (memberIdentifier) => {
       console.error('Timeline data loading error:', error);
       setTimelineData([]);
     }
-  };
+  };*/
 
   const onRefresh = async () => {
     setRefreshing(true);

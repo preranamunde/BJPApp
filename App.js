@@ -15,6 +15,8 @@ import { generateAppKey } from './src/utils/generateAppKey';
 import messaging from '@react-native-firebase/messaging';
 import crashlytics from '@react-native-firebase/crashlytics';
 import { TranslationProvider } from './src/context/TranslationContext';
+import UpdateStatusService from './src/services/UpdateStatusService';
+import LocalStorageService from './src/services/LocalStorageService';
 
 // Global variables for user state - Centralized Management
 // Add this with other global variables at top
@@ -463,23 +465,23 @@ const callBootstrapAPI = async (appKey) => {
     const validation = validateBootstrapResponse(response.data);
     
     if (validation.isValid) {
-      console.log('✅ Response validation passed:', validation.message);
-      const globalSetup = await setupGlobalVariablesFromBootstrap(response.data.AppOwnerInfo);
-      
-      Alert.alert(
-        '🎉 Bootstrap Success!',
-        `✅ App initialized successfully!\n\n` +
-        `Status: ${response.status}\n` +
-        `Base URL: ${baseUrl}\n\n` +
-        `🏛️ APP OWNER INFO:\n` +
-        `Owner Email: ${globalSetup.owner_emailid || 'Not found'}\n` +
-        `Owner Mobile: ${globalSetup.owner_mobile || 'Not found'}\n\n` +
-        `👤 CURRENT USER STATUS:\n${globalSetup.userRole === 'admin' ? '👑 ADMIN' : '👤 USER'}`,
-        [{ text: 'Continue', onPress: () => setStage('app') }]
-      );
-      
-      return { success: true, data: response.data, globalSetup };
-    }
+  console.log('✅ Response validation passed:', validation.message);
+  const globalSetup = await setupGlobalVariablesFromBootstrap(response.data.AppOwnerInfo);
+  
+  Alert.alert(
+    '🎉 Bootstrap Success!',
+    `✅ App initialized successfully!\n\n` +
+    `Status: ${response.status}\n` +
+    `Base URL: ${baseUrl}\n\n` +
+    `🏛️ APP OWNER INFO:\n` +
+    `Owner Email: ${globalSetup.owner_emailid || 'Not found'}\n` +
+    `Owner Mobile: ${globalSetup.owner_mobile || 'Not found'}\n\n` +
+    `👤 CURRENT USER STATUS:\n${globalSetup.userRole === 'admin' ? '👑 ADMIN' : '👤 USER'}`,
+    [{ text: 'Continue', onPress: () => setStage('app') }]
+  );
+  
+  return { success: true, data: response.data, globalSetup };
+}
     // ... rest of error handling
 
   } catch (error) {

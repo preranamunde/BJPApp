@@ -1617,6 +1617,8 @@ if (newsItems.length === 0) {
   );
 }
 
+
+
   return (
     <View style={styles.newsSection}>
       <TranslatableText style={[styles.sectionTitle, { fontSize: fontSize + 2 }]}>

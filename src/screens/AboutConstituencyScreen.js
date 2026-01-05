@@ -24,6 +24,8 @@ import { getCurrentUserRole, checkIfCurrentUserIsAdmin } from '../../App';
 import styles from '../styles/AboutConstituencystyle';
 import { useTranslation } from '../context/TranslationContext';
 import TranslatableText from '../components/TranslatableText';
+import UpdateStatusService from '../services/UpdateStatusService';
+import LocalStorageService from '../services/LocalStorageService';
 
 // ✅ Three Dot Menu Component
 const ThreeDotMenu = ({ visible, position, onEdit, onDelete, onDismiss }) => {
@@ -512,6 +514,8 @@ const handleACSave = async (updatedData) => {
     const result = await ApiService.authPut(apiUrl, formData, {}, true);
 
     if (result.success) {
+      await UpdateStatusService.markApiStale(regdMobileNo, 'updatedACMedia');
+      console.log('✅ Marked AC_MEDIA cache as stale');
       Alert.alert('✅ Success', 'AC media updated successfully');
       setEditACModalVisible(false);
       setSelectedACItem(null);
@@ -537,6 +541,9 @@ const handleACDelete = async (item) => {
     const result = await ApiService.authDelete(apiUrl);
 
     if (result.success) {
+            await UpdateStatusService.markApiStale(regdMobileNo, 'updatedACMedia');
+      console.log('✅ Marked AC_MEDIA cache as stale');
+
       Alert.alert('Success', 'AC media deleted successfully');
       fetchConstituencyData(regdMobileNo); // Refresh the data
     } else {
@@ -591,6 +598,8 @@ const handleACAdd = async (selectedImage) => {
     console.log('📥 POST Response:', result);
 
     if (result.success) {
+         await UpdateStatusService.markApiStale(regdMobileNo, 'updatedACMedia');
+      console.log('✅ Marked AC_MEDIA cache as stale');
       Alert.alert('✅ Success', 'AC media added successfully');
       setAddACModalVisible(false);
       fetchConstituencyData(regdMobileNo); // Refresh the data
@@ -1204,14 +1213,16 @@ const fetchConstituencyData = async (mobileNo) => {
   try {
     setError(null);
     setAcMediaLoading(true);
-    ConstituencyLoggingService.constInfo('📡 === FETCHING CONSTITUENCY DATA ===', { mobileNo });
+    
+    console.log('📡 ========================================');
+    console.log('📡 LOADING CONSTITUENCY DATA');
+    console.log('📡 ========================================');
+    console.log('📱 Mobile:', mobileNo);
 
     const baseUrl = await ConfigService.getBaseUrl();
-    ConstituencyLoggingService.constInfo('🌐 Using base URL:', baseUrl);
-
+    
     // Get email for API call
     let emailToUse = loggedInEmail || ownerEmail;
-
     if (!emailToUse) {
       try {
         const appOwnerInfoStr = await EncryptedStorage.getItem('AppOwnerInfo');
@@ -1220,57 +1231,106 @@ const fetchConstituencyData = async (mobileNo) => {
           emailToUse = appOwnerInfo.email || appOwnerInfo.user_email || appOwnerInfo.emailId || '';
         }
       } catch (error) {
-        ConstituencyLoggingService.constError('Error getting email from AppOwnerInfo', error);
+        console.error('Error getting email from AppOwnerInfo', error);
       }
     }
 
     if (!emailToUse) {
-      ConstituencyLoggingService.constWarn('No email found, using placeholder');
+      console.warn('No email found, using placeholder');
       emailToUse = 'sanjay.jaiswal@gmail.com';
     }
 
-    // ========== BUILD API URLS ==========
-    const constituencyUrl = `${baseUrl}/api/constituencyprofile/?leader_regd_mobile_no=${mobileNo}&user_email_id=${encodeURIComponent(emailToUse)}`;
-    const assemblyUrl = `${baseUrl}/api/assemblyconstituencies/?leader_regd_mobile_no=${mobileNo}&user_email_id=${encodeURIComponent(emailToUse)}`;
+    // ✅ STEP 1: CHECK IF FIRST LAUNCH
+    const isFirstLaunch = await LocalStorageService.isFirstLaunch();
+    console.log('🚀 Is First Launch:', isFirstLaunch);
 
-    ConstituencyLoggingService.constInfo('Fetching constituency data, assemblies, and AC media concurrently...');
+    // ✅ STEP 2: GET UPDATE FLAGS (only if NOT first launch)
+    let updateFlags = null;
+    
+    if (!isFirstLaunch) {
+      console.log('\n🔄 === SUBSEQUENT LAUNCH - CHECKING UPDATE FLAGS ===');
+      
+      updateFlags = await UpdateStatusService.checkUpdateStatus(
+        mobileNo,
+        emailToUse
+      );
+      
+      if (updateFlags) {
+        console.log('\n📊 === UPDATE FLAGS ANALYSIS ===');
+        console.log('updatedCP:', updateFlags.updatedCP, '→', updateFlags.updatedCP === true ? '🔴 FETCH' : '🟢 CACHE');
+        console.log('updatedAC:', updateFlags.updatedAC, '→', updateFlags.updatedAC === true ? '🔴 FETCH' : '🟢 CACHE');
+        console.log('updatedCPImage:', updateFlags.updatedCPImage, '→', updateFlags.updatedCPImage === true ? '🔴 FETCH' : '🟢 CACHE');
+        console.log('===========================\n');
+        
+        // Clear updated caches
+        await UpdateStatusService.clearUpdatedCaches(updateFlags);
+      } else {
+        console.log('⚠️ No update flags received - will fetch all data fresh');
+        updateFlags = {
+          updatedCP: true,
+          updatedAC: true,
+          updatedCPImage: true,
+          updatedACMedia: true
+        };
+      }
+    } else {
+      console.log('\n🆕 === FIRST LAUNCH - FETCHING ALL DATA ===');
+    }
 
-    // ========== FETCH ALL DATA CONCURRENTLY ==========
-    const [constituencyResult, assemblyResult, acMedia] = await Promise.all([
-      ApiService.authGet(constituencyUrl),
-      ApiService.authGet(assemblyUrl),
-      fetchACMedia(mobileNo)
+    // ✅ STEP 3: LOAD DATA (from cache or fetch fresh based on flags)
+    console.log('\n📦 === LOADING DATA WITH CACHING LOGIC ===');
+    
+    const [
+      constituencyResult,
+      assemblyResult,
+      acMedia
+    ] = await Promise.all([
+      loadDataWithCache(
+        'CONSTITUENCY_PROFILE',
+        fetchConstituencyProfile,
+        mobileNo,
+        emailToUse,
+        updateFlags?.updatedCP || isFirstLaunch
+      ),
+      loadDataWithCache(
+        'ASSEMBLY_CONSTITUENCIES',
+        fetchAssemblyConstituencies,
+        mobileNo,
+        emailToUse,
+        updateFlags?.updatedAC || isFirstLaunch
+      ),
+      loadDataWithCache(
+        'AC_MEDIA',
+        fetchACMedia,
+        mobileNo,
+        updateFlags?.updatedACMedia || isFirstLaunch
+      )
     ]);
 
-    // ========== PROCESS CONSTITUENCY PROFILE ==========
+    // ✅ STEP 4: PROCESS CONSTITUENCY PROFILE
     if (constituencyResult.success && constituencyResult.data) {
       const constituencyProfileData = constituencyResult.data.constitency_profile || 
                                       constituencyResult.data.constituency_profile || 
                                       constituencyResult.data;
 
-      // ✅ NORMALIZE MEMBER IMAGE URL IF PRESENT
+      // Normalize member image URL if present
       if (constituencyProfileData.member_image && 
           constituencyProfileData.member_image !== 'none' && 
           constituencyProfileData.member_image !== 'placeholder') {
         const originalImageUrl = constituencyProfileData.member_image;
-        ConstituencyLoggingService.constInfo('🖼️ Original member image URL:', originalImageUrl);
         
         try {
           const normalizedImageUrl = await ImageService.normalizeImageUrl(originalImageUrl);
           if (normalizedImageUrl) {
-            ConstituencyLoggingService.constInfo('✅ Normalized member image URL:', normalizedImageUrl);
             constituencyProfileData.member_image = normalizedImageUrl;
-          } else {
-            ConstituencyLoggingService.constWarn('⚠️ Could not normalize member image URL');
           }
         } catch (imageError) {
-          ConstituencyLoggingService.constError('❌ Error normalizing member image:', imageError);
+          console.error('❌ Error normalizing member image:', imageError);
         }
       }
 
-      ConstituencyLoggingService.constInfo('✅ Constituency profile fetched successfully');
+      console.log('✅ Constituency profile loaded');
       
-      // ✅ ENSURE ALL VALUES ARE STRINGS OR NULL (NOT UNDEFINED)
       const cleanedData = {
         const_name: constituencyProfileData.const_name || '',
         const_no: constituencyProfileData.const_no || '',
@@ -1286,17 +1346,16 @@ const fetchConstituencyData = async (mobileNo) => {
         geography: constituencyProfileData.geography || '',
         eci_url: constituencyProfileData.eci_url || '',
         member_image: constituencyProfileData.member_image || null,
-        // Include all other fields
         ...constituencyProfileData
       };
       
       setConstituencyData(cleanedData);
     } else {
-      ConstituencyLoggingService.constWarn('⚠️ No constituency profile found');
+      console.warn('⚠️ No constituency profile found');
       setConstituencyData(null);
     }
 
-    // ========== PROCESS ASSEMBLY CONSTITUENCIES ==========
+    // ✅ STEP 5: PROCESS ASSEMBLY CONSTITUENCIES
     if (assemblyResult.success) {
       const assemblyData = assemblyResult.data;
       let constituencies = [];
@@ -1309,29 +1368,181 @@ const fetchConstituencyData = async (mobileNo) => {
         constituencies = assemblyData;
       }
 
-      ConstituencyLoggingService.constInfo('✅ Assembly constituencies fetched', { count: constituencies.length });
+      console.log('✅ Assembly constituencies loaded:', constituencies.length);
       setAssemblyConstituencies(constituencies);
     } else {
-      ConstituencyLoggingService.constWarn('⚠️ Failed to fetch assembly constituencies');
+      console.warn('⚠️ Failed to fetch assembly constituencies');
       setAssemblyConstituencies([]);
     }
 
-    // ========== PROCESS AC MEDIA ==========
+    // ✅ STEP 6: PROCESS AC MEDIA
     if (acMedia.success && acMedia.data) {
       setAcMediaData(acMedia.data);
-      ConstituencyLoggingService.constInfo('✅ AC media data loaded:', acMedia.data.length, 'items');
+      console.log('✅ AC media loaded:', acMedia.data.length, 'items');
     } else {
-      ConstituencyLoggingService.constError('Failed to load AC media:', acMedia.error);
+      console.error('Failed to load AC media:', acMedia.error);
       setAcMediaData([]);
     }
 
     setAcMediaLoading(false);
 
+    // ✅ STEP 7: MARK AS LAUNCHED (if first launch)
+    if (isFirstLaunch) {
+      await LocalStorageService.setHasLaunched();
+      console.log('✅ First launch completed - App marked as launched');
+      
+      // Create initial update flags (all false since we just fetched everything)
+      const initialFlags = {
+        updatedCP: false,
+        updatedAC: false,
+        updatedCPImage: false,
+        updatedACMedia: false
+      };
+      await AsyncStorage.setItem('UPDATE_FLAGS', JSON.stringify(initialFlags));
+      console.log('✅ Initial update flags set to false');
+    }
+
+    console.log('\n✅ ========================================');
+    console.log('✅ CONSTITUENCY DATA LOADED SUCCESSFULLY');
+    console.log('✅ ========================================\n');
+
   } catch (err) {
-    ConstituencyLoggingService.constError('❌ Error fetching constituency data', err);
+    console.error('❌ Error fetching constituency data', err);
     setError(err.message);
     setAcMediaData([]);
     setAcMediaLoading(false);
+  }
+};
+
+// ✅ HELPER: Fetch and store data (for first launch)
+const fetchAndStoreData = async (cacheKey, fetchFunction, ...params) => {
+  try {
+    console.log(`   🔄 Fetching ${cacheKey}...`);
+    const result = await fetchFunction(...params);
+    
+    if (result.success && result.data) {
+      await LocalStorageService.storeData(cacheKey, result.data);
+      console.log(`   ✅ ${cacheKey} fetched and stored`);
+    } else {
+      console.log(`   ⚠️ ${cacheKey} fetch failed:`, result.error);
+    }
+    
+    return result;
+  } catch (error) {
+    console.error(`   ❌ Error fetching ${cacheKey}:`, error);
+    throw error;
+  }
+};
+
+// ✅ HELPER: Load data with caching logic
+const loadDataWithCache = async (cacheKey, fetchFunction, ...params) => {
+  try {
+    const updateFlag = params[params.length - 1]; // Last param is the flag
+    const fetchParams = params.slice(0, -1); // All params except flag
+    
+    const cached = await LocalStorageService.getData(cacheKey);
+    const hasCachedData = !!cached;
+    
+    console.log(`\n🔍 ${cacheKey}:`);
+    console.log(`   💾 Cache exists: ${hasCachedData}`);
+    console.log(`   🚩 Flag: ${updateFlag}`);
+    
+    // Convert flag to boolean
+    let booleanFlag = null;
+    if (updateFlag === true || updateFlag === 'true' || updateFlag === 1 || updateFlag === '1') {
+      booleanFlag = true;
+    } else if (updateFlag === false || updateFlag === 'false' || updateFlag === 0 || updateFlag === '0') {
+      booleanFlag = false;
+    }
+    
+    // Decision logic
+    let shouldFetchFresh;
+    
+    if (!hasCachedData) {
+      shouldFetchFresh = true;
+      console.log(`   ❌ No cache → FETCH`);
+    } else if (booleanFlag === true) {
+      shouldFetchFresh = true;
+      console.log(`   🔴 Flag TRUE → FETCH`);
+    } else if (booleanFlag === false) {
+      shouldFetchFresh = false;
+      console.log(`   🟢 Flag FALSE → CACHE`);
+    } else {
+      shouldFetchFresh = false;
+      console.log(`   ⚪ No flag (backend didn't send) → CACHE`);
+    }
+    
+    if (shouldFetchFresh) {
+      console.log(`   📡 Calling API...`);
+      const result = await fetchFunction(...fetchParams);
+      
+      if (result.success && result.data) {
+        await LocalStorageService.storeData(cacheKey, result.data);
+        
+        // Mark as updated (false) in local flags
+        const flagName = Object.keys(UpdateStatusService.UPDATE_FLAG_TO_CACHE_KEY).find(
+          key => UpdateStatusService.UPDATE_FLAG_TO_CACHE_KEY[key] === cacheKey
+        );
+        if (flagName) {
+          await UpdateStatusService.markAsUpdated(flagName);
+        }
+        
+        return result;
+      } else {
+        // API failed but we have cache - use cache as fallback
+        if (hasCachedData) {
+          console.log(`   ⚠️ API failed, using cache as fallback`);
+          return { success: true, data: cached };
+        }
+        return result;
+      }
+    } else {
+      console.log(`   💾 Using cache - NO API CALL`);
+      return { success: true, data: cached };
+    }
+  } catch (error) {
+    console.error(`   ❌ Error: ${error.message}`);
+    // On error, try to use cache if available
+    const cached = await LocalStorageService.getData(cacheKey);
+    if (cached) {
+      console.log(`   ⚠️ Error occurred, using cache as fallback`);
+      return { success: true, data: cached };
+    }
+    return { success: false, error: error.message };
+  }
+};
+
+const fetchConstituencyProfile = async (mobileNo, emailToUse) => {
+  try {
+    const baseUrl = await ConfigService.getBaseUrl();
+    const constituencyUrl = `${baseUrl}/api/constituencyprofile/?leader_regd_mobile_no=${mobileNo}&user_email_id=${encodeURIComponent(emailToUse)}`;
+    
+    const result = await ApiService.authGet(constituencyUrl);
+    return {
+      success: result.success,
+      data: result.success ? result.data : null,
+      error: result.success ? null : result.error || result.message
+    };
+  } catch (error) {
+    console.error('❌ API Error (constituency profile):', error);
+    return { success: false, error: error.message };
+  }
+};
+
+const fetchAssemblyConstituencies = async (mobileNo, emailToUse) => {
+  try {
+    const baseUrl = await ConfigService.getBaseUrl();
+    const assemblyUrl = `${baseUrl}/api/assemblyconstituencies/?leader_regd_mobile_no=${mobileNo}&user_email_id=${encodeURIComponent(emailToUse)}`;
+    
+    const result = await ApiService.authGet(assemblyUrl);
+    return {
+      success: result.success,
+      data: result.success ? result.data : null,
+      error: result.success ? null : result.error || result.message
+    };
+  } catch (error) {
+    console.error('❌ API Error (assembly constituencies):', error);
+    return { success: false, error: error.message };
   }
 };
 
@@ -1809,6 +2020,12 @@ useEffect(() => {
       }));
     }
 
+    // ✅ ========== ADD THIS SECTION HERE ==========
+    // Mark constituency profile cache as stale so it will be refreshed next time
+    await UpdateStatusService.markApiStale(regdMobileNo, 'updatedCP');
+    console.log('✅ Marked CONSTITUENCY_PROFILE cache as stale');
+    // ✅ ============================================
+
     closeEditSection(sectionKey);
     await fetchConstituencyData(regdMobileNo);
 
@@ -1938,6 +2155,8 @@ useEffect(() => {
 
         ConstituencyLoggingService.constInfo(`✅ ${section.title} section cleared successfully`);
       }
+       await UpdateStatusService.markApiStale(regdMobileNo, 'updatedCP');
+      console.log('✅ Marked CONSTITUENCY_PROFILE cache as stale');
 
       // Update local state
       const updatedData = { ...constituencyData };
@@ -1946,8 +2165,10 @@ useEffect(() => {
 
       // Refresh data from server
       await fetchConstituencyData(regdMobileNo);
+      
 
       Alert.alert('Success', `${section.title} data deleted successfully!`);
+
 
     } catch (error) {
       ConstituencyLoggingService.constError(`❌ Error deleting ${section.title}`, error);
@@ -2121,6 +2342,8 @@ useEffect(() => {
         );
 
         if (result.success) {
+           await UpdateStatusService.markApiStale(regdMobileNo, 'updatedAC');
+      console.log('✅ Marked ASSEMBLY_CONSTITUENCIES cache as stale');
           Alert.alert(
             'Success',
             `${newAssemblies.length} new ${newAssemblies.length === 1 ? 'constituency' : 'constituencies'} added successfully!`,
@@ -2272,6 +2495,8 @@ useEffect(() => {
               );
 
               if (result.success) {
+                 await UpdateStatusService.markApiStale(regdMobileNo, 'updatedAC');
+              console.log('✅ Marked ASSEMBLY_CONSTITUENCIES cache as stale');
                 Alert.alert('Success', 'Assembly constituency deleted successfully!', [
                   {
                     text: 'OK',
@@ -2608,7 +2833,8 @@ const handleUpdateConstituency = async () => {
     ConstituencyLoggingService.constInfo(
       `✅ ${newAssemblies.length} assembly constituencies added successfully`
     );
-
+ await UpdateStatusService.markApiStale(regdMobileNo, 'updatedAC');
+      console.log('✅ Marked ASSEMBLY_CONSTITUENCIES cache as stale');
     // Reset form list and close modal
     setAssemblyFormList([
       { ac_number: '', ac_name: '', district: '', type: '' }
@@ -2617,9 +2843,11 @@ const handleUpdateConstituency = async () => {
 
     // Refresh data
     await fetchConstituencyData(regdMobileNo);
+   
 
     Alert.alert(
       'Success',
+
       `${newAssemblies.length} assembly ${newAssemblies.length === 1 ? 'constituency' : 'constituencies'} added successfully!`
     );
 
@@ -4624,6 +4852,8 @@ const handleUpdateMemberImage = async (selectedImage) => {
     console.log('📥 PUT Response:', result);
 
     if (result.success) {
+      await UpdateStatusService.markApiStale(regdMobileNo, 'updatedCPImage');
+      console.log('✅ Marked CONSTITUENCY_MEMBER_IMAGE cache as stale');
       Alert.alert('✅ Success', 'Member image updated successfully', [
         {
           text: 'OK',

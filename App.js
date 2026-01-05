@@ -417,20 +417,22 @@ const callBootstrapAPI = async (appKey) => {
     const deviceFingerprint = await DeviceService.getDeviceFingerprint();
     console.log('📱 Device Fingerprint (first 20 chars):', deviceFingerprint.substring(0, 20) + '...');
 
-    const deviceInfo = await DeviceService.getDeviceInfo();
-    console.log('📱 Device Info:', deviceInfo);
-
-    // ✅ REMOVED: No longer passing device info in bootstrap
-    // Just pass user email if logged in
+    // ✅ Get user email
     const userEmail = await AsyncStorage.getItem('userEmail') || 
                      await EncryptedStorage.getItem('LOGGED_IN_EMAIL') || 
                      'null';
     
     console.log('📧 User Email for bootstrap:', userEmail);
 
-    // ✅ SIMPLIFIED: Only send user email
+    // ✅ Get complete device information
+    console.log('📱 Collecting device information...');
+    const deviceInfo = await DeviceService.getCompleteDeviceInfo();
+    console.log('✅ Device info collected:', deviceInfo);
+
+    // ✅ Combine user email with device info
     const requestBody = {
-      user_email_id: userEmail
+      user_email_id: userEmail,
+      ...deviceInfo  // Spread all device info fields
     };
 
     console.log('📤 Request Body:', JSON.stringify(requestBody, null, 2));
@@ -461,31 +463,84 @@ const callBootstrapAPI = async (appKey) => {
     console.log('✅ Bootstrap API Request Successful!');
     console.log('📊 Response Status:', response.status);
     
-    // ... rest of your existing validation and setup code
+    // Validate response structure
     const validation = validateBootstrapResponse(response.data);
     
     if (validation.isValid) {
-  console.log('✅ Response validation passed:', validation.message);
-  const globalSetup = await setupGlobalVariablesFromBootstrap(response.data.AppOwnerInfo);
-  
-  Alert.alert(
-    '🎉 Bootstrap Success!',
-    `✅ App initialized successfully!\n\n` +
-    `Status: ${response.status}\n` +
-    `Base URL: ${baseUrl}\n\n` +
-    `🏛️ APP OWNER INFO:\n` +
-    `Owner Email: ${globalSetup.owner_emailid || 'Not found'}\n` +
-    `Owner Mobile: ${globalSetup.owner_mobile || 'Not found'}\n\n` +
-    `👤 CURRENT USER STATUS:\n${globalSetup.userRole === 'admin' ? '👑 ADMIN' : '👤 USER'}`,
-    [{ text: 'Continue', onPress: () => setStage('app') }]
-  );
-  
-  return { success: true, data: response.data, globalSetup };
-}
-    // ... rest of error handling
+      console.log('✅ Response validation passed:', validation.message);
+      const globalSetup = await setupGlobalVariablesFromBootstrap(response.data.AppOwnerInfo);
+      
+      Alert.alert(
+        '🎉 Bootstrap Success!',
+        `✅ App initialized successfully!\n\n` +
+        `Status: ${response.status}\n` +
+        `Base URL: ${baseUrl}\n\n` +
+        `🏛️ APP OWNER INFO:\n` +
+        `Owner Email: ${globalSetup.owner_emailid || 'Not found'}\n` +
+        `Owner Mobile: ${globalSetup.owner_mobile || 'Not found'}\n\n` +
+        `👤 CURRENT USER STATUS:\n${globalSetup.userRole === 'admin' ? '👑 ADMIN' : '👤 USER'}`,
+        [{ text: 'Continue', onPress: () => setStage('app') }]
+      );
+      
+      return { success: true, data: response.data, globalSetup };
+    } else {
+      console.warn('⚠️ Response validation failed:', validation.message);
+      
+      Alert.alert(
+        '⚠️ Bootstrap Warning',
+        `API call succeeded but response structure is unexpected:\n\n${validation.message}\n\nStatus: ${response.status}\n\nThe app will continue but some features may not work correctly.`,
+        [
+          { 
+            text: 'View Response', 
+            onPress: () => console.log('Full Response:', JSON.stringify(response.data, null, 2))
+          },
+          { text: 'Continue Anyway', onPress: () => setStage('app') }
+        ]
+      );
+      
+      return { success: false, error: validation.message, data: response.data };
+    }
 
   } catch (error) {
-    // ... your existing error handling
+    console.error('❌ Bootstrap API Error:', error.message);
+    
+    if (error.response) {
+      console.error('📊 Error Response Status:', error.response.status);
+      console.error('📊 Error Response Data:', JSON.stringify(error.response.data, null, 2));
+      
+      Alert.alert(
+        '❌ Bootstrap Failed',
+        `Server returned an error:\n\nStatus: ${error.response.status}\nMessage: ${error.response.data?.message || 'Unknown error'}\n\nWould you like to configure a different server?`,
+        [
+          { text: 'Configure Server', onPress: () => showServerConfigDialog() },
+          { text: 'Continue Anyway', onPress: () => setStage('app') }
+        ]
+      );
+    } else if (error.request) {
+      console.error('📊 No Response Received');
+      console.error('📊 Request Config:', error.config);
+      
+      const baseUrl = await ConfigService.getBaseUrl();
+      
+      Alert.alert(
+        '❌ Network Error',
+        `Could not reach the server at:\n${baseUrl}\n\nPlease check:\n• Your internet connection\n• Server URL is correct\n• Server is running\n\nWould you like to configure a different server?`,
+        [
+          { text: 'Configure Server', onPress: () => showServerConfigDialog() },
+          { text: 'Continue Anyway', onPress: () => setStage('app') }
+        ]
+      );
+    } else {
+      console.error('📊 Request Setup Error:', error.message);
+      
+      Alert.alert(
+        '❌ Bootstrap Error',
+        `An error occurred during bootstrap:\n${error.message}`,
+        [{ text: 'Continue', onPress: () => setStage('app') }]
+      );
+    }
+    
+    return { success: false, error: error.message };
   }
 };
 
@@ -575,70 +630,118 @@ const callBootstrapAPI = async (appKey) => {
   };
 
   const bootstrapFlow = async () => {
-    try {
-      console.log('🚀 Starting bootstrap flow...');
+  try {
+    console.log('🚀 Starting bootstrap flow...');
 
-      // Step 1: Generate and store app_key
-      console.log('📱 Step 1: Generating app key...');
-      const appKey = generateAppKey();
-      console.log('📱 App key generation result type:', typeof appKey);
-      console.log('📱 App key length:', appKey?.length);
+    // ✅ STEP 0: Check if bootstrap data already exists in storage
+    console.log('🔍 Step 0: Checking for existing bootstrap data...');
+    
+    const existingAppKey = await EncryptedStorage.getItem('APP_KEY');
+    const existingAppOwnerInfo = await EncryptedStorage.getItem('AppOwnerInfo');
+    const existingOwnerEmail = await EncryptedStorage.getItem('OWNER_EMAIL');
+    
+    console.log('📦 Existing data check:');
+    console.log('   APP_KEY exists:', !!existingAppKey);
+    console.log('   AppOwnerInfo exists:', !!existingAppOwnerInfo);
+    console.log('   OWNER_EMAIL exists:', !!existingOwnerEmail);
 
-      if (appKey && typeof appKey === 'string' && appKey.length > 0) {
-        try {
+    // ✅ If all bootstrap data exists, use it instead of calling API
+    if (existingAppKey && existingAppOwnerInfo && existingOwnerEmail) {
+      console.log('✅ Bootstrap data found in storage - Using cached data');
+      console.log('⏭️  Skipping API call to save time and resources');
+      
+      try {
+        // Parse and use existing AppOwnerInfo
+        const appOwnerInfo = JSON.parse(existingAppOwnerInfo);
+        console.log('📋 Loaded AppOwnerInfo from storage');
+        
+        // Setup global variables from cached data
+        const globalSetup = await setupGlobalVariablesFromBootstrap(appOwnerInfo);
+        
+        console.log('🎉 Bootstrap completed using cached data!');
+        console.log('🔧 Global setup:', globalSetup);
+        
+        setIsBootstrapped(true);
+        setStage('app'); // Move to app immediately
+        
+        return; // Exit early - no need to call API
+        
+      } catch (parseError) {
+        console.warn('⚠️ Failed to parse cached AppOwnerInfo:', parseError);
+        console.log('🔄 Will fetch fresh data from API...');
+        // Continue to API call if cached data is corrupted
+      }
+    } else {
+      console.log('ℹ️ Bootstrap data not found in storage');
+      console.log('📡 Will call bootstrap API to fetch fresh data...');
+    }
+
+    // ✅ ORIGINAL CODE: Only runs if cached data not found
+    // Step 1: Generate and store app_key
+    console.log('📱 Step 1: Generating app key...');
+    const appKey = existingAppKey || generateAppKey();
+    console.log('📱 App key generation result type:', typeof appKey);
+    console.log('📱 App key length:', appKey?.length);
+
+    if (appKey && typeof appKey === 'string' && appKey.length > 0) {
+      try {
+        // Only store if it's a new key
+        if (!existingAppKey) {
           await EncryptedStorage.setItem('APP_KEY', appKey);
-          console.log('✅ App key generated and stored securely');
-
-          // Step 2: Call bootstrap API with ConfigService integration
-          console.log('📱 Step 2: Calling bootstrap API...');
-          const apiResult = await callBootstrapAPI(appKey);
-          
-          if (apiResult.success) {
-            console.log('🎉 Bootstrap completed successfully!');
-            console.log('🔧 Global setup completed:', apiResult.globalSetup);
-            setIsBootstrapped(true);
-          } else {
-            console.log('⚠️ Bootstrap completed with warnings:', apiResult.error);
-            setIsBootstrapped(true);
-            // App continues even if API fails, but with default user role
-            userRole = 'user';
-            await EncryptedStorage.setItem('USER_ROLE', 'user');
-            global.userRole = 'user';
-          }
-
-        } catch (storageError) {
-          console.error('❌ Failed to store app key:', storageError.message);
-          Alert.alert(
-            '❌ Storage Error',
-            `Failed to store app key:\n${storageError.message}`,
-            [{ text: 'Continue', onPress: () => setStage('app') }]
-          );
-          setIsBootstrapped(true);
+          console.log('✅ New app key generated and stored securely');
+        } else {
+          console.log('✅ Using existing app key from storage');
         }
-      } else {
-        console.error('❌ App key generation failed - received:', typeof appKey, appKey);
+
+        // Step 2: Call bootstrap API with ConfigService integration
+        console.log('📱 Step 2: Calling bootstrap API...');
+        const apiResult = await callBootstrapAPI(appKey);
+        
+        if (apiResult.success) {
+          console.log('🎉 Bootstrap completed successfully with fresh API data!');
+          console.log('🔧 Global setup completed:', apiResult.globalSetup);
+          setIsBootstrapped(true);
+        } else {
+          console.log('⚠️ Bootstrap completed with warnings:', apiResult.error);
+          setIsBootstrapped(true);
+          // App continues even if API fails, but with default user role
+          userRole = 'user';
+          await EncryptedStorage.setItem('USER_ROLE', 'user');
+          global.userRole = 'user';
+        }
+
+      } catch (storageError) {
+        console.error('❌ Failed to store app key:', storageError.message);
         Alert.alert(
-          '❌ Key Generation Failed',
-          'App key generation failed. Please check console for details.',
+          '❌ Storage Error',
+          `Failed to store app key:\n${storageError.message}`,
           [{ text: 'Continue', onPress: () => setStage('app') }]
         );
         setIsBootstrapped(true);
       }
-
-    } catch (err) {
-      console.error('❌ Bootstrap flow failed:', err.message);
-      console.error('❌ Stack trace:', err.stack);
-
+    } else {
+      console.error('❌ App key generation failed - received:', typeof appKey, appKey);
       Alert.alert(
-        '❌ Bootstrap Error',
-        
-        `Bootstrap failed:\n${err.message}`,
+        '❌ Key Generation Failed',
+        'App key generation failed. Please check console for details.',
         [{ text: 'Continue', onPress: () => setStage('app') }]
       );
-
       setIsBootstrapped(true);
     }
-  };
+
+  } catch (err) {
+    console.error('❌ Bootstrap flow failed:', err.message);
+    console.error('❌ Stack trace:', err.stack);
+
+    Alert.alert(
+      '❌ Bootstrap Error',
+      `Bootstrap failed:\n${err.message}`,
+      [{ text: 'Continue', onPress: () => setStage('app') }]
+    );
+
+    setIsBootstrapped(true);
+  }
+};
 useEffect(() => {
   if (stage === 'app') {
     initializeFCM();

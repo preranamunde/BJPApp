@@ -697,6 +697,7 @@ const handleKYLAdd = async (selectedImage) => {
 };
 
 // Handle Profile Image Update
+// ✅ REPLACE your handleUpdateProfileImage function with this:
 const handleUpdateProfileImage = async (selectedImage) => {
   try {
     if (!selectedImage) {
@@ -707,7 +708,9 @@ const handleUpdateProfileImage = async (selectedImage) => {
     setProfileImageLoading(true);
 
     const baseUrl = await ConfigService.getBaseUrl();
-    const apiUrl = `${baseUrl}/api/leaderimage`;  // ✅ NO TRAILING SLASH
+    
+    // ✅ FIX 1: Add trailing slash to match backend route
+    const apiUrl = `${baseUrl}/api/leaderimage/`;  
     
     const currentUserInfo = await getCurrentUserRole();
     const userEmailId = currentUserInfo.loggedin_email || '';
@@ -715,65 +718,71 @@ const handleUpdateProfileImage = async (selectedImage) => {
     console.log('📤 Updating leader profile image:', {
       mobile: memberId,
       email: userEmailId,
-      endpoint: apiUrl,  // ✅ Log the exact endpoint
+      endpoint: apiUrl,
       fileName: selectedImage.fileName
     });
 
-    // Create FormData
+    // ✅ FIX 2: Create FormData with BOTH mobile field names (like KYL media)
     const formData = new FormData();
-    formData.append('leader_regd_mobile_no', memberId);
+    formData.append('regd_mobile_no', memberId);           // For schema
+    formData.append('leader_regd_mobile_no', memberId);    // For middleware
     formData.append('user_email_id', userEmailId);
 
-    // Append the selected image file
+    // ✅ FIX 3: Append image file correctly
     const fileUri = selectedImage.uri;
     const fileName = selectedImage.fileName || fileUri.split('/').pop();
     const fileType = selectedImage.type || 'image/jpeg';
 
+    // ✅ Try both possible field names the backend might accept
     formData.append('leader_image', {
       uri: fileUri,
       name: fileName,
       type: fileType,
     });
 
-    console.log('📤 Sending PUT request to:', apiUrl);
+    console.log('📤 FormData prepared:', {
+      regd_mobile_no: memberId,
+      leader_regd_mobile_no: memberId,
+      user_email_id: userEmailId,
+      fileName: fileName
+    });
 
-    // Use authPut with multipart/form-data
+    // ✅ FIX 4: Use authPut with multipart flag
     const result = await ApiService.authPut(apiUrl, formData, {}, true);
 
     console.log('📥 PUT Response:', result);
 
-    if (result.success) {
-      // Clear old image from state
-      setMemberData(prev => ({
-        ...prev,
-        profile_image: null,
-        leader_photo: null
-      }));
-
-      Alert.alert('✅ Success', 'Profile image updated successfully', [
-        {
-          text: 'OK',
-          onPress: async () => {
-            setEditProfileImageModalVisible(false);
-            setSelectedProfileImage(null);
-            
-            // Force reload with delay
-            setTimeout(async () => {
-              console.log('🔄 Reloading profile data after image update...');
-              await loadInitialData(memberId);
-              
-              setRefreshing(true);
-              setTimeout(() => {
-                setRefreshing(false);
-                console.log('✅ Profile data reloaded with new image');
-              }, 100);
-            }, 500);
-          }
-        }
-      ]);
-    } else {
-      throw new Error(result.message || 'Update failed');
+    // ✅ FIX 5: Add error handler (like you have for KYL media)
+    const success = await handleApiError(result, 'Update profile image');
+    if (!success) {
+      return;
     }
+
+    // ✅ FIX 6: Mark cache as stale after successful update
+    await UpdateStatusService.markApiStale(memberId, 'updatedLeaderImage');
+    console.log('✅ Marked LEADER_IMAGE cache as stale');
+
+    Alert.alert('✅ Success', 'Profile image updated successfully', [
+      {
+        text: 'OK',
+        onPress: async () => {
+          setEditProfileImageModalVisible(false);
+          setSelectedProfileImage(null);
+          
+          // Force reload with delay
+          setTimeout(async () => {
+            console.log('🔄 Reloading profile data after image update...');
+            await loadInitialData(memberId);
+            
+            setRefreshing(true);
+            setTimeout(() => {
+              setRefreshing(false);
+              console.log('✅ Profile data reloaded with new image');
+            }, 100);
+          }, 500);
+        }
+      }
+    ]);
   } catch (error) {
     console.error('❌ Error updating profile image:', error);
     Alert.alert('Error', error.message || 'Failed to update profile image');

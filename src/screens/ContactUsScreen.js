@@ -7,6 +7,8 @@ import ApiService from '../services/ApiService';
 import { getCurrentUserRole,checkIfCurrentUserIsAdmin} from '../../App';
 import { useTranslation } from '../context/TranslationContext';
 import TranslatableText from '../components/TranslatableText';
+import LocalStorageService from '../services/LocalStorageService';
+import UpdateStatusService from '../services/UpdateStatusService';
 // ✅ ADD THESE VALIDATION HELPER FUNCTIONS
 const validateMobileNumber = (mobile) => {
   // Remove any spaces or special characters
@@ -551,38 +553,180 @@ const loadSocialMediaData = async () => {
 
     await checkAdminRole();
     
-    // Use debug function to get member ID with detailed logging
     const memberInfo = await debugMobileNumber();
     setMemberId(memberInfo.memberId);
     
     console.log('📞 [ContactUs] Using mobile for API calls:', memberInfo.memberId);
     
-    // Fetch both social media data AND contact office data
+    // ✅ STEP 1: CHECK IF FIRST LAUNCH
+    const isFirstLaunch = await LocalStorageService.isFirstLaunch();
+    console.log('🚀 Is First Launch (ContactUs):', isFirstLaunch);
+
+    // ✅ STEP 2: GET UPDATE FLAGS (only if NOT first launch)
+    let updateFlags = null;
+    
+    if (!isFirstLaunch) {
+      console.log('\n🔄 === SUBSEQUENT LAUNCH - CHECKING UPDATE FLAGS (ContactUs) ===');
+      
+      // Get current user email
+      const currentUserInfo = await getCurrentUserRole();
+      const userEmailId = currentUserInfo.loggedin_email || '';
+      
+      updateFlags = await UpdateStatusService.checkUpdateStatus(
+        memberInfo.memberId,
+        userEmailId
+      );
+      
+      if (updateFlags) {
+        console.log('\n📊 === UPDATE FLAGS ANALYSIS (ContactUs) ===');
+        console.log('updatedSM:', updateFlags.updatedSM, '→', updateFlags.updatedSM === true ? '🔴 FETCH' : '🟢 CACHE');
+        console.log('updatedContactus:', updateFlags.updatedContactus, '→', updateFlags.updatedContactus === true ? '🔴 FETCH' : '🟢 CACHE');
+        console.log('===========================\n');
+        
+        await UpdateStatusService.clearUpdatedCaches(updateFlags);
+      } else {
+        console.log('⚠️ No update flags received - will fetch all data fresh');
+        updateFlags = {
+          updatedSM: true,
+          updatedContactus: true
+        };
+      }
+    } else {
+      console.log('\n🆕 === FIRST LAUNCH - FETCHING ALL DATA (ContactUs) ===');
+    }
+
+    // ✅ STEP 3: LOAD DATA (from cache or fetch based on flags)
+    console.log('\n📦 === LOADING DATA WITH CACHING LOGIC (ContactUs) ===');
+    
     const [socialMedia, contactOffice] = await Promise.all([
-      fetchSocialMedia(memberInfo.memberId),
-      fetchContactOffice(memberInfo.memberId)
+      loadDataWithCache(
+        'SOCIAL_MEDIA',
+        fetchSocialMedia,
+        memberInfo.memberId,
+        updateFlags?.updatedSM || isFirstLaunch
+      ),
+      loadDataWithCache(
+        'CONTACT_OFFICE',
+        fetchContactOffice,
+        memberInfo.memberId,
+        updateFlags?.updatedContactus || isFirstLaunch
+      )
     ]);
     
-    // Set social media data
-    if (socialMedia.success && socialMedia.data.social_media) {
+    // ✅ STEP 4: SET STATE
+    if (socialMedia.success && socialMedia.data?.social_media) {
       setSocialMediaData(socialMedia.data.social_media);
-      console.log('✅ [ContactUs] Social media loaded:', socialMedia.data.social_media);
+      console.log('✅ [ContactUs] Social media loaded');
     } else {
       console.error('❌ [ContactUs] Failed to load social media:', socialMedia.error);
     }
     
-    // Set contact office data
-    if (contactOffice.success && contactOffice.data.contactus) {
+    if (contactOffice.success && contactOffice.data?.contactus) {
       setContactOfficeData(contactOffice.data.contactus);
-      console.log('✅ [ContactUs] Contact office loaded:', contactOffice.data.contactus);
+      console.log('✅ [ContactUs] Contact office loaded');
     } else {
       console.error('❌ [ContactUs] Failed to load contact office:', contactOffice.error);
     }
+
+    // ✅ STEP 5: MARK AS LAUNCHED (if first launch)
+    if (isFirstLaunch) {
+      await LocalStorageService.setHasLaunched();
+      console.log('✅ First launch completed (ContactUs)');
+      
+      const initialFlags = {
+        updatedSM: false,
+        updatedContactus: false
+      };
+      await AsyncStorage.setItem('UPDATE_FLAGS', JSON.stringify(initialFlags));
+      console.log('✅ Initial update flags set to false');
+    }
+
+    console.log('\n✅ ========================================');
+    console.log('✅ CONTACT DATA LOADED SUCCESSFULLY');
+    console.log('✅ ========================================\n');
     
   } catch (error) {
     console.error('❌ [ContactUs] Error loading data:', error);
   } finally {
     setLoading(false);
+  }
+};
+
+// ✅ ADD THIS HELPER FUNCTION
+const loadDataWithCache = async (cacheKey, fetchFunction, ...params) => {
+  try {
+    const updateFlag = params[params.length - 1]; // Last param is the flag
+    const fetchParams = params.slice(0, -1); // All params except flag
+    
+    const cached = await LocalStorageService.getData(cacheKey);
+    const hasCachedData = !!cached;
+    
+    console.log(`\n🔍 ${cacheKey}:`);
+    console.log(`   💾 Cache exists: ${hasCachedData}`);
+    console.log(`   🚩 Flag: ${updateFlag}`);
+    
+    // Convert flag to boolean
+    let booleanFlag = null;
+    if (updateFlag === true || updateFlag === 'true' || updateFlag === 1 || updateFlag === '1') {
+      booleanFlag = true;
+    } else if (updateFlag === false || updateFlag === 'false' || updateFlag === 0 || updateFlag === '0') {
+      booleanFlag = false;
+    }
+    
+    // Decision logic
+    let shouldFetchFresh;
+    
+    if (!hasCachedData) {
+      shouldFetchFresh = true;
+      console.log(`   ❌ No cache → FETCH`);
+    } else if (booleanFlag === true) {
+      shouldFetchFresh = true;
+      console.log(`   🔴 Flag TRUE → FETCH`);
+    } else if (booleanFlag === false) {
+      shouldFetchFresh = false;
+      console.log(`   🟢 Flag FALSE → CACHE`);
+    } else {
+      shouldFetchFresh = false;
+      console.log(`   ⚪ No flag (backend didn't send) → CACHE`);
+    }
+    
+    if (shouldFetchFresh) {
+      console.log(`   📡 Calling API...`);
+      const result = await fetchFunction(...fetchParams);
+      
+      if (result.success && result.data) {
+        await LocalStorageService.storeData(cacheKey, result.data);
+        
+        // Mark as updated (false) in local flags
+        const flagName = Object.keys(UpdateStatusService.UPDATE_FLAG_TO_CACHE_KEY).find(
+          key => UpdateStatusService.UPDATE_FLAG_TO_CACHE_KEY[key] === cacheKey
+        );
+        if (flagName) {
+          await UpdateStatusService.markAsUpdated(flagName);
+        }
+        
+        return result;
+      } else {
+        // API failed but we have cache - use cache as fallback
+        if (hasCachedData) {
+          console.log(`   ⚠️ API failed, using cache as fallback`);
+          return { success: true, data: cached };
+        }
+        return result;
+      }
+    } else {
+      console.log(`   💾 Using cache - NO API CALL`);
+      return { success: true, data: cached };
+    }
+  } catch (error) {
+    console.error(`   ❌ Error: ${error.message}`);
+    // On error, try to use cache if available
+    const cached = await LocalStorageService.getData(cacheKey);
+    if (cached) {
+      console.log(`   ⚠️ Error occurred, using cache as fallback`);
+      return { success: true, data: cached };
+    }
+    return { success: false, error: error.message };
   }
 };
 
@@ -632,6 +776,8 @@ const handleDelete = () => {
           try {
             const result = await deleteSocialMedia(memberId);
             if (result.success) {
+              await UpdateStatusService.markApiStale(memberId, 'updatedSM');
+        console.log('✅ Marked SOCIAL_MEDIA cache as stale');
               setSocialMediaData(null); // Clear immediately
               Alert.alert('Success', 'Social media deleted successfully');
               await loadSocialMediaData();
@@ -676,6 +822,8 @@ const handleSaveAddSocialMedia = async () => {
     const result = await createSocialMedia(memberId, addSocialMediaData);
     
     if (result.success) {
+      await UpdateStatusService.markApiStale(memberId, 'updatedSM');
+      console.log('✅ Marked SOCIAL_MEDIA cache as stale');
       Alert.alert('Success', 'Social media added successfully');
       setAddSocialMediaModalVisible(false);
       await loadSocialMediaData(); // Reload to show new data
@@ -771,6 +919,8 @@ const handleSaveAddContactOffice = async () => {
 
     const result = await createContactOffice(memberId, addingContactOfficeData);
     if (result.success) {
+      await UpdateStatusService.markApiStale(memberId, 'updatedContactus');
+      console.log('✅ Marked CONTACT_OFFICE cache as stale');
       Alert.alert('Success', 'Contact office added successfully');
       setAddContactOfficeModalVisible(false);
       await loadSocialMediaData(); // Reload to show new data
@@ -785,9 +935,13 @@ const handleSaveSocialMedia = async () => {
   try {
     const result = await updateSocialMedia(memberId, editingSocialMediaData);
     if (result.success) {
+      // ✅ ADD THIS LINE
+      await UpdateStatusService.markApiStale(memberId, 'updatedSM');
+      console.log('✅ Marked SOCIAL_MEDIA cache as stale');
+      
       Alert.alert('Success', 'Social media updated successfully');
       setEditSocialMediaModalVisible(false);
-      await loadSocialMediaData(); // Reload data
+      await loadSocialMediaData();
     } else {
       Alert.alert('Error', result.error || 'Failed to update social media');
     }
@@ -885,6 +1039,8 @@ const handleSaveContactOffice = async () => {
 
     const result = await updateContactOffice(memberId, editingContactOfficeData);
     if (result.success) {
+      await UpdateStatusService.markApiStale(memberId, 'updatedContactus');
+      console.log('✅ Marked CONTACT_OFFICE cache as stale');
       Alert.alert('Success', 'Contact office updated successfully');
       setEditContactOfficeModalVisible(false);
       await loadSocialMediaData(); // This also reloads contact office data
@@ -913,6 +1069,8 @@ const handleDeleteContactOffice = () => {
           try {
             const result = await deleteContactOffice(memberId);
             if (result.success) {
+              await UpdateStatusService.markApiStale(memberId, 'updatedContactus');
+        console.log('✅ Marked CONTACT_OFFICE cache as stale');
               // Clear the state immediately
               setContactOfficeData(null);
               Alert.alert('Success', 'Contact office deleted successfully');

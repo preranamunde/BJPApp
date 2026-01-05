@@ -44,8 +44,12 @@ class LocalStorageService {
       'PERMANENT_ADDRESS',
       'PRESENT_ADDRESS',
       'TIMELINE_DATA',
-      'UPDATE_FLAGS',
-      'KYL_MEDIA'
+      'KYL_MEDIA',
+       'CONSTITUENCY_PROFILE',
+        'ASSEMBLY_CONSTITUENCIES',
+        'CONSTITUENCY_MEMBER_IMAGE',
+        'AC_MEDIA',
+        'UPDATE_FLAGS'
     ];
       await AsyncStorage.multiRemove(keys);
       console.log('✅ Cleared all local data');
@@ -68,7 +72,12 @@ class LocalStorageService {
       'PERMANENT_ADDRESS',
       'PRESENT_ADDRESS',
       'TIMELINE_DATA',
-      'KYL_MEDIA'
+      'KYL_MEDIA',
+      'CONSTITUENCY_PROFILE',
+        'ASSEMBLY_CONSTITUENCIES',
+        'CONSTITUENCY_MEMBER_IMAGE',
+        'AC_MEDIA',
+        'CONTACT_OFFICE'
     ];
       
       // Check if at least one key has data

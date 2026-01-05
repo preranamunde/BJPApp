@@ -2,6 +2,7 @@ import DeviceInfo from 'react-native-device-info';
 import CryptoJS from 'crypto-js';
 import EncryptedStorage from 'react-native-encrypted-storage';
 import NetInfo from '@react-native-community/netinfo';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const FINGERPRINT_KEY = 'device_fingerprint';
 const DEVICE_IP_KEY = 'device_ip_address';
@@ -35,10 +36,17 @@ const DeviceService = {
     return fingerprint;
   },
 
-  // ✅ NEW METHOD: Get complete device information for bootstrap API
+  // ✅ UPDATED: Get complete device information including user email
   async getCompleteDeviceInfo() {
     try {
       console.log('📱 Collecting complete device information...');
+      
+      // ✅ Get user email first
+      const userEmail = await AsyncStorage.getItem('userEmail') || 
+                       await EncryptedStorage.getItem('LOGGED_IN_EMAIL') || 
+                       'null';
+      
+      console.log('📧 User Email for device info:', userEmail);
       
       // Helper function to safely get device info
       const safeGet = async (fn, fallback = 'unknown') => {
@@ -62,33 +70,28 @@ const DeviceService = {
       };
       
       // Get all device information with error handling for each field
-      // Better AAID retrieval with proper error handling
-// Get all device information with error handling for each field
-const device_aaid = await safeGet(
-  async () => {
-    try {
-      // Check if getAdvertisingId method exists
-      if (typeof DeviceInfo.getAdvertisingId === 'function') {
-        const aaid = await DeviceInfo.getAdvertisingId();
-        console.log('📱 AAID retrieved successfully:', aaid);
-        return aaid || 'empty-response';
-      } else {
-        console.log('⚠️ getAdvertisingId method not found in DeviceInfo');
-        // Fallback: Try to get Android ID or unique device ID
-        const uniqueId = await DeviceInfo.getUniqueId();
-        console.log('📱 Using unique device ID as fallback:', uniqueId);
-        return `fallback-${uniqueId}`;
-      }
-    } catch (error) {
-      console.log('❌ Error getting AAID:', error.message);
-      // Return a unique identifier based on device info
-      const model = DeviceInfo.getModel();
-      const brand = DeviceInfo.getBrand();
-      return `device-${brand}-${model}`;
-    }
-  },
-  'method-not-available'
-);
+      const device_aaid = await safeGet(
+        async () => {
+          try {
+            if (typeof DeviceInfo.getAdvertisingId === 'function') {
+              const aaid = await DeviceInfo.getAdvertisingId();
+              console.log('📱 AAID retrieved successfully:', aaid);
+              return aaid || 'empty-response';
+            } else {
+              console.log('⚠️ getAdvertisingId method not found in DeviceInfo');
+              const uniqueId = await DeviceInfo.getUniqueId();
+              console.log('📱 Using unique device ID as fallback:', uniqueId);
+              return `fallback-${uniqueId}`;
+            }
+          } catch (error) {
+            console.log('❌ Error getting AAID:', error.message);
+            const model = DeviceInfo.getModel();
+            const brand = DeviceInfo.getBrand();
+            return `device-${brand}-${model}`;
+          }
+        },
+        'method-not-available'
+      );
       
       const device_manufacturer_name = await safeGet(
         () => DeviceInfo.getManufacturer(),
@@ -135,13 +138,14 @@ const device_aaid = await safeGet(
         'unknown'
       );
       
-      // Get screen density information
       const device_screen_density = await safeGet(
         () => DeviceInfo.getDeviceName ? DeviceInfo.getDeviceName() : Promise.resolve('unknown'),
         'unknown'
       );
 
+      // ✅ UPDATED: Include user_email_id in device info object
       const deviceInfo = {
+        user_email_id: String(userEmail),  // ✅ ADD THIS LINE
         device_aaid: String(device_aaid),
         device_manufacturer_name: String(device_manufacturer_name),
         device_model: String(device_model),
@@ -161,8 +165,13 @@ const device_aaid = await safeGet(
     } catch (error) {
       console.error('❌ Error collecting device info:', error);
       
-      // Return fallback data
+      // ✅ UPDATED: Include user_email_id in fallback data
+      const fallbackEmail = await AsyncStorage.getItem('userEmail') || 
+                           await EncryptedStorage.getItem('LOGGED_IN_EMAIL') || 
+                           'null';
+      
       return {
+        user_email_id: String(fallbackEmail),  // ✅ ADD THIS LINE
         device_aaid: 'unknown',
         device_manufacturer_name: 'unknown',
         device_model: 'unknown',

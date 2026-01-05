@@ -1,3 +1,4 @@
+// src/services/UpdateStatusService.js
 import ApiService from './ApiService';
 import ConfigService from './ConfigService';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -6,63 +7,55 @@ class UpdateStatusService {
   
   // Map update flag names to cache keys
   static UPDATE_FLAG_TO_CACHE_KEY = {
-  'updatedContactus': 'LEADER_COORDINATES',
-  'updatedSM': 'SOCIAL_MEDIA',
-  'updatedPersdet': 'PERSONAL_DETAILS',
-  'updatedEducation': 'EDUCATION_DATA',
-  'updatedPermaddr': 'PERMANENT_ADDRESS',
-  'updatedPresadd': 'PRESENT_ADDRESS',
-  'updatedTimeline': 'TIMELINE_DATA',
-  'updatedKYL': 'KYL_MEDIA'
-};
+    // KYL flags
+    'updatedContactus': 'LEADER_COORDINATES',
+    'updatedSM': 'SOCIAL_MEDIA',
+    'updatedPersdet': 'PERSONAL_DETAILS',
+    'updatedEducation': 'EDUCATION_DATA',
+    'updatedPermaddr': 'PERMANENT_ADDRESS',
+    'updatedPresadd': 'PRESENT_ADDRESS',
+    'updatedTimeline': 'TIMELINE_DATA',
+    'updatedKYL': 'KYL_MEDIA',
+    
+    // Constituency flags
+    'updatedCP': 'CONSTITUENCY_PROFILE',
+    'updatedAC': 'ASSEMBLY_CONSTITUENCIES',
+    'updatedCPImage': 'CONSTITUENCY_MEMBER_IMAGE',
+    'updatedACMedia': 'AC_MEDIA'
+  };
   
-  // ✅ ADD THIS: Check if API should be called
-  static shouldFetchFresh(cacheKey, updateFlags) {
-    if (!updateFlags) return true; // No flags = fetch fresh
-    
-    // Find the flag name for this cache key
-    const flagName = Object.keys(this.UPDATE_FLAG_TO_CACHE_KEY).find(
-      key => this.UPDATE_FLAG_TO_CACHE_KEY[key] === cacheKey
-    );
-    
-    if (!flagName) return true; // Unknown cache key = fetch fresh
-    
-    // Return the flag value (true = updated, need fresh data)
-    return updateFlags[flagName] === true;
-  }
-  
- static async checkUpdateStatus(memberIdentifier, userEmailId) {
-  try {
-    const baseUrl = await ConfigService.getBaseUrl();
-    const endpoint = `${baseUrl}/api/updates/status`;
-    
-    console.log('\n🔍 === CHECKING UPDATE STATUS ===');
-    console.log('   📱 Member:', memberIdentifier);
-    console.log('   📧 Email:', userEmailId);
-    
-    const result = await ApiService.authGet(endpoint);
-    
-    if (result.success && result.data) {
-      console.log('📥 Backend Response:');
-      console.log(JSON.stringify(result.data, null, 2));
+  static async checkUpdateStatus(memberIdentifier, userEmailId) {
+    try {
+      const baseUrl = await ConfigService.getBaseUrl();
+      const endpoint = `${baseUrl}/api/updates/status`;
       
-      // Clear old flags
-      await AsyncStorage.removeItem('UPDATE_FLAGS');
+      console.log('\n🔍 === CHECKING UPDATE STATUS ===');
+      console.log('   📱 Member:', memberIdentifier);
+      console.log('   📧 Email:', userEmailId);
       
-      // Store new flags
-      await AsyncStorage.setItem('UPDATE_FLAGS', JSON.stringify(result.data));
-      console.log('✅ Flags stored\n');
+      const result = await ApiService.authGet(endpoint);
       
-      return result.data;
-    } else {
-      console.log('⚠️ No flags received\n');
+      if (result.success && result.data) {
+        console.log('📥 Backend Response:');
+        console.log(JSON.stringify(result.data, null, 2));
+        
+        // Clear old flags
+        await AsyncStorage.removeItem('UPDATE_FLAGS');
+        
+        // Store new flags
+        await AsyncStorage.setItem('UPDATE_FLAGS', JSON.stringify(result.data));
+        console.log('✅ Flags stored\n');
+        
+        return result.data;
+      } else {
+        console.log('⚠️ No flags received\n');
+        return null;
+      }
+    } catch (error) {
+      console.error('❌ Error:', error.message);
       return null;
     }
-  } catch (error) {
-    console.error('❌ Error:', error.message);
-    return null;
   }
-}
   
   static async getStoredUpdateFlags() {
     try {
@@ -84,6 +77,29 @@ class UpdateStatusService {
       }
     } catch (error) {
       console.error('❌ Error marking as updated:', error);
+    }
+  }
+  
+  // ✅ ADD THIS FUNCTION - THIS IS WHAT'S MISSING!
+  static async markApiStale(memberIdentifier, flagName) {
+    try {
+      console.log(`♻️ Marking ${flagName} as STALE (will call API next time)`);
+      
+      const flags = await this.getStoredUpdateFlags();
+      if (!flags) {
+        console.log('⚠️ No flags found, creating new flags object');
+        const newFlags = { [flagName]: true };
+        await AsyncStorage.setItem('UPDATE_FLAGS', JSON.stringify(newFlags));
+        return true;
+      }
+      
+      flags[flagName] = true; // Set to true = needs refresh
+      await AsyncStorage.setItem('UPDATE_FLAGS', JSON.stringify(flags));
+      console.log(`✅ ${flagName} marked as stale (set to true)`);
+      return true;
+    } catch (error) {
+      console.error(`❌ Error marking ${flagName} as stale:`, error);
+      return false;
     }
   }
   

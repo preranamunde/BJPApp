@@ -15,7 +15,8 @@ class ApiService {
   }
 
   // Get authorization headers
- static async getAuthHeaders() {
+// ✅ UPDATED: Always include device headers
+static async getAuthHeaders() {
   try {
     const token = await AsyncStorage.getItem('jwt_token');
     const headers = this.getCommonHeaders();
@@ -27,7 +28,7 @@ class ApiService {
       console.warn('⚠️ No token available for auth headers');
     }
 
-    // Add x-app-key header
+    // ✅ ADD: x-app-key header
     try {
       const appKey = await EncryptedStorage.getItem('APP_KEY');
       if (appKey) {
@@ -38,6 +39,25 @@ class ApiService {
       }
     } catch (error) {
       console.error('❌ Error getting app key for headers:', error);
+    }
+
+    // ✅ NEW: Always add device headers
+    try {
+      const DeviceService = require('./DeviceService').default;
+      const deviceInfo = await DeviceService.getCompleteDeviceInfo();
+      const fingerprint = await DeviceService.getDeviceFingerprint();
+      
+      if (deviceInfo.device_aaid && deviceInfo.device_aaid !== 'unknown') {
+        headers['x-device-aaid'] = deviceInfo.device_aaid;
+        console.log('📱 x-device-aaid header added:', deviceInfo.device_aaid);
+      }
+      
+      if (fingerprint && fingerprint !== 'unknown') {
+        headers['x-device-fingerprint'] = fingerprint;
+        console.log('🔐 x-device-fingerprint header added:', fingerprint.substring(0, 20) + '...');
+      }
+    } catch (error) {
+      console.error('❌ Error getting device info for headers:', error);
     }
 
     return headers;
@@ -351,11 +371,13 @@ static async refreshToken() {
     return this.makeRequest(endpoint, { method: 'GET', headers }, false);
   }
 
-  // Authenticated GET request
-  static async authGet(endpoint, headers = {}) {
-    return this.authenticatedRequest(endpoint, { method: 'GET', headers });
-  }
-
+ // ✅ NEW CODE (Updated):
+static async authGet(endpoint, customHeaders = {}) {
+  return this.authenticatedRequest(endpoint, { 
+    method: 'GET', 
+    headers: customHeaders 
+  });
+}
   // POST request
   static async post(endpoint, body = null, headers = {}, isFormData = false) {
     return this.makeRequest(endpoint, { method: 'POST', body, headers, isFormData }, false);

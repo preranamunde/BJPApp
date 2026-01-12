@@ -161,70 +161,85 @@ const FeedbackDetailsScreen = ({ route, navigation }) => {
     }
   };
 
-  const loadAttachmentImage = async (attachmentUrl) => {
-    setImageLoading(true);
+ const loadAttachmentImage = async (attachmentUrl) => {
+  setImageLoading(true);
+  
+  try {
+    let mediaUrl = attachmentUrl;
     
-    try {
-      let mediaUrl = attachmentUrl;
-      
-      // Fix localhost URLs
-      if (mediaUrl.includes('localhost:5000') || mediaUrl.includes('localhost:')) {
-        const baseUrl = await ConfigService.getBaseUrl();
-        mediaUrl = mediaUrl.replace(/http:\/\/localhost:\d+/, baseUrl);
-        console.log('🔄 Fixed localhost URL:', mediaUrl);
-      }
-     // ✅ FIX NGROK URLs - Remove port number from ngrok URLs
-if (mediaUrl.includes('ngrok-free.app') || mediaUrl.includes('ngrok-free.dev')) {
-  // Remove any port number from ngrok URL
-  mediaUrl = mediaUrl.replace(/ngrok-free\.app:\d+/, 'ngrok-free.app');
-  mediaUrl = mediaUrl.replace(/ngrok-free\.dev:\d+/, 'ngrok-free.dev');
-  console.log('🔄 Fixed ngrok URL (removed port):', mediaUrl);
-}
-      
-      console.log('📥 Loading attachment from:', mediaUrl);
-      
-      const appKey = await EncryptedStorage.getItem('APP_KEY');
-      const accessToken = await EncryptedStorage.getItem('accessToken');
-      
-      const response = await fetch(mediaUrl, {
-        method: 'GET',
-        headers: {
-          'x-app-key': appKey || '',
-          'Authorization': `Bearer ${accessToken || ''}`,
-          'ngrok-skip-browser-warning': 'true',
-          'Accept': 'image/*',
-        },
-      });
+    // ✅ FIX DOUBLE PORT IN LOCALHOST URLs (ADD THIS)
+    if (mediaUrl.includes('localhost') || mediaUrl.includes('192.168.')) {
+      // Remove double port like :5000:5000 -> :5000
+      mediaUrl = mediaUrl.replace(/:(\d+):(\d+)/, ':$1');
+      console.log('🔄 Fixed localhost double port:', mediaUrl);
+    }
+    
+    // Fix localhost URLs
+    if (mediaUrl.includes('localhost:5000') || mediaUrl.includes('localhost:')) {
+      const baseUrl = await ConfigService.getBaseUrl();
+      mediaUrl = mediaUrl.replace(/http:\/\/localhost:\d+/, baseUrl);
+      console.log('🔄 Fixed localhost URL:', mediaUrl);
+    }
+    
+    // ✅ FIX NGROK URLs - Remove port number from ngrok URLs
+    if (mediaUrl.includes('ngrok-free.app') || mediaUrl.includes('ngrok-free.dev')) {
+      // Remove any port number from ngrok URL
+      mediaUrl = mediaUrl.replace(/ngrok-free\.app:\d+/, 'ngrok-free.app');
+      mediaUrl = mediaUrl.replace(/ngrok-free\.dev:\d+/, 'ngrok-free.dev');
+      console.log('🔄 Fixed ngrok URL (removed port):', mediaUrl);
+    }
+    
+    console.log('📥 Loading attachment from:', mediaUrl);
+    
+    const appKey = await EncryptedStorage.getItem('APP_KEY');
+    const accessToken = await EncryptedStorage.getItem('accessToken');
+    
+    const response = await fetch(mediaUrl, {
+      method: 'GET',
+      headers: {
+        'x-app-key': appKey || '',
+        'Authorization': `Bearer ${accessToken || ''}`,
+        'ngrok-skip-browser-warning': 'true',
+        'Accept': 'image/*',
+      },
+    });
 
-      console.log('📥 Image response status:', response.status);
+    console.log('📥 Image response status:', response.status);
 
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    }
 
-      const blob = await response.blob();
-      const reader = new FileReader();
-      
-      reader.onloadend = () => {
+    const blob = await response.blob();
+    
+    // ✅ Check if blob is valid
+    if (!blob || blob.size === 0) {
+      throw new Error('Empty or invalid image data');
+    }
+    
+    const reader = new FileReader();
+    
+    reader.onloadend = () => {
+      if (reader.result) {
         setImageUri(reader.result);
         setImageLoading(false);
         console.log('✅ Attachment loaded successfully');
-      };
-      
-      reader.onerror = (error) => {
-        console.error('❌ FileReader error:', error);
-        setImageLoading(false);
-      };
-      
-      reader.readAsDataURL(blob);
-      
-    } catch (error) {
-      console.error('❌ Error loading attachment:', error);
-      console.error('❌ Error message:', error.message);
+      }
+    };
+    
+    reader.onerror = (error) => {
+      console.error('❌ FileReader error:', error);
       setImageLoading(false);
-    }
-  };
-
+    };
+    
+    reader.readAsDataURL(blob);
+    
+  } catch (error) {
+    console.error('❌ Error loading attachment:', error);
+    console.error('❌ Error message:', error.message);
+    setImageLoading(false);
+  }
+};
   const getStatusLabel = (status) => {
     const statusStr = String(status || '').toLowerCase();
     switch(statusStr) {

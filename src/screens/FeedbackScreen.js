@@ -35,34 +35,43 @@ const FeedbackAttachmentImage = React.memo(({
   useEffect(() => {
     let mounted = true;
     
-    const loadFeedbackImage = async () => {
-      if (!attachmentUrl) {
-        setImageLoading(false);
-        return;
-      }
-      
-      setImageLoading(true);
-      setImageError(false);
-      
-      try {
-        let mediaUrl = attachmentUrl;
-        
-        // Fix localhost URLs
-        if (mediaUrl.includes('localhost:5000') || mediaUrl.includes('localhost:')) {
-          const baseUrl = await ConfigService.getBaseUrl();
-          mediaUrl = mediaUrl.replace(/http:\/\/localhost:\d+/, baseUrl);
-          console.log('🔄 Fixed localhost URL:', mediaUrl);
-        }
-        
-        // ✅ FIX NGROK URLs - Remove port number from ngrok URLs
-        if (mediaUrl.includes('ngrok-free.app') || mediaUrl.includes('ngrok-free.dev')) {
-          // Remove any port number from ngrok URL
-          mediaUrl = mediaUrl.replace(/ngrok-free\.app:\d+/, 'ngrok-free.app');
-          mediaUrl = mediaUrl.replace(/ngrok-free\.dev:\d+/, 'ngrok-free.dev');
-          console.log('🔄 Fixed ngrok URL (removed port):', mediaUrl);
-        }
-        
-        console.log('📥 Loading feedback image from:', mediaUrl);
+   const loadFeedbackImage = async () => {
+  if (!attachmentUrl) {
+    setImageLoading(false);
+    return;
+  }
+  
+  setImageLoading(true);
+  setImageError(false);
+  
+  try {
+    let mediaUrl = attachmentUrl;
+    
+    // ✅ FIX DOUBLE PORT IN LOCALHOST URLs
+    if (mediaUrl.includes('localhost') || mediaUrl.includes('192.168.')) {
+      // Remove double port like :5000:5000 -> :5000
+      mediaUrl = mediaUrl.replace(/:(\d+):(\d+)/, ':$1');
+      console.log('🔄 Fixed localhost double port:', mediaUrl);
+    }
+    
+    // Fix localhost URLs with baseUrl
+    if (mediaUrl.includes('localhost:5000') || mediaUrl.includes('localhost:')) {
+      const baseUrl = await ConfigService.getBaseUrl();
+      mediaUrl = mediaUrl.replace(/http:\/\/localhost:\d+/, baseUrl);
+      console.log('🔄 Fixed localhost URL:', mediaUrl);
+    }
+    
+    // ✅ FIX NGROK URLs - Remove port number from ngrok URLs
+    if (mediaUrl.includes('ngrok-free.app') || mediaUrl.includes('ngrok-free.dev')) {
+      // Remove any port number from ngrok URL
+      mediaUrl = mediaUrl.replace(/ngrok-free\.app:\d+/, 'ngrok-free.app');
+      mediaUrl = mediaUrl.replace(/ngrok-free\.dev:\d+/, 'ngrok-free.dev');
+      console.log('🔄 Fixed ngrok URL (removed port):', mediaUrl);
+    }
+    
+    console.log('📥 Loading feedback image from:', mediaUrl);
+    
+   
         
         // ✅ CHECK MULTIPLE STORAGE LOCATIONS
         const accessToken = await AsyncStorage.getItem('userAccessToken') ||
@@ -1453,241 +1462,284 @@ const renderListView = () => {
   );
 };
 
-  const renderTypeSelection = () => {
+ const renderTypeSelection = () => {
   // For admin, don't show type selection - they only see the view
   if (isAdmin) {
     return null;
   }
   
   return (
-    <View style={styles.typeSelectionRow}>
-      <TouchableOpacity
-        style={[
-          styles.typeBox,
-          selectedType === 'feedback' && styles.typeBoxSelected,
-        ]}
-        onPress={() => setSelectedType('feedback')}
-      >
-        <Icon
-          name="feedback"
-          size={28}
-          color={selectedType === 'feedback' ? '#fff' : '#e16e2b'}
-        />
-        <TranslatableText style={[
-  styles.typeBoxText,
-  selectedType === 'feedback' && styles.typeBoxTextSelected,
-]} cacheKey="feedback_type">
-  Feedback
-</TranslatableText>
-      </TouchableOpacity>
+    <View style={styles.typeSelectionContainer}>
+      {/* Row 1: Feedback and Report Issue */}
+      <View style={styles.typeSelectionRow}>
+        <TouchableOpacity
+          style={[
+            styles.typeBox,
+            selectedType === 'feedback' && styles.typeBoxSelected,
+          ]}
+          onPress={() => setSelectedType('feedback')}
+        >
+          <Icon
+            name="feedback"
+            size={28}
+            color={selectedType === 'feedback' ? '#fff' : '#e16e2b'}
+          />
+          <TranslatableText 
+            style={[
+              styles.typeBoxText,
+              selectedType === 'feedback' && styles.typeBoxTextSelected,
+            ]} 
+            cacheKey="feedback_type"
+          >
+            Feedback
+          </TranslatableText>
+        </TouchableOpacity>
 
-      <TouchableOpacity
-        style={[
-          styles.typeBox,
-          selectedType === 'complaint' && styles.typeBoxSelected,
-        ]}
-        onPress={() => setSelectedType('complaint')}
-      >
-        <Icon
-          name="report-problem"
-          size={28}
-          color={selectedType === 'complaint' ? '#fff' : '#e16e2b'}
-        />
-       <TranslatableText style={[
-  styles.typeBoxText,
-  selectedType === 'complaint' && styles.typeBoxTextSelected,
-]} cacheKey="report_issue_type">
-  Report Issue
-</TranslatableText>
-      </TouchableOpacity>
+        <TouchableOpacity
+          style={[
+            styles.typeBox,
+            selectedType === 'complaint' && styles.typeBoxSelected,
+          ]}
+          onPress={() => setSelectedType('complaint')}
+        >
+          <Icon
+            name="report-problem"
+            size={28}
+            color={selectedType === 'complaint' ? '#fff' : '#e16e2b'}
+          />
+          <TranslatableText 
+            style={[
+              styles.typeBoxText,
+              selectedType === 'complaint' && styles.typeBoxTextSelected,
+            ]} 
+            cacheKey="report_issue_type"
+          >
+            Report Issue
+          </TranslatableText>
+        </TouchableOpacity>
+      </View>
 
-      {/* ✅ ADD NEW VIEW BUTTON */}
-      <TouchableOpacity
-  style={[
-    styles.typeBox,
-    selectedType === 'view' && styles.typeBoxSelected,
-  ]}
-  onPress={() => {
-    setSelectedType('view');
-    // ✅ CHANGE THIS LINE
-    fetchUserFeedbacks('feedback'); // Fetch only feedback for users
-  }}
->
-        <Icon
-          name="visibility"
-          size={28}
-          color={selectedType === 'view' ? '#fff' : '#e16e2b'}
-        />
-        <TranslatableText style={[
-  styles.typeBoxText,
-  selectedType === 'view' && styles.typeBoxTextSelected,
-]} cacheKey="view_type">
-  View
-</TranslatableText>
-      </TouchableOpacity>
+      {/* Row 2: View Feedback and View Issues */}
+      <View style={styles.typeSelectionRow}>
+        <TouchableOpacity
+          style={[
+            styles.typeBoxView,
+            selectedType === 'view-feedback' && styles.typeBoxViewSelected,
+          ]}
+          onPress={() => {
+            setSelectedType('view-feedback');
+            fetchUserFeedbacks('feedback');
+          }}
+        >
+          <Icon
+            name="visibility"
+            size={24}
+            color={selectedType === 'view-feedback' ? '#fff' : '#3498db'}
+          />
+          <TranslatableText 
+            style={[
+              styles.typeBoxViewText,
+              selectedType === 'view-feedback' && styles.typeBoxViewTextSelected,
+            ]} 
+            cacheKey="view_feedback_type"
+          >
+            View Feedback
+          </TranslatableText>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[
+            styles.typeBoxView,
+            selectedType === 'view-issues' && styles.typeBoxViewSelected,
+          ]}
+          onPress={() => {
+            setSelectedType('view-issues');
+            fetchUserFeedbacks('bug');
+          }}
+        >
+          <Icon
+            name="list-alt"
+            size={24}
+            color={selectedType === 'view-issues' ? '#fff' : '#9b59b6'}
+          />
+          <TranslatableText 
+            style={[
+              styles.typeBoxViewText,
+              selectedType === 'view-issues' && styles.typeBoxViewTextSelected,
+            ]} 
+            cacheKey="view_issues_type"
+          >
+            View Issues
+          </TranslatableText>
+        </TouchableOpacity>
+      </View>
     </View>
   );
 };
 
-  const renderForm = () => {
+const renderForm = () => {
   // For admin, they should not see the form
   if (isAdmin) {
     return null;
   }
 
   // ✅ IF VIEW TYPE, SHOW USER'S SUBMISSIONS
-if (selectedType === 'view') {
-  return (
-    <View style={styles.viewContainer}>
-      <View style={styles.viewHeader}>
-        <View>
-          <TranslatableText style={styles.viewTitle} cacheKey="my_submissions">
-  My Submissions
-</TranslatableText>
-          <TranslatableText style={styles.viewSubtitle} cacheKey="view_your_feedback">
-  View your feedback and issues
-</TranslatableText>
-        </View>
-        <TouchableOpacity 
-          onPress={() => fetchUserFeedbacks('feedback')}
-          style={styles.refreshButton}
-          disabled={fetchingSubmissions}
-        >
-          <Icon 
-            name="refresh" 
-            size={24} 
-            color={fetchingSubmissions ? '#bdc3c7' : '#e16e2b'} 
-          />
-        </TouchableOpacity>
-      </View>
-
-      {/* ✅ ADD THIS SEARCH INPUT */}
-      <View style={styles.searchContainer}>
-        <Icon name="search" size={20} color="#7f8c8d" style={styles.searchIcon} />
-        <TextInput
-          style={styles.searchInput}
-          placeholder="Search by Case No, Subject, or Description..."
-          placeholderTextColor="#999"
-          value={searchQuery}
-          onChangeText={setSearchQuery}
-        />
-        {searchQuery.length > 0 && (
+  if (selectedType === 'view-feedback' || selectedType === 'view-issues') {
+    const viewType = selectedType === 'view-feedback' ? 'feedback' : 'bug';
+    const viewTitle = selectedType === 'view-feedback' ? 'My Feedback' : 'My Issues';
+    const viewSubtitle = selectedType === 'view-feedback' 
+      ? 'View your feedback submissions' 
+      : 'View your issue reports';
+    
+    return (
+      <View style={styles.viewContainer}>
+        <View style={styles.viewHeader}>
+          <View>
+            <TranslatableText style={styles.viewTitle} cacheKey={`my_${viewType}`}>
+              {viewTitle}
+            </TranslatableText>
+            <TranslatableText style={styles.viewSubtitle} cacheKey={`view_your_${viewType}`}>
+              {viewSubtitle}
+            </TranslatableText>
+          </View>
           <TouchableOpacity 
-            onPress={() => setSearchQuery('')}
-            style={styles.clearSearchButton}
+            onPress={() => fetchUserFeedbacks(viewType)}
+            style={styles.refreshButton}
+            disabled={fetchingSubmissions}
           >
-            <Icon name="close" size={20} color="#7f8c8d" />
+            <Icon 
+              name="refresh" 
+              size={24} 
+              color={fetchingSubmissions ? '#bdc3c7' : '#e16e2b'} 
+            />
           </TouchableOpacity>
+        </View>
+
+        {/* Search Input */}
+        <View style={styles.searchContainer}>
+          <Icon name="search" size={20} color="#7f8c8d" style={styles.searchIcon} />
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Search by Case No, Subject, or Description..."
+            placeholderTextColor="#999"
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+          />
+          {searchQuery.length > 0 && (
+            <TouchableOpacity 
+              onPress={() => setSearchQuery('')}
+              style={styles.clearSearchButton}
+            >
+              <Icon name="close" size={20} color="#7f8c8d" />
+            </TouchableOpacity>
+          )}
+        </View>
+
+        {fetchingSubmissions ? (
+          <View style={styles.fetchingContainer}>
+            <ActivityIndicator size="large" color="#e16e2b" />
+            <Text style={styles.fetchingText}>Loading submissions...</Text>
+          </View>
+        ) : filteredItems.length === 0 && searchQuery.length > 0 ? (
+          <View style={styles.emptyContainer}>
+            <Icon name="search-off" size={60} color="#bdc3c7" />
+            <Text style={styles.emptyText}>No results found</Text>
+            <Text style={styles.emptySubtext}>
+              Try a different search term
+            </Text>
+          </View>
+        ) : submittedItems.length === 0 ? (
+          <View style={styles.emptyContainer}>
+            <Icon name="inbox" size={60} color="#bdc3c7" />
+            <TranslatableText style={styles.emptyText} cacheKey="no_submissions_user">
+              No submissions yet
+            </TranslatableText>
+            <TranslatableText style={styles.emptySubtext} cacheKey={`no_${viewType}_submitted`}>
+              You haven't submitted any {viewType === 'feedback' ? 'feedback' : 'issues'} yet
+            </TranslatableText>
+          </View>
+        ) : (
+          <ScrollView 
+            showsVerticalScrollIndicator={false}
+            nestedScrollEnabled={true}
+          >
+            {filteredItems.map((item) => (
+              <TouchableOpacity 
+                key={item.id} 
+                style={styles.submissionCard}
+                activeOpacity={0.8}
+                onPress={() => {
+                  navigation.navigate('FeedbackDetails', {
+                    feedbackId: item.id,
+                    ownerMobile: ownerMobile,
+                    userEmail: userEmail,
+                  });
+                }}
+              >
+                <View style={styles.submissionHeader}>
+                  <View style={styles.submissionTypeContainer}>
+                    <Icon
+                      name={item.type === 'feedback' ? 'feedback' : 'report-problem'}
+                      size={20}
+                      color="#e16e2b"
+                    />
+                    <Text style={styles.submissionType}>
+                      {item.type === 'feedback' ? 'Feedback' : 'Issue'}
+                    </Text>
+                  </View>
+                  <View style={[
+                    styles.statusBadge,
+                    item.status === 'Resolved' && styles.statusResolved,
+                    item.status === 'In Progress' && styles.statusInProgress,
+                    item.status === 'Reported' && styles.statusReported,
+                  ]}>
+                    <Text style={styles.statusText}>{item.status}</Text>
+                  </View>
+                </View>
+
+                <Text style={styles.submissionSubject}>{item.subject}</Text>
+                <Text style={styles.submissionDescription} numberOfLines={2}>
+                  {item.description}
+                </Text>
+
+                {item.actionComments && (
+                  <View style={styles.actionCommentsContainer}>
+                    <Icon name="comment" size={16} color="#27ae60" />
+                    <Text style={styles.actionComments} numberOfLines={2}>
+                      {item.actionComments}
+                    </Text>
+                  </View>
+                )}
+
+                {item.attachment && (
+                  <View style={styles.attachmentContainer}>
+                    <Text style={styles.attachmentLabel}>Attachment:</Text>
+                    <FeedbackAttachmentImage
+                      attachmentUrl={item.attachment}
+                      memberId={ownerMobile}
+                    />
+                  </View>
+                )}
+
+                <View style={styles.submissionFooter}>
+                  <View style={styles.dateContainer}>
+                    <Icon name="calendar-today" size={14} color="#7f8c8d" />
+                    <Text style={styles.submissionDate}>{item.date}</Text>
+                  </View>
+                  <View style={styles.viewDetailsButton}>
+                    <TranslatableText style={styles.viewDetailsText} cacheKey="view_details">
+                      View Details
+                    </TranslatableText>
+                    <Icon name="arrow-forward" size={14} color="#e16e2b" />
+                  </View>
+                </View>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
         )}
       </View>
-
-      {fetchingSubmissions ? (
-        <View style={styles.fetchingContainer}>
-          <ActivityIndicator size="large" color="#e16e2b" />
-          <Text style={styles.fetchingText}>Loading submissions...</Text>
-        </View>
-      ) : filteredItems.length === 0 && searchQuery.length > 0 ? (
-        <View style={styles.emptyContainer}>
-          <Icon name="search-off" size={60} color="#bdc3c7" />
-          <Text style={styles.emptyText}>No results found</Text>
-          <Text style={styles.emptySubtext}>
-            Try a different search term
-          </Text>
-        </View>
-      ) : submittedItems.length === 0 ? (
-        <View style={styles.emptyContainer}>
-          <Icon name="inbox" size={60} color="#bdc3c7" />
-          <TranslatableText style={styles.emptyText} cacheKey="no_submissions_user">
-  No submissions yet
-</TranslatableText>
-          <TranslatableText style={styles.emptySubtext} cacheKey="no_feedback_submitted">
-  You haven't submitted any feedback or issues yet
-</TranslatableText>
-        </View>
-      ) : (
-        <ScrollView 
-          showsVerticalScrollIndicator={false}
-          nestedScrollEnabled={true}
-        >
-       {filteredItems.map((item) => (
-  <TouchableOpacity 
-    key={item.id} 
-    style={styles.submissionCard}
-    activeOpacity={0.8}
-    onPress={() => {
-      navigation.navigate('FeedbackDetails', {
-        feedbackId: item.id,
-        ownerMobile: ownerMobile,
-        userEmail: userEmail,
-      });
-    }}
-  >
-    <View style={styles.submissionHeader}>
-      <View style={styles.submissionTypeContainer}>
-        <Icon
-          name={item.type === 'feedback' ? 'feedback' : 'report-problem'}
-          size={20}
-          color="#e16e2b"
-        />
-        <Text style={styles.submissionType}>
-          {item.type === 'feedback' ? 'Feedback' : 'Issue'}
-        </Text>
-      </View>
-      <View style={[
-        styles.statusBadge,
-        item.status === 'Resolved' && styles.statusResolved,
-        item.status === 'In Progress' && styles.statusInProgress,
-        item.status === 'Reported' && styles.statusReported,
-      ]}>
-        <Text style={styles.statusText}>{item.status}</Text>
-      </View>
-    </View>
-
-    <TranslatableText style={styles.submissionSubject}>
-  {item.subject}
-</TranslatableText>
-    <Text style={styles.submissionDescription} numberOfLines={2}>
-      {item.description}
-    </Text>
-
-    {item.actionComments && (
-      <View style={styles.actionCommentsContainer}>
-        <Icon name="comment" size={16} color="#27ae60" />
-        <Text style={styles.actionComments} numberOfLines={2}>
-          {item.actionComments}
-        </Text>
-      </View>
-    )}
-
-    {item.attachment && (
-      <View style={styles.attachmentContainer}>
-        <Text style={styles.attachmentLabel}>Attachment:</Text>
-        <FeedbackAttachmentImage
-          attachmentUrl={item.attachment}
-          memberId={ownerMobile}
-        />
-      </View>
-    )}
-
-    <View style={styles.submissionFooter}>
-      <View style={styles.dateContainer}>
-        <Icon name="calendar-today" size={14} color="#7f8c8d" />
-        <Text style={styles.submissionDate}>{item.date}</Text>
-      </View>
-      <View style={styles.viewDetailsButton}>
-        <TranslatableText style={styles.viewDetailsText} cacheKey="view_details">
-  View Details
-</TranslatableText>
-        <Icon name="arrow-forward" size={14} color="#e16e2b" />
-      </View>
-    </View>
-  </TouchableOpacity>
-))}
-        </ScrollView>
-      )}
-    </View>
-  );
-}
+    );
+  }
 
   // ✅ ORIGINAL FORM CODE FOR FEEDBACK/COMPLAINT
   if (!selectedType) return null;
@@ -1709,6 +1761,8 @@ if (selectedType === 'view') {
         return 'Your Feedback *';
     }
   };
+
+  
 
   return (
     <View style={styles.formContainer}>
@@ -2040,6 +2094,35 @@ const styles = StyleSheet.create({
     marginBottom: 20,
     gap: 8,
   },
+  // Add after typeSelectionRow styles
+typeSelectionContainer: {
+  marginBottom: 20,
+},
+typeBoxView: {
+  backgroundColor: '#fff',
+  borderWidth: 2,
+  borderColor: '#e0e0e0',
+  borderRadius: 12,
+  flex: 1,
+  height: 90,
+  alignItems: 'center',
+  justifyContent: 'center',
+  elevation: 2,
+},
+typeBoxViewSelected: {
+  backgroundColor: '#3498db',
+  borderColor: '#3498db',
+},
+typeBoxViewText: {
+  fontSize: 11,
+  color: '#2c3e50',
+  fontWeight: '600',
+  marginTop: 6,
+  textAlign: 'center',
+},
+typeBoxViewTextSelected: {
+  color: '#fff',
+},
   typeBox: {
     backgroundColor: '#fff',
     borderWidth: 2,

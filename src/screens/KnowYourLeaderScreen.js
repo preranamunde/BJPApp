@@ -988,7 +988,6 @@ const fetchPersonalDetails = async (memberIdentifier) => {
   try {
     const baseUrl = await ConfigService.getBaseUrl();
     
-    // Get current user info for email parameter
     const currentUserInfo = await getCurrentUserRole();
     const userEmailId = currentUserInfo.loggedin_email || '';
     
@@ -998,16 +997,27 @@ const fetchPersonalDetails = async (memberIdentifier) => {
     console.log('📧 Using email:', userEmailId);
     console.log('📱 Using mobile:', memberIdentifier);
 
-    // Get app key manually and add to headers
+    // ✅ GET ALL THREE: app-key, AAID, fingerprint
     const EncryptedStorage = require('react-native-encrypted-storage').default;
     const appKey = await EncryptedStorage.getItem('APP_KEY');
+    const deviceAAID = await EncryptedStorage.getItem('DEVICE_AAID');
+    const deviceFingerprint = await EncryptedStorage.getItem('DEVICE_FINGERPRINT');
     
+    // ✅ ADD ALL THREE TO HEADERS
     const headers = {
-      'x-app-key': appKey
+      'x-app-key': appKey,
+      'x-device-aaid': deviceAAID,           // ✅ ADD THIS
+      'x-device-fingerprint': deviceFingerprint  // ✅ ADD THIS
     };
 
-    // Use regular get with x-app-key header (no Authorization needed per Postman)
-    const result = await ApiService.get(endpoint, headers);
+    console.log('📤 Headers:', {
+      'x-app-key': appKey ? '✅' : '❌',
+      'x-device-aaid': deviceAAID || '❌ NULL',
+      'x-device-fingerprint': deviceFingerprint ? '✅' : '❌'
+    });
+
+    // Use authGet to include headers
+    const result = await ApiService.authGet(endpoint);
 
     console.log('👤 Personal Details API Response:', result);
 

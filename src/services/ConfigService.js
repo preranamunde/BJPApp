@@ -2,8 +2,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import EncryptedStorage from 'react-native-encrypted-storage';
 
 class ConfigService {
-  static BASE_URL_KEY = 'app_base_url';
-static DEFAULT_BASE_URL = 'http://192.168.0.102:5000';
+  static BASE_URL_KEY = 'https://leader.nutanteksolutions.cloud';
+static DEFAULT_BASE_URL = 'https://leader.nutanteksolutions.cloud';
  // 👈 Update this when ngrok gives new URL
 // Initialize configuration with default values (always enforce DEFAULT_BASE_URL)
   static async initializeConfig() {

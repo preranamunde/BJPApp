@@ -1,13 +1,13 @@
 {
   "project_info": {
-    "project_number": "399299971312",
-    "project_id": "leader-3dc0b",
-    "storage_bucket": "leader-3dc0b.firebasestorage.app"
+    "project_number": "331864302943",
+    "project_id": "leaderapp-e778d",
+    "storage_bucket": "leaderapp-e778d.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:399299971312:android:a7f553eec45ccce64eda35",
+        "mobilesdk_app_id": "1:331864302943:android:a521f316fded34cb1002ea",
         "android_client_info": {
           "package_name": "com.nutantek.sanjayjaiswal"
         }
@@ -15,7 +15,7 @@
       "oauth_client": [],
       "api_key": [
         {
-          "current_key": "AIzaSyCSb_gMZ7YBvjtm-09KZirN-r5GIfz5C_Y"
+          "current_key": "AIzaSyCA8fQIWxf8LS8iTLNfEqnVj_5cEDJlff0"
         }
       ],
       "services": {
